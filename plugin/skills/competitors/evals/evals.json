@@ -1,0 +1,30 @@
+{
+  "skill_name": "competitors",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/hq:competitors (weekly sweep for the current business)",
+      "expected_output": "Changes read from the watcher, content checked with yt-dlp, a dated log per competitor, and a brief saved with save-plan competitors.",
+      "files": [],
+      "expectations": [
+        "Ran `npm run hq -- competitors changes <slug>`",
+        "Checked content competitors' channels with yt-dlp (public, no login)",
+        "Logged an entry per competitor with `competitors log`",
+        "Saved the brief with `save-plan <slug> competitors` in the given shape",
+        "Every claim in the brief has a source link",
+        "Did not print the watcher token or open .env files"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/hq:competitors setup",
+      "expected_output": "Proposes 3-6 real competitors with verified URLs and waits for approval before editing the profile.",
+      "files": [],
+      "expectations": [
+        "Proposed 3-6 competitors with reasons",
+        "Checked every watch URL returns 200",
+        "Did not edit profile.json before an explicit yes"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "skill_name": "clip",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Clip this podcast into shorts: <path to a ~2 min talk video>",
+      "expected_output": "3-5 vertical clips, each rendered via studio render, each passing studio check, contact sheets viewed, handed over without posting.",
+      "files": [],
+      "expectations": [
+        "Transcribed the source with `npm run studio -- transcribe`",
+        "Each clip has its own spec.json with a hook of 2-6 words",
+        "Each clip is 15-90 s and starts on its hook line",
+        "Ran `studio check` on every output and every check passed",
+        "Looked at the contact sheet image for each clip",
+        "Did not call /hq:publish or any posting tool"
+      ]
+    }
+  ]
+}

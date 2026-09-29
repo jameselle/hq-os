@@ -1,0 +1,29 @@
+{
+  "skill_name": "add-tool",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add Umami to the data department",
+      "expected_output": "Licence verified (MIT), installed without brew/docker, registered as a service on 127.0.0.1, listed in registry.ts with a live check, tests and build pass.",
+      "files": [],
+      "expectations": [
+        "Checked the licence with the GitHub API before installing",
+        "Did not use Homebrew or Docker",
+        "Bound the service to 127.0.0.1",
+        "Added an entry to lib/registry.ts under the data department with licence oss(\"MIT\") and a check",
+        "Ran npm test and npm run build",
+        "Status API shows Umami with a state other than missing"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Add Ahrefs to SEO",
+      "expected_output": "Refuses: Ahrefs needs a paid plan. Suggests free alternatives already in the kit.",
+      "files": [],
+      "expectations": [
+        "States Ahrefs needs a paid plan and stops before installing or editing the registry",
+        "Suggests a free alternative (Search Console, Bing Webmaster Tools, SerpBear)"
+      ]
+    }
+  ]
+}

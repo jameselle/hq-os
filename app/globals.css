@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  background:
+    radial-gradient(1200px 620px at 50% -12%, rgba(60, 104, 210, 0.13), transparent 60%),
+    radial-gradient(1000px 520px at 100% -5%, rgba(130, 96, 250, 0.09), transparent 55%),
+    #070b14;
+  background-attachment: fixed;
+  color: #E9EEF8;
+}
+
+/* Small uppercase mono eyebrow label, blue-tinted (section kickers). */
+.eyebrow {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #5ab0f0;
+}
+
+/* Translucent navy card with a faint top sheen. */
+.card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0)),
+    #0e1424;
+  border: 1px solid #1f2940;
+  border-radius: 1rem;
+}
+.card-hover {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.card-hover:hover {
+  border-color: rgba(90, 176, 240, 0.35);
+  box-shadow: 0 10px 34px -16px rgba(30, 60, 130, 0.7);
+  transform: translateY(-2px);
+}
+
+/* Long-form styling for the CEO's written review. */
+.prose-brief { line-height: 1.6; }
+.prose-brief h1, .prose-brief h2, .prose-brief h3 {
+  font-weight: 600;
+  margin: 1.1em 0 0.4em;
+  color: #E9EEF8;
+}
+.prose-brief h1 { font-size: 1.15rem; }
+.prose-brief h2 { font-size: 1rem; }
+.prose-brief h3 { font-size: 0.9rem; }
+.prose-brief p { margin-bottom: 0.7em; }
+.prose-brief ul, .prose-brief ol { margin: 0 0 0.8em 1.1em; }
+.prose-brief ul { list-style: disc; }
+.prose-brief ol { list-style: decimal; }
+.prose-brief li { margin: 0.2em 0; }
+.prose-brief strong { color: #E9EEF8; }
+.prose-brief code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #161f33;
+  border: 1px solid #1f2940;
+  padding: 0.05em 0.35em;
+  border-radius: 0.3em;
+  font-size: 0.88em;
+  color: #E9EEF8;
+}
+.prose-brief a { color: #5AB0F0; }

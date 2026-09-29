@@ -1,0 +1,28 @@
+{
+  "skill_name": "new-business",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add a demo business called Test Bakery so I can try HQ: a local bakery in Melbourne selling sourdough to neighbours, Instagram @testbakery, no website yet, solo so skip people. Use a new vault. Don't ask me anything else.",
+      "expected_output": "A valid profile created with `npm run hq -- new-business`, demo: true, people skipped, then a first CEO review.",
+      "files": [],
+      "expectations": [
+        "Created the business with `npm run hq -- new-business` and it appears in `npm run hq -- list`",
+        "Profile has demo: true, country AU, timezone Australia/Melbourne, channels.instagram @testbakery",
+        "departments.skip contains people",
+        "Told the user the vault path and how to open it in Obsidian",
+        "Did not ask for passwords or API keys"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Connect my business to HQ",
+      "expected_output": "With no details given, the skill asks for the profile fields (or a website to draft from) before creating anything.",
+      "files": [],
+      "expectations": [
+        "Asks for the business details (or a website) before running new-business",
+        "Explicitly asks about regulated industries"
+      ]
+    }
+  ]
+}

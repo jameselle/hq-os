@@ -1,0 +1,14 @@
+node_modules/
+.next/
+*.tsbuildinfo
+next-env.d.ts
+# secrets never enter the framework repo
+.env
+.env.*
+# machine-local state (business data lives in $HQ_DATA, default ~/hq-data)
+data/
+*.log
+.DS_Store
+# skill eval workspaces
+*-workspace/
+.private-names

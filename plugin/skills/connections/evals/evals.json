@@ -1,0 +1,28 @@
+{
+  "skill_name": "connections",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Refresh HQ's connections",
+      "expected_output": "Lists Composio connections read-only, saves a snapshot with only ids/aliases/names/statuses, shows it.",
+      "files": [],
+      "expectations": [
+        "Used COMPOSIO_MANAGE_CONNECTIONS with action list only (no add/remove)",
+        "Saved via `npm run hq -- connections save`",
+        "The saved JSON has no tokens, keys or emails",
+        "Reported which channels of the current business aren't connected"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Connect TikTok",
+      "expected_output": "TikTok defaults to WoopSocial: explains the free WoopSocial account + adding its API key to Composio's woop_social toolkit themselves; never asks for the key.",
+      "files": [],
+      "expectations": [
+        "Explains TikTok goes through WoopSocial (audited, public posts)",
+        "Tells the owner to add the API key in Composio themselves",
+        "Does not ask for the key in chat"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "skill_name": "edit",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Edit these two takes into a 30 s reel: <take1> <take2>, brief: why water temperature matters",
+      "expected_output": "One vertical video built from the cleaner take, hook first, QA passing.",
+      "files": [],
+      "expectations": [
+        "Transcribed both takes",
+        "Chose the cleaner take for repeated lines",
+        "First segment opens on the hook",
+        "studio check passes",
+        "Did not post"
+      ]
+    }
+  ]
+}

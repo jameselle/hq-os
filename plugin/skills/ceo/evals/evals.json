@@ -1,0 +1,31 @@
+{
+  "skill_name": "ceo",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Run a CEO review for the current business.",
+      "expected_output": "A review saved via `npm run hq -- save-review`, visible on /ceo and in the vault, with the fixed sections.",
+      "files": [],
+      "expectations": [
+        "Called the HQ status API before deciding anything",
+        "Saved the review with `npm run hq -- save-review <slug>` (not by writing into the site's files directly)",
+        "The review has Headline, Decisions for you, This week, Delegated and Watching sections",
+        "Lists at most 5 decisions for the owner",
+        "Every skill it names has ready: true in the status JSON",
+        "Recommends no paid tool",
+        "Did not open any .env file"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/hq:ceo plan the week for content and SEO only",
+      "expected_output": "A review focused on the content and seo departments that still surfaces any critical finding.",
+      "files": [],
+      "expectations": [
+        "The This week section only covers Content & Social and SEO & GEO",
+        "Any critical finding from the status JSON still appears",
+        "Delegates each department's week with /hq:dept <slug>"
+      ]
+    }
+  ]
+}

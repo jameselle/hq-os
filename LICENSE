@@ -1,0 +1,17 @@
+HQ — Evaluation Licence
+
+Copyright (c) 2026 jameselle. All rights reserved.
+
+You have been given access to this repository to evaluate HQ. You may clone it,
+run it on your own computers, and modify it for your own evaluation and use.
+
+You may not redistribute, sublicense, sell, publish, or offer this software (or
+a modified version of it) to others, including as a hosted service, without
+prior written permission from the copyright holder.
+
+Access can be withdrawn at any time. The software is provided "as is", without
+warranty of any kind. In no event shall the copyright holder be liable for any
+claim, damages or other liability arising from its use.
+
+Third-party tools HQ installs or runs (for example Postiz, FFmpeg, whisper.cpp,
+restic) are separate programs under their own licences.

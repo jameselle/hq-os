@@ -1,0 +1,27 @@
+{
+  "skill_name": "services",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Is HQ running?",
+      "expected_output": "Runs services status and summarises each service and port.",
+      "files": [],
+      "expectations": [
+        "Ran `npm run hq -- services status`",
+        "Reports each com.hq.* service and whether its port answers"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Postiz is down, fix it",
+      "expected_output": "Checks status and the Postiz logs, identifies the cause, restarts via launchctl kickstart, verifies.",
+      "files": [],
+      "expectations": [
+        "Read the service's log in $HQ_DATA/logs",
+        "Restarted with launchctl kickstart -k",
+        "Verified the port answers afterwards",
+        "Did not touch launch agents outside com.hq.*"
+      ]
+    }
+  ]
+}

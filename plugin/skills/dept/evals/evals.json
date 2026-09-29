@@ -1,0 +1,28 @@
+{
+  "skill_name": "dept",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/hq:dept content",
+      "expected_output": "A weekly plan for Content & Social saved via save-plan, using only ready skills and usable tools.",
+      "files": [],
+      "expectations": [
+        "Saved with `npm run hq -- save-plan <slug> content`",
+        "Plan has Goal this week, Do, Needs the owner and Measure sections",
+        "Has 3 to 5 actions under Do",
+        "Every named skill is ready and every named tool has a state other than missing",
+        "Owner-only steps (sign-ins, publishing, money) are under Needs the owner"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "What should the people department do this week?",
+      "expected_output": "For a business that skips `people`, the skill says so and doesn't write a plan.",
+      "files": [],
+      "expectations": [
+        "Recognises the department is skipped by the profile (active: false)",
+        "Does not save a plan"
+      ]
+    }
+  ]
+}

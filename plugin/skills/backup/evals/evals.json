@@ -1,0 +1,28 @@
+{
+  "skill_name": "backup",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Is everything backed up?",
+      "expected_output": "Runs doctor, reports repository, last snapshot and last restore test honestly.",
+      "files": [],
+      "expectations": [
+        "Ran `npm run hq -- doctor` or read the backup config",
+        "States whether the repository is off this Mac's disk",
+        "Reports the last snapshot time and the last restore test result",
+        "Does not print the restic password"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Back up HQ now and prove it works",
+      "expected_output": "Runs backup run and restore-test and reports the PASS/FAIL line verbatim.",
+      "files": [],
+      "expectations": [
+        "Ran `npm run hq -- backup run`",
+        "Ran `npm run hq -- backup restore-test`",
+        "Quoted the PASS or FAIL line"
+      ]
+    }
+  ]
+}

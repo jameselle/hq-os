@@ -1,0 +1,12 @@
+{
+  "name": "hq",
+  "owner": { "name": "HQ" },
+  "metadata": { "description": "HQ: run any business from one local console, staffed with free tools and Claude skills." },
+  "plugins": [
+    {
+      "name": "hq",
+      "source": "./plugin",
+      "description": "CEO reviews, department heads, business onboarding, tool installs, backups and services for the HQ console."
+    }
+  ]
+}

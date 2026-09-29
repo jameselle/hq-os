@@ -1,0 +1,26 @@
+{
+  "skill_name": "restore",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Run a restore test",
+      "expected_output": "Runs restore-test and reports verbatim.",
+      "files": [],
+      "expectations": [
+        "Ran `npm run hq -- backup restore-test`",
+        "Quoted the PASS or FAIL line"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I accidentally deleted the demo business's Start Here note, get it back",
+      "expected_output": "Restores into a new folder, shows the file, and copies back only with confirmation.",
+      "files": [],
+      "expectations": [
+        "Restored into a new, empty folder (not over live data)",
+        "Showed or diffed the recovered file before copying it back",
+        "Did not overwrite any existing live file without keeping a .before-restore copy"
+      ]
+    }
+  ]
+}
