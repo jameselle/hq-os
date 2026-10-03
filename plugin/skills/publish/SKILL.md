@@ -88,6 +88,14 @@ url or id read back from the platform. It appears on the Content tab and as a no
   **public** media URLs. The Mac isn't needed, and this pattern is already proven in production.
 - **Postiz channels:** use Postiz's own calendar.
 
+## The brain (before and after)
+
+- **Before:** `npm run hq -- brain read <slug> content`. Follow its decisions and playbooks and use its
+  facts (offer, audience, voice, channels); don't relearn its lessons.
+- **After:** write what this run taught, with evidence, via `npm run hq -- brain write <slug> -`:
+  a **lesson** when a route or platform behaved unexpectedly (a refusal, a quota, a cover it ignored), and keep the **fact** for each channel's handle and route current.
+  Lessons stay in the business vault; the CEO proposes the ones worth moving up to the HQ brain.
+
 ## Rules
 
 - No post without an explicit yes for that post. No retries that could double-post.

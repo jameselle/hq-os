@@ -129,6 +129,14 @@ blurred copy until nothing is lost in the 3:4 tile.
 When the posts have numbers, `/ig-audit` says which hooks and formats worked; feed that into the next script's
 hook choice. Record the day in the business's vault (session note).
 
+## The brain (before and after)
+
+- **Before:** `npm run hq -- brain read <slug> content`. Follow its decisions and playbooks and use its
+  facts (offer, audience, voice, channels); don't relearn its lessons.
+- **After:** write what this run taught, with evidence, via `npm run hq -- brain write <slug> -`:
+  a **lesson** per result worth keeping (which hook won and by how much, what the edit changed), and a **signal** to `data` when numbers need watching.
+  Lessons stay in the business vault; the CEO proposes the ones worth moving up to the HQ brain.
+
 ## Rules
 
 - No em or en dashes in scripts, captions, hooks, titles or covers.

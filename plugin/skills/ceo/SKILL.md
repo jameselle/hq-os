@@ -59,6 +59,9 @@ Then read the business's history, so the review builds on what came before:
 - decisions: `<vault>/CEO/Decisions/`, where the vault is `business.vault.path`,
   relative to the business folder or an absolute path + `/HQ`
 - anything the user told you in this conversation
+- **the brain:** `npm run hq -- brain read <slug> ceo` (every decision, fact, lesson, playbook and
+  recent signal in the business vault and the HQ brain) and `npm run hq -- brain show <slug>` for the
+  counts and the **promotion candidates** (lessons with evidence not yet in the HQ brain)
 
 ## 3. Decide
 
@@ -76,6 +79,13 @@ Then read the business's history, so the review builds on what came before:
   department `notes`, and don't propose ads the notes say won't be approved.
 - **Say what changed** since the last review: done, slipped or new.
 - Be concrete and brief. No filler, and no "consider exploring".
+- **Promote what generalises.** Of the promotion candidates, propose at most three that would help
+  any business, each as one decision ("Move '<lesson>' to the HQ brain as '<generic title>'"),
+  rewritten so it names no business, customer or number. After the owner's yes:
+  `npm run hq -- brain promote <slug> <note> --title "<generic title>" --body <file>`. HQ refuses a copy
+  that names a business.
+- **Record decisions.** Every decision the owner makes in this review becomes a decision note:
+  `npm run hq -- brain write <slug> -` with `{"type":"decision","dept":"ceo","title":"…","body":"what, and why"}`.
 
 ## 4. Save the review
 

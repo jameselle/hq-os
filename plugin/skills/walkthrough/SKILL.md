@@ -105,6 +105,14 @@ A page script is JSON: `slug`, `path`, `title`, `subtitle`, `ready` (a locator t
   each video from the live site and compare its bytes with the local file.
 - Record it in the business vault: the SOP (voice, builder, what changed) and a session note.
 
+## The brain (before and after)
+
+- **Before:** `npm run hq -- brain read <slug> content`. Follow its decisions and playbooks and use its
+  facts (offer, audience, voice, channels); don't relearn its lessons.
+- **After:** write what this run taught, with evidence, via `npm run hq -- brain write <slug> -`:
+  a **lesson** when a page, voice or render setting needed a fix worth keeping, and a **signal** to `design` or `engineering` for any confusing screen found while recording.
+  Lessons stay in the business vault; the CEO proposes the ones worth moving up to the HQ brain.
+
 ## Rules
 
 - Clone only a voice the owner has given consent for, and only their own.

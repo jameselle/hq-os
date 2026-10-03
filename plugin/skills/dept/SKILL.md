@@ -46,9 +46,14 @@ curl -s "http://127.0.0.1:3150/api/status?business=<slug>"
   especially anything under "This week" or "Delegated" for this department.
 - Last week's plan: the newest file in `$HQ_DATA/businesses/<slug>/plans/<dept>/`.
   Carry forward what slipped, and say so.
-- SOPs in the vault: `Departments/<Label>/SOPs/`. Follow them.
+- **The brain:** `npm run hq -- brain read <slug> <dept>`. Every decision and fact for the
+  business and the HQ brain, this department's lessons and those of the departments that feed it,
+  its playbooks (the vault's `SOPs/` count) and the signals sent to it in the last 30 days. Obey the
+  decisions, use the facts, follow the playbooks, and act on the signals.
 
 ## 3. Plan
+
+- **Start from the signals.** A signal another department sent this one is work waiting.
 
 - **3 to 5 actions**, each: what → which skill or tool → what done looks like.
 - **Use what exists.** Only ready skills and usable tools. If the work needs a
@@ -87,6 +92,17 @@ npm run hq -- save-plan <slug> <dept-slug> /tmp/hq-plan.md
 ```
 
 Tell the user the goal and the owner-only items.
+
+## The brain, after the work
+
+When something is learned, write it down so nobody learns it twice (`npm run hq -- brain write <slug> -`
+with JSON on stdin):
+- a **lesson** with its evidence: `{"type":"lesson","dept":"<dept>","title":"…","body":"…","evidence":["…"]}`
+- a **signal** for each department that should act on what you found: `"type":"signal"`, `"to":["<dept>"]`
+  (only the departments this one feeds on the Workflows web; HQ refuses the rest)
+- a **fact** or **playbook** when something true changed or a process settled (named by title, so
+  writing again updates it).
+Never write to the HQ brain directly: the CEO proposes what moves up.
 
 ## 5. Doing the work (only when asked)
 

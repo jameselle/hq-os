@@ -8,6 +8,7 @@
 // Services     services init · services add-defaults · services install · services status · services start · services stop · services uninstall
 // Publishing   connections save <file.json|-> · connections show · publishing <slug> · log-post <slug> <post.json|->
 // Competitors  competitors sync <slug> · competitors changes <slug> [--days N] [--json] · competitors log <slug> <name> <file|-> · competitors recheck <slug>
+// Brain        brain init · brain read <slug> <dept> [--chars N] · brain write <slug|hq> <note.json|-> · brain promote <slug> <note> [--title T] [--body file] · brain show <slug>
 // Tools        finance init <slug> · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug>
 // Health       doctor
 //
@@ -24,6 +25,8 @@ import path from "node:path";
 import { keptTakeFiles, TELEPROMPTER_APP, TELEPROMPTER_TAKES } from "../lib/studio/teleprompter";
 import { excludedFromBackup, realRun, resticExcludeArgs, stageServiceData, type ServiceBackup, type StageOps } from "../lib/backup";
 import { backupIsExternal } from "../lib/ceo";
+import { brainStats, candidates, hqBrainRoot, initBrain, promote, readBundle, writeNote, type NoteInput } from "../lib/brain-store";
+import { NOTE_TYPES, TYPE_INFO } from "../lib/brain";
 import { runScorecard, scorecardState } from "../lib/scorecard";
 import { formatValue, scorecardRows } from "../lib/scorecard-metrics";
 import { validateProfile } from "../lib/profile";
@@ -968,6 +971,42 @@ async function main() {
         return;
       }
       return die("scorecard: refresh <slug|--all> | show <slug> | check-billing <slug>");
+    }
+    case "brain": {
+      const sub = pos[0];
+      const opt = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
+      if (sub === "init") {
+        const r = initBrain();
+        return console.log(`HQ brain: ${r.hq}\n${r.made.length ? r.made.map((m) => `  made ${m}`).join("\n") : "  nothing to do: every brain already has its folders"}`);
+      }
+      if (sub === "read") {
+        const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+        return console.log(readBundle(p.slug, pos[2] ?? die("missing department slug (or ceo)"), Number(opt("--chars") ?? 12000)));
+      }
+      if (sub === "write") {
+        const scope = pos[1] === "hq" ? "hq" : "business";
+        const slug = scope === "hq" ? null : (getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`)).slug;
+        const file = writeNote(scope, slug, JSON.parse(readInput(pos[2])) as NoteInput);
+        return console.log(`wrote ${file}`);
+      }
+      if (sub === "promote") {
+        const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+        const body = opt("--body");
+        const file = promote(p.slug, pos[2] ?? die("missing note path (relative to the vault)"), { title: opt("--title"), body: body ? fs.readFileSync(body, "utf8") : undefined });
+        return console.log(`promoted to the HQ brain: ${file}`);
+      }
+      if (sub === "show") {
+        const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+        const s = brainStats(p.slug);
+        console.log(`${"".padEnd(11)}${"HQ brain".padStart(9)}${p.name.slice(0, 18).padStart(20)}`);
+        for (const t of NOTE_TYPES) console.log(`${TYPE_INFO[t].label.padEnd(11)}${String(s.counts.hq[t]).padStart(9)}${String(s.counts.business[t]).padStart(20)}`);
+        if (!s.hqExists) console.log(`\nno HQ brain yet at ${hqBrainRoot()}: npm run hq -- brain init`);
+        const c = candidates(p.slug);
+        console.log(`\npromotion candidates (lessons with evidence): ${c.length}`);
+        for (const n of c) console.log(`  ${n.rel}  [${n.meta.dept}] ${n.meta.title}`);
+        return;
+      }
+      return die("brain: init | read <slug> <dept> | write <slug|hq> <note.json|-> | promote <slug> <note> | show <slug>");
     }
     case "doctor":
       return cmdDoctor();

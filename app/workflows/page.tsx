@@ -2,12 +2,14 @@
 // they pay. The web, the loops and the workflow catalogue come from lib/workflows.ts; the
 // current business only decides which departments show as skipped.
 
+import { BrainMap } from "@/components/BrainMap";
 import { Tile } from "@/components/Tile";
 import { WorkflowsWeb } from "@/components/WorkflowsWeb";
 import { preferredBusiness } from "@/lib/current";
 import { activeDepartments } from "@/lib/profile";
 import { DEPARTMENTS } from "@/lib/registry";
 import { workflowEvidence } from "@/lib/workflow-evidence";
+import { brainStats } from "@/lib/brain-store";
 import { resolveCurrent } from "@/lib/store";
 import { EDGES, LOOPS, WORKFLOWS } from "@/lib/workflows";
 
@@ -43,7 +45,8 @@ export default async function WorkflowsPage() {
         <Tile label="Departments" value={`${active.length}/${DEPARTMENTS.length}`} hint="active for this business" />
       </div>
 
-      <WorkflowsWeb active={active} businessName={business?.name ?? null} evidence={evidence} demo={demo} />
+      <WorkflowsWeb active={active} businessName={business?.name ?? null} evidence={evidence} demo={demo}
+        brain={business ? <BrainMap stats={brainStats(business.slug)} businessName={business.name} demo={demo} active={active} /> : null} />
     </div>
   );
 }

@@ -160,6 +160,14 @@ to apply them instead: `npm run studio -- apply-edits <video>` (the spec is back
 `spec.before-edits-<time>.json`; a cutaway left mostly inside a cut is dropped, and the command names it).
 A render made before this existed has no `<format>.map.json`: render it once, then edits can apply.
 
+## The brain (before and after)
+
+- **Before:** `npm run hq -- brain read <slug> content`. Follow its decisions and playbooks and use its
+  facts (offer, audience, voice, channels); don't relearn its lessons.
+- **After:** write what this run taught, with evidence, via `npm run hq -- brain write <slug> -`:
+  a **lesson** for each clip pattern that held or failed QA for a reason worth keeping, and a **playbook** update when the process changed.
+  Lessons stay in the business vault; the CEO proposes the ones worth moving up to the HQ brain.
+
 ## Rules
 
 - Never use MusicGen output for music in monetised posts (the weights are non-commercial).

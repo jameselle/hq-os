@@ -38,6 +38,13 @@ const OTHER: Guide[] = [
     file: "docs/guides/workflows.md",
   },
   {
+    slug: "brain",
+    kind: "page",
+    title: "The brain: what every department knows",
+    blurb: "The shared HQ brain and each business's vault, the five kinds of note, who reads and writes what, and how a lesson moves up.",
+    file: "docs/guides/brain.md",
+  },
+  {
     slug: "scorecard",
     kind: "page",
     title: "How the growth scorecard works",

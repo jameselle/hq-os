@@ -76,6 +76,14 @@ on 127.0.0.1:5010. Its API token lives in the Keychain, and the CLI reads it for
 
 Then tell the owner the headline and the actions.
 
+## The brain (before and after)
+
+- **Before:** `npm run hq -- brain read <slug> competitors`. Follow its decisions and playbooks and use its
+  facts (offer, audience, voice, channels); don't relearn its lessons.
+- **After:** write what this run taught, with evidence, via `npm run hq -- brain write <slug> -`:
+  each rival move worth acting on as a **signal** to the department that acts (the Workflows web decides which), and a **lesson** when a pattern repeats across rivals.
+  Lessons stay in the business vault; the CEO proposes the ones worth moving up to the HQ brain.
+
 ## Rules
 
 - Stick to facts from sources, with a link for each. Label a guess as a guess.

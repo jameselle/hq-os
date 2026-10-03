@@ -56,6 +56,7 @@ cat > /tmp/hq-profile.json <<'JSON'
 { …profile… }
 JSON
 npm run hq -- new-business /tmp/hq-profile.json
+npm run hq -- brain init        # typed brain folders in the new vault, and the shared HQ brain if it's missing
 ```
 
 If it prints validation errors, fix the fields it names and re-run. It never

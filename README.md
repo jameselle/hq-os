@@ -48,6 +48,15 @@ it walks you through backups and every department, one step at a time, from the 
 | Connect Stripe, the App Store or your own database to the scorecard | `/hq:scorecard` |
 | Health check | `npm run hq -- doctor` |
 
+## The brain
+
+Every business has its own Obsidian vault, and there's one shared **HQ brain** for what's true across
+all of them. Both hold the same five kinds of note: facts, decisions, lessons, playbooks and signals.
+Each department reads the right ones before it works (`npm run hq -- brain read <slug> <dept>`) and
+writes what it learned after; the Workflows page draws who reads and writes what. A lesson moves up to
+the HQ brain only when the CEO proposes it and you say yes, rewritten so it names no business. See
+[the brain guide](docs/guides/brain.md).
+
 ## How publishing works
 
 Each channel in a business profile posts through a **route**. The route defaults per platform, and a profile can override it with `via`:
@@ -82,6 +91,7 @@ No hand editing. `/hq:clip` and `/hq:edit` write an edit description (`spec.json
 |---|---|---|
 | The framework (this repo) | `~/business-os` | GitHub (private) |
 | Businesses: profiles, reviews, plans, vaults | `~/hq-data` | restic, nightly, encrypted, in iCloud Drive |
+| The shared HQ brain (Obsidian vault) | `~/hq-data/brain` | the same restic backup |
 | Backup password | login Keychain, `hq-restic` | **you**: copy it into your password manager |
 | Services | `~/Library/LaunchAgents/com.hq.*` | regenerated from `~/hq-data/services.json` |
 | Tool data: Listmonk (Postgres), Uptime Kuma, Syncthing config | `~/.local/var/…` | services with a `backup` spec in `services.json` (a Postgres cold copy or a SQLite copy) are staged into the nightly restic backup; other configs are reproducible |

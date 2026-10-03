@@ -5,7 +5,7 @@
 // Data lives in lib/workflows.ts; this file only draws it.
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { DEPARTMENTS } from "@/lib/registry";
 import { PILL } from "@/lib/tone";
@@ -261,7 +261,7 @@ function Panel({ selected, lever, active, onShowWorkflows }: { selected: Node | 
 // ---------------------------------------------------------------- page
 const STORE = "hq.workflows.filters";
 
-export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false }: { active: string[]; businessName: string | null; evidence?: Record<string, Evidence>; demo?: boolean }) {
+export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false, brain = null }: { active: string[]; businessName: string | null; evidence?: Record<string, Evidence>; demo?: boolean; brain?: ReactNode }) {
   const [lever, setLever] = useState<Lever | "all">("all");
   const [selected, setSelected] = useState<Node | null>(null);
   const [wfLever, setWfLever] = useState<Lever | "all">("all");
@@ -338,6 +338,8 @@ export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false
           <p className="card px-4 py-3 text-[12.5px] text-bb-muted">Nothing runs yet{businessName ? ` for ${businessName}` : ""}. Publish a post with <span className="font-mono">/hq:publish</span>, or ask the CEO for a review with <span className="font-mono">/hq:ceo</span>, and it shows up here.</p>
         )}
       </section>
+
+      {brain}
 
       {/* the web */}
       <section aria-labelledby="web-h" className="space-y-3">

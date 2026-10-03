@@ -104,6 +104,14 @@ For every one, note:
   teardown notes and contact sheets).
 - Refresh monthly, or when `/ig-audit` says posts have stopped landing.
 
+## The brain (before and after)
+
+- **Before:** `npm run hq -- brain read <slug> content`. Follow its decisions and playbooks and use its
+  facts (offer, audience, voice, channels); don't relearn its lessons.
+- **After:** write what this run taught, with evidence, via `npm run hq -- brain write <slug> -`:
+  the niche's style targets as a **fact** (pace, length, first cut), each winning format as a **lesson** with its source, and a **signal** to `competitors` with the accounts to keep watching.
+  Lessons stay in the business vault; the CEO proposes the ones worth moving up to the HQ brain.
+
 ## Rules
 
 - Copy the **formula**, never the footage, script, voice, music or a creator's signature.
