@@ -89,6 +89,7 @@ test("the HQ brain refuses a business's name, and promotion links both ways", ()
   assert.match(String(parseNote(fs.readFileSync(l, "utf8")).fields.promoted_to), /^Lessons\/\d{4}-\d{2}-\d{2} First-person hooks win\.md$/);
   assert.equal(candidates(p.slug).length, 0);
   assert.equal(readingList(p.slug, "content").filter((n) => n.meta.type === "lesson").length, 1, "the business reads its own original, not the HQ copy too");
+  assert.equal(brainStats(p.slug).counts.hq.lesson, 1, "but the HQ brain's count still shows the promoted copy");
   assert.throws(() => promote(p.slug, rel), /already promoted/);
   const fact = writeNote("business", p.slug, { type: "fact", dept: "content", title: "Prices", body: "$10" });
   assert.throws(() => promote(p.slug, path.relative(vault, fact)), /stay in their business/);

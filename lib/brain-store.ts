@@ -250,7 +250,11 @@ export function brainStats(slug: string): BrainStats {
   const counts: BrainStats["counts"] = { hq: zero(), business: zero() };
   let notes: BrainNote[] = [];
   try { notes = allNotes(slug); } catch { /* unknown business */ }
-  for (const n of notes) if (n.meta.status === "active") counts[n.scope][n.meta.type]++;
+  // Counts show what each brain holds, including HQ copies of this business's own promoted notes
+  // (allNotes leaves those out of reading so nothing is read twice).
+  let business: BrainNote[] = [];
+  try { business = listNotes("business", businessRoot(slug)); } catch { /* unknown business */ }
+  for (const n of [...listNotes("hq", hqBrainRoot()), ...business]) if (n.meta.status === "active") counts[n.scope][n.meta.type]++;
   const perDept: BrainStats["perDept"] = {};
   for (const d of NODES) {
     const mine = notes.filter((n) => n.meta.status === "active" && reads(d, n.meta)).sort((a, b) => b.mtime - a.mtime);
