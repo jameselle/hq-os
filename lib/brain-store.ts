@@ -74,9 +74,12 @@ function businessRoot(slug: string): string {
   return vaultRoot(p);
 }
 
-/** Both brains' notes for a business (HQ brain first in the array; callers sort). */
+/** Both brains' notes for a business (HQ brain first in the array; callers sort). An HQ note promoted
+ *  from this business is left out: its original, with the business's specifics, is already here. */
 export function allNotes(slug: string): BrainNote[] {
-  return [...listNotes("hq", hqBrainRoot()), ...listNotes("business", businessRoot(slug))];
+  const own = listNotes("business", businessRoot(slug));
+  const promoted = new Set(own.map((n) => n.meta.promotedTo).filter(Boolean));
+  return [...listNotes("hq", hqBrainRoot()).filter((n) => !promoted.has(n.rel)), ...own];
 }
 
 /** Names and slugs of every real (non-demo) business: none of them may appear in the HQ brain. */
