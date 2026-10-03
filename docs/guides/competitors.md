@@ -94,8 +94,9 @@ services.
 - **Licence or plan:** open source, MIT.
 - **Set it up:** see [SEO & GEO](/guides/seo). `/hq:add-tool SerpBear for seo`, bound to 127.0.0.1 and run as an
   HQ service.
-- **How HQ checks it:** no live check yet, so it always shows **missing**. Being optional, that never counts
-  against readiness.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/serpbear` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**. Until then it shows **missing**, which,
+  being optional, never counts against readiness.
 
 ## 2. Accounts and connections
 

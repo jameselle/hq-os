@@ -42,6 +42,7 @@ latest written review beside it.
 | The scorecard is out of date, or its last refresh failed | Data & Analytics | `npm run hq -- scorecard refresh <slug>` and read the error |
 | N paying members disagree between billing and our records | Data & Analytics | Fix each member's record, then the webhook that caused it |
 | N numbers can't be measured yet | Data & Analytics | Each line names its fix: more history, a missing event, or ad spend in the ledger |
+| Weakest lever this week: <lever>, <number> | the workflow's owner | Run the named workflow ("run the <workflow> workflow"), log it with `npm run hq -- experiment add`, and check the number next week ([Workflows](/guides/workflows)) |
 | A department is running on skills alone | that department | Add its tools with `/hq:add-tool` (see the department's guide) |
 | Expected skills aren't installed | Operations | `claude plugin marketplace update hq`, then reinstall the plugin |
 

@@ -62,8 +62,8 @@ plain text, so Claude can read and write it, and it is what the growth scorecard
 - **Set it up:** through `/hq:add-tool ERPNext for finance`, from source (no Docker), bound to 127.0.0.1 and run as
   a `com.hq.*` service. It's a large install with its own database; check the owner wants it first. The owner
   creates the administrator account in the browser.
-- **How HQ checks it:** no live check yet, so the tab shows it as missing even if installed. `/hq:add-tool` adds
-  one (its port) when it installs it.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/erpnext` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ### GnuCash
 
@@ -83,7 +83,8 @@ plain text, so Claude can read and write it, and it is what the growth scorecard
   department's readiness.
 - **Licence or plan:** open source, AGPL-3.0.
 - **Set it up:** only if the owner asks, through `/hq:add-tool`, bound to 127.0.0.1.
-- **How HQ checks it:** no live check yet.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/firefly-iii` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ## 2. Accounts and connections
 

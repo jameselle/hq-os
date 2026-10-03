@@ -18,6 +18,21 @@ Never sign in as anyone, never scrape behind a login, and never contact a compet
 Run commands from `$HQ_ROOT` (default `~/business-os`). The watcher is changedetection.io
 on 127.0.0.1:5010. Its API token lives in the Keychain, and the CLI reads it for you; never print it.
 
+## First-time watcher setup (once per Mac)
+
+Skip this if `npm run hq -- services status` already lists `com.hq.changedetection` as running.
+
+1. Install it: `/hq:add-tool changedetection.io for competitors` (a `uv tool install`, free, Apache-2.0).
+2. Start it once by hand so it creates its datastore, which HQ looks for before it will register the service:
+   `changedetection.io -h 127.0.0.1 -p 5010 -d ~/.local/var/changedetection`. When
+   `~/.local/var/changedetection/changedetection.json` exists, stop it (Ctrl-C).
+3. Start it again the same way, open http://127.0.0.1:5010 → **Settings → API**, and have the owner copy the
+   API key and store it themselves (it prompts; never paste it in chat):
+   `security add-generic-password -a hq -s hq-changedetection -w`. Then stop it.
+4. Register the service: `npm run hq -- services add-defaults && npm run hq -- services install`, then
+   `npm run hq -- services status` shows `com.hq.changedetection` running on :5010.
+5. Continue with `setup` below.
+
 ## Setup (`/hq:competitors setup`, or when the profile lists none)
 
 1. From the profile (offer, audience, country, sites), research **3 to 6 real competitors**:

@@ -70,8 +70,8 @@ community; add the help desk when email and chat volume needs it.
 - **Set it up:** through `/hq:add-tool Chatwoot for support`, from source (no Docker, no Homebrew), bound to
   127.0.0.1 and run as a `com.hq.*` service. A chat widget on your public site needs the server reachable from the
   internet, which a 127.0.0.1 service isn't, so decide with the owner where it runs before installing.
-- **How HQ checks it:** no live check yet, so the tab shows it as missing even if installed. `/hq:add-tool` adds
-  one (its port) when it installs it.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/chatwoot` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**. Either state meets the help-desk group.
 
 ### Zammad
 
@@ -80,7 +80,8 @@ community; add the help desk when email and chat volume needs it.
   assignments and SLAs.
 - **Licence or plan:** open source, AGPL-3.0.
 - **Set it up:** through `/hq:add-tool Zammad for support`, from source, bound to 127.0.0.1, as a `com.hq.*` service.
-- **How HQ checks it:** no live check yet; `/hq:add-tool` adds one when it installs it.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/zammad` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**. Either state meets the help-desk group.
 
 ### Discord
 
@@ -99,7 +100,8 @@ community; add the help desk when email and chat volume needs it.
 - **Licence or plan:** open source, GPL-2.0.
 - **Set it up:** a forum has to be online to be useful, so it is hosted outside this Mac; agree where with the owner
   first. Never sign up for hosting on their behalf.
-- **How HQ checks it:** no live check yet; add one with `/hq:add-tool` once it exists.
+- **How HQ checks it:** the folder `~/.local/opt/discourse` (**installed**). A forum hosted on another machine
+  isn't there, so it shows **missing**; Discord, which always shows at least **web**, meets the community group.
 
 ## 2. Accounts and connections
 

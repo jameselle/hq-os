@@ -29,13 +29,13 @@ export const DEPARTMENTS: Department[] = [
         check: { apps: ["Obsidian"] },
         freeNote: "Low lock-in: the vault is plain Markdown folders any editor, git or restic can read. Sync is paid; git is free.",
       },
-      { name: "Plane", what: "Projects, issues, cycles and roadmaps (Jira/Linear alternative).", repo: "makeplane/plane", licence: oss("AGPL-3.0"), check: {} },
+      { name: "Plane", what: "Projects, issues, cycles and roadmaps (Jira/Linear alternative).", repo: "makeplane/plane", licence: oss("AGPL-3.0"), check: { paths: ["~/.local/opt/plane"] } },
       { name: "AppFlowy", what: "Docs, wikis and task boards (Notion alternative), desktop app.", repo: "AppFlowy-IO/AppFlowy", licence: oss("AGPL-3.0"), check: { apps: ["AppFlowy"] } },
-      { name: "Docmost", what: "Team wiki and documentation (Confluence alternative).", repo: "docmost/docmost", licence: oss("AGPL-3.0"), check: {} },
-      { name: "Vikunja", what: "Lightweight to-do lists and kanban.", repo: "go-vikunja/vikunja", licence: oss("AGPL-3.0"), check: {} },
+      { name: "Docmost", what: "Team wiki and documentation (Confluence alternative).", repo: "docmost/docmost", licence: oss("AGPL-3.0"), check: { paths: ["~/.local/opt/docmost"] } },
+      { name: "Vikunja", what: "Lightweight to-do lists and kanban.", repo: "go-vikunja/vikunja", licence: oss("AGPL-3.0"), check: { bins: ["vikunja"], paths: ["~/.local/opt/vikunja"] } },
       { name: "Composio", what: "Connects Claude to 500+ apps (Gmail, Sheets, Notion, socials…) for cross-app automations.", repo: "ComposioHQ/composio", licence: free("Hobby plan"), check: { web: true, composio: "instagram" }, freeNote: "Free Hobby plan: 100,000 tool calls a month." },
       { name: "n8n", what: "Workflow automation with hundreds of integrations, self-hosted.", repo: "n8n-io/n8n", licence: free("Sustainable Use"), check: { npx: true }, freeNote: "Free to self-host for your own business; can't be resold as a service." },
-      { name: "Activepieces", what: "No-code automations between apps (Zapier alternative).", repo: "activepieces/activepieces", licence: core("MIT"), check: {} },
+      { name: "Activepieces", what: "No-code automations between apps (Zapier alternative).", repo: "activepieces/activepieces", licence: core("MIT"), check: { paths: ["~/.local/opt/activepieces"] } },
     ],
     skills: [
       { id: "hq:setup", what: "Walk through setting up HQ, a business, or any department, step by step" },
@@ -148,7 +148,7 @@ export const DEPARTMENTS: Department[] = [
         warn: "Built from source in ~/recordly and installed to ~/Applications. To rebuild after a change or a git pull: npm ci, then tsc, vite build and electron-builder --mac dir --arm64 --publish never (ad-hoc signed, so macOS may ask for Screen Recording again after each rebuild); copy release/mac-arm64/Recordly.app over the installed one. Launching from Claude's shell needs env -u ELECTRON_RUN_AS_NODE. Needs Screen Recording (and Microphone/Camera if used) in System Settings. AGPL: changes we ship must stay open and credit Recordly; videos we make carry no obligation.",
       },
       { name: "Kdenlive", what: "Full timeline video editor.", repo: "KDE/kdenlive", licence: oss("GPL-3.0"), check: { apps: ["kdenlive", "Kdenlive"] } },
-      { name: "OpenCut", what: "CapCut-style editor, being rewritten with an MCP server and headless mode for agents (not shipped yet).", repo: "OpenCut-app/OpenCut", licence: oss("MIT"), check: {}, warn: "Watch the rewrite (issue #811): when headless/MCP ships it can become another HQ Studio renderer." },
+      { name: "OpenCut", what: "CapCut-style editor, being rewritten with an MCP server and headless mode for agents (not shipped yet).", repo: "OpenCut-app/OpenCut", licence: oss("MIT"), check: { paths: ["~/.local/opt/opencut"] }, warn: "Watch the rewrite (issue #811): when headless/MCP ships it can become another HQ Studio renderer." },
     ],
     skills: [
       { id: "hyperframes:hyperframes", what: "Make any video: routes to the right workflow" },
@@ -189,7 +189,7 @@ export const DEPARTMENTS: Department[] = [
       { name: "Unlighthouse", what: "Lighthouse across a whole site in one run.", repo: "harlan-zw/unlighthouse", licence: oss("MIT"), check: { npx: true } },
       { name: "Google Search Console", what: "Real queries, clicks, positions and indexing from Google; connected through Composio.", repo: "https://search.google.com/search-console", licence: free("Proprietary"), check: { web: true, composio: "google_search_console" } },
       { name: "Bing Webmaster Tools", what: "Bing indexing and IndexNow; ChatGPT search leans on Bing, so it matters for GEO.", repo: "https://www.bing.com/webmasters", licence: free("Proprietary"), check: { web: true } },
-      { name: "SerpBear", what: "Self-hosted keyword rank tracker.", repo: "towfiqi/serpbear", licence: oss("MIT"), check: {} },
+      { name: "SerpBear", what: "Self-hosted keyword rank tracker.", repo: "towfiqi/serpbear", licence: oss("MIT"), check: { paths: ["~/.local/opt/serpbear"] } },
     ],
     skills: [
       { id: "seo-analysis", what: "Full audit from Search Console data" },
@@ -217,7 +217,7 @@ export const DEPARTMENTS: Department[] = [
     tools: [
       { name: "Meta Ad Library", what: "Every ad any page is running, for competitor research.", repo: "https://www.facebook.com/ads/library", licence: free("Proprietary"), check: { web: true } },
       { name: "Google Ads Transparency Center", what: "Competitors' Google ads.", repo: "https://adstransparency.google.com", licence: free("Proprietary"), check: { web: true } },
-      { name: "GrowthBook", what: "Feature flags and A/B experiments.", repo: "growthbook/growthbook", licence: core("MIT"), check: {} },
+      { name: "GrowthBook", what: "Feature flags and A/B experiments.", repo: "growthbook/growthbook", licence: core("MIT"), check: { paths: ["~/.local/opt/growthbook"] } },
       { name: "claude-ads", what: "Audit-and-plan skill pack for 12 ad platforms (researched, not installed).", repo: "AgriciDaniel/claude-ads", licence: oss("MIT"), check: { paths: ["~/.claude/skills/ads"] }, warn: "Installs 25 agents globally and pins some to Sonnet. Doesn't handle regulated-industry ad approval." },
     ],
     skills: [
@@ -242,7 +242,7 @@ export const DEPARTMENTS: Department[] = [
       { name: "Meta Ad Library", what: "Every ad a competitor's Facebook/Instagram page is running.", repo: "https://www.facebook.com/ads/library", licence: free("Proprietary"), check: { web: true } },
       { name: "Google Ads Transparency Center", what: "Competitors' Google and YouTube ads.", repo: "https://adstransparency.google.com", licence: free("Proprietary"), check: { web: true } },
       { name: "Wayback Machine", what: "What a competitor's pages looked like before (history before we started watching).", repo: "https://web.archive.org", licence: free("Free service"), check: { web: true } },
-      { name: "SerpBear", what: "Track your rankings against competitors' for the same keywords.", repo: "towfiqi/serpbear", licence: oss("MIT"), check: {} },
+      { name: "SerpBear", what: "Track your rankings against competitors' for the same keywords.", repo: "towfiqi/serpbear", licence: oss("MIT"), check: { paths: ["~/.local/opt/serpbear"] } },
     ],
     skills: [
       { id: "hq:competitors", what: "Weekly sweep: changes, content, ads → brief + actions" },
@@ -262,7 +262,7 @@ export const DEPARTMENTS: Department[] = [
     covers: ["Newsletters", "Onboarding and nurture sequences", "Win-back and re-activation", "List hygiene"],
     tools: [
       { name: "Listmonk", what: "Newsletters and mailing lists, one binary (Mailchimp alternative).", repo: "knadh/listmonk", licence: oss("AGPL-3.0"), check: { port: 9000, paths: ["~/.local/opt/listmonk/listmonk"] }, url: "http://localhost:9000", warn: "Sending needs an SMTP account (a free tier such as Resend's), and public sign-up forms need Listmonk hosted online." },
-      { name: "Mautic", what: "Marketing automation: journeys, segments, scoring.", repo: "mautic/mautic", licence: oss("GPL-3.0"), check: {} },
+      { name: "Mautic", what: "Marketing automation: journeys, segments, scoring.", repo: "mautic/mautic", licence: oss("GPL-3.0"), check: { paths: ["~/.local/opt/mautic"] } },
     ],
     skills: [
       { id: "marketing:email-sequence", what: "Write an email sequence" },
@@ -281,7 +281,7 @@ export const DEPARTMENTS: Department[] = [
     tools: [
       { name: "Figma (Starter)", what: "Design and prototyping, free plan.", repo: "https://www.figma.com", licence: free("Proprietary"), check: { apps: ["Figma"], web: true }, freeNote: "Starter plan limits projects and pages." },
       { name: "Canva (Free)", what: "Quick social graphics from templates.", repo: "https://www.canva.com", licence: free("Proprietary"), check: { web: true }, freeNote: "Brand kit and many templates need Pro." },
-      { name: "Penpot", what: "Design and prototyping (Figma alternative).", repo: "penpot/penpot", licence: oss("MPL-2.0"), check: {} },
+      { name: "Penpot", what: "Design and prototyping (Figma alternative).", repo: "penpot/penpot", licence: oss("MPL-2.0"), check: { paths: ["~/.local/opt/penpot"] } },
       { name: "Inkscape", what: "Vector graphics and logos (Illustrator alternative).", repo: "inkscape/inkscape", licence: oss("GPL-3.0"), check: { apps: ["Inkscape"] } },
       { name: "GIMP", what: "Photo editing (Photoshop alternative).", repo: "GNOME/gimp", licence: oss("GPL-3.0"), check: { apps: ["GIMP", "GIMP-2.10", "GIMP 3"] } },
     ],
@@ -312,7 +312,7 @@ export const DEPARTMENTS: Department[] = [
         url: "http://127.0.0.1:3020",
         warn: "Telemetry is on upstream; HQ's launcher turns it off. Built from source without Docker (setup/twenty).",
       },
-      { name: "EspoCRM", what: "Lighter self-hosted CRM.", repo: "espocrm/espocrm", licence: oss("AGPL-3.0"), check: {} },
+      { name: "EspoCRM", what: "Lighter self-hosted CRM.", repo: "espocrm/espocrm", licence: oss("AGPL-3.0"), check: { paths: ["~/.local/opt/espocrm"] } },
     ],
     skills: [
       { id: "small-business:lead-finder", what: "Find leads" },
@@ -354,10 +354,10 @@ export const DEPARTMENTS: Department[] = [
         freeNote: "Free and unlimited: it uses your own Meta app on Standard Access (no App Review for your own account). The same app token posts Instagram trial reels, which Composio can't.",
         warn: "Only answers while the Mac is awake and online. Use one DM-automation tool per Instagram account: never run it alongside ManyChat on the same account.",
       },
-      { name: "Chatwoot", what: "Shared inbox and live chat (Intercom alternative).", repo: "chatwoot/chatwoot", licence: core("MIT"), check: {} },
-      { name: "Zammad", what: "Ticketing help desk (Zendesk alternative).", repo: "zammad/zammad", licence: oss("AGPL-3.0"), check: {} },
+      { name: "Chatwoot", what: "Shared inbox and live chat (Intercom alternative).", repo: "chatwoot/chatwoot", licence: core("MIT"), check: { paths: ["~/.local/opt/chatwoot"] } },
+      { name: "Zammad", what: "Ticketing help desk (Zendesk alternative).", repo: "zammad/zammad", licence: oss("AGPL-3.0"), check: { paths: ["~/.local/opt/zammad"] } },
       { name: "Discord", what: "Community server, announcements and bots.", repo: "https://discord.com", licence: free("Proprietary"), check: { apps: ["Discord"], web: true } },
-      { name: "Discourse", what: "Community forum.", repo: "discourse/discourse", licence: oss("GPL-2.0"), check: {} },
+      { name: "Discourse", what: "Community forum.", repo: "discourse/discourse", licence: oss("GPL-2.0"), check: { paths: ["~/.local/opt/discourse"] } },
     ],
     skills: [
       { id: "ig-reply", what: "Draft replies to comments worth answering" },
@@ -402,10 +402,10 @@ export const DEPARTMENTS: Department[] = [
         warn: "Install when there's something to sandbox: a macOS VM image is ~30 GB. Apple's licence allows two macOS VMs per Mac.",
       },
       { name: "Uptime Kuma", what: "Uptime monitoring and alerts for every site the business runs.", repo: "louislam/uptime-kuma", licence: oss("MIT"), check: { port: 3001, paths: ["~/.local/opt/uptime-kuma/server/server.js"] }, url: "http://localhost:3001" },
-      { name: "Sentry (self-hosted)", what: "Error tracking with stack traces.", repo: "getsentry/sentry", licence: free("FSL-1.1"), check: {}, freeNote: "Free to self-host; heavy (needs Docker, ~16 GB RAM)." },
-      { name: "Grafana", what: "Dashboards over metrics and logs.", repo: "grafana/grafana", licence: oss("AGPL-3.0"), check: {} },
-      { name: "Prometheus", what: "Metrics collection.", repo: "prometheus/prometheus", licence: oss("Apache-2.0"), check: {} },
-      { name: "camofox-browser", what: "Anti-detect browser server for agents (researched, not installed).", repo: "jo-inc/camofox-browser", licence: oss("MIT"), check: {}, warn: "Crash reports go to public GitHub issues by default; binds to all interfaces without a key." },
+      { name: "Sentry (self-hosted)", what: "Error tracking with stack traces.", repo: "getsentry/sentry", licence: free("FSL-1.1"), check: { paths: ["~/.local/opt/sentry"] }, freeNote: "Free to self-host; heavy (needs Docker, ~16 GB RAM)." },
+      { name: "Grafana", what: "Dashboards over metrics and logs.", repo: "grafana/grafana", licence: oss("AGPL-3.0"), check: { bins: ["grafana"], paths: ["~/.local/opt/grafana"] } },
+      { name: "Prometheus", what: "Metrics collection.", repo: "prometheus/prometheus", licence: oss("Apache-2.0"), check: { bins: ["prometheus"], paths: ["~/.local/opt/prometheus"] } },
+      { name: "camofox-browser", what: "Anti-detect browser server for agents (researched, not installed).", repo: "jo-inc/camofox-browser", licence: oss("MIT"), check: { paths: ["~/.local/opt/camofox-browser"] }, warn: "Crash reports go to public GitHub issues by default; binds to all interfaces without a key." },
     ],
     skills: [
       { id: "hq:services", what: "Start, stop and fix HQ's services" },
@@ -432,11 +432,11 @@ export const DEPARTMENTS: Department[] = [
     covers: ["Web and product analytics", "Dashboards", "Ad-hoc analysis and SQL", "Tracking plans"],
     tools: [
       { name: "Looker Studio", what: "Free dashboards over Google Sheets, GA4 and Search Console.", repo: "https://lookerstudio.google.com", licence: free("Proprietary"), check: { web: true } },
-      { name: "Umami", what: "Privacy-friendly web analytics (Google Analytics alternative).", repo: "umami-software/umami", licence: oss("MIT"), check: {} },
-      { name: "Plausible CE", what: "Simple web analytics, self-hosted.", repo: "plausible/analytics", licence: oss("AGPL-3.0"), check: {} },
-      { name: "PostHog", what: "Product analytics, session replay, funnels.", repo: "PostHog/posthog", licence: core("MIT"), check: {} },
-      { name: "Metabase", what: "Dashboards and questions over your database.", repo: "metabase/metabase", licence: core("AGPL-3.0"), check: {} },
-      { name: "Apache Superset", what: "Heavier BI and charting.", repo: "apache/superset", licence: oss("Apache-2.0"), check: {} },
+      { name: "Umami", what: "Privacy-friendly web analytics (Google Analytics alternative).", repo: "umami-software/umami", licence: oss("MIT"), check: { paths: ["~/.local/opt/umami"] } },
+      { name: "Plausible CE", what: "Simple web analytics, self-hosted.", repo: "plausible/analytics", licence: oss("AGPL-3.0"), check: { paths: ["~/.local/opt/plausible"] } },
+      { name: "PostHog", what: "Product analytics, session replay, funnels.", repo: "PostHog/posthog", licence: core("MIT"), check: { paths: ["~/.local/opt/posthog"] } },
+      { name: "Metabase", what: "Dashboards and questions over your database.", repo: "metabase/metabase", licence: core("AGPL-3.0"), check: { paths: ["~/.local/opt/metabase"] } },
+      { name: "Apache Superset", what: "Heavier BI and charting.", repo: "apache/superset", licence: oss("Apache-2.0"), check: { paths: ["~/.local/opt/superset"] } },
       { name: "DuckDB", what: "Fast local SQL over CSV and Parquet files.", repo: "duckdb/duckdb", licence: oss("MIT"), check: { bins: ["duckdb"] } },
     ],
     skills: [
@@ -460,10 +460,10 @@ export const DEPARTMENTS: Department[] = [
     mission: "Keeps the books, chases invoices, watches cash, and gets BAS/GST and tax done.",
     covers: ["Bookkeeping and reconciliation", "Invoices and bills", "Cash flow", "Month-end, BAS/GST, tax"],
     tools: [
-      { name: "ERPNext", what: "Full accounting, invoicing and inventory (Xero alternative).", repo: "frappe/erpnext", licence: oss("GPL-3.0"), check: {} },
+      { name: "ERPNext", what: "Full accounting, invoicing and inventory (Xero alternative).", repo: "frappe/erpnext", licence: oss("GPL-3.0"), check: { paths: ["~/.local/opt/erpnext"] } },
       { name: "GnuCash", what: "Double-entry desktop accounting.", repo: "Gnucash/gnucash", licence: oss("GPL-2.0-or-later"), check: { apps: ["Gnucash", "GnuCash"] } },
       { name: "Beancount + Fava", what: "Plain-text accounting with a web UI; Claude can read and write it. One ledger per business.", repo: "beancount/fava", licence: oss("MIT"), check: { port: 5055, bins: ["fava", "bean-check"] }, url: "http://localhost:5055" },
-      { name: "Firefly III", what: "Money tracking and budgets.", repo: "firefly-iii/firefly-iii", licence: oss("AGPL-3.0"), check: {} },
+      { name: "Firefly III", what: "Money tracking and budgets.", repo: "firefly-iii/firefly-iii", licence: oss("AGPL-3.0"), check: { paths: ["~/.local/opt/firefly-iii"] } },
     ],
     skills: [
       { id: "small-business:cash-flow-snapshot", what: "Where the cash stands" },
@@ -485,8 +485,8 @@ export const DEPARTMENTS: Department[] = [
     mission: "Reviews contracts, tracks the rules that apply, and gets things signed.",
     covers: ["Contracts and NDAs", "Privacy and terms", "Industry rules from the business profile (gambling, kids, finance, health …)", "Getting things signed"],
     tools: [
-      { name: "DocuSeal", what: "E-signatures (DocuSign alternative).", repo: "docusealco/docuseal", licence: oss("AGPL-3.0"), check: {} },
-      { name: "Documenso", what: "E-signatures, alternative option.", repo: "documenso/documenso", licence: oss("AGPL-3.0"), check: {} },
+      { name: "DocuSeal", what: "E-signatures (DocuSign alternative).", repo: "docusealco/docuseal", licence: oss("AGPL-3.0"), check: { paths: ["~/.local/opt/docuseal"] } },
+      { name: "Documenso", what: "E-signatures, alternative option.", repo: "documenso/documenso", licence: oss("AGPL-3.0"), check: { paths: ["~/.local/opt/documenso"] } },
     ],
     skills: [
       { id: "legal:review-contract", what: "Review a contract" },
@@ -508,7 +508,7 @@ export const DEPARTMENTS: Department[] = [
     mission: "Hires, onboards and pays people and contractors properly.",
     covers: ["Job posts and screening", "Onboarding", "Payroll, super, STP", "Capacity planning"],
     tools: [
-      { name: "Frappe HR", what: "HR and payroll (runs with ERPNext).", repo: "frappe/hrms", licence: oss("GPL-3.0"), check: {} },
+      { name: "Frappe HR", what: "HR and payroll (runs with ERPNext).", repo: "frappe/hrms", licence: oss("GPL-3.0"), check: { paths: ["~/.local/opt/frappe-hr"] } },
     ],
     skills: [
       { id: "small-business:job-post-builder", what: "Write a job post" },
@@ -528,7 +528,7 @@ export const DEPARTMENTS: Department[] = [
     tools: [
       { name: "restic", what: "Encrypted, deduplicated backups to disk or cloud.", repo: "restic/restic", licence: oss("BSD-2-Clause"), check: { bins: ["restic"] } },
       { name: "Kopia", what: "Backups with a desktop UI and scheduling.", repo: "kopia/kopia", licence: oss("Apache-2.0"), check: { bins: ["kopia"], apps: ["KopiaUI"] } },
-      { name: "Vaultwarden", what: "Self-hosted password manager (Bitwarden-compatible).", repo: "dani-garcia/vaultwarden", licence: oss("AGPL-3.0"), check: {} },
+      { name: "Vaultwarden", what: "Self-hosted password manager (Bitwarden-compatible).", repo: "dani-garcia/vaultwarden", licence: oss("AGPL-3.0"), check: { paths: ["~/.local/opt/vaultwarden"] } },
       { name: "Syncthing", what: "Sync folders between Macs, device to device, no cloud in between.", repo: "syncthing/syncthing", licence: oss("MPL-2.0"), check: { port: 8384, bins: ["syncthing"], apps: ["Syncthing"] }, url: "http://localhost:8384", warn: "Pair devices in its web UI; only folders you share are synced." },
       {
         name: "Strix", what: "AI pentesting agents that attack your own app or site and prove each hole with a working exploit.", repo: "usestrix/strix", licence: oss("Apache-2.0"), check: { bins: ["strix"], paths: ["~/.local/opt/strix"] },
@@ -592,7 +592,6 @@ const GROUPS: Record<string, string> = {
   // legal
   DocuSeal: "e-signature", Documenso: "e-signature",
   // security
-  restic: "backups", Kopia: "backups",
 };
 
 const OPTIONAL = new Set([
@@ -603,6 +602,7 @@ const OPTIONAL = new Set([
   "Sentry (self-hosted)", "Grafana", "Prometheus", // when there's a fleet to watch
   "Firefly III", // personal budgeting, not company books
   "Vaultwarden", // passwords live in the Passwords app
+  "Kopia", // a UI over backups; only restic is wired into hq backup, the nightly service and the CEO's checks
   "Strix", // pentesting needs Docker + an LLM key; not part of the core backups job
 ]);
 

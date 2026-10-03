@@ -39,8 +39,10 @@ release or source, never `curl | sh`, no Homebrew, no Docker on the Mac. Mac app
   uses it in the browser). Penpot: use the free hosted version at penpot.app with the owner's own account, or
   self-host through `/hq:add-tool Penpot for design` (no Docker on the Mac, so only if it can be built from source;
   bind it to 127.0.0.1 and run it as an HQ service with `npm run hq -- services install`).
-- **How HQ checks it:** Figma: the Figma app (**installed**), otherwise **web**. Penpot has no live check yet,
-  so it always shows **missing**; that doesn't count against readiness when Figma is present.
+- **How HQ checks it:** Figma: the Figma app (**installed**), otherwise **web**. Penpot: **installed** once it's
+  self-hosted in `~/.local/opt/penpot` (where `/hq:add-tool` puts it, adding its port so the tab can show it
+  **running**). The hosted penpot.app version isn't on the Mac, so it shows **missing**; that doesn't count
+  against readiness when Figma is present.
 
 ### Canva (Free)
 

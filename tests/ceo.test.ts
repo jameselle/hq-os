@@ -225,3 +225,21 @@ test("billing and our records disagreeing needs attention, with the count", () =
   assert.match(x.title, /2 paying members/);
   assert.equal(buildFindings(depts(), facts({ scorecard: card({ mismatch: 0 }) }), profile()).some((y) => y.id === "scorecard-records-mismatch"), false);
 });
+
+test("a finding marked done comes back when newer evidence arrives", () => {
+  const changedAt = (iso: string) => facts({ intel: { watcherUp: true, rows: [row({ lastChanged: iso })], lastBriefAt: iso } });
+  const now = new Date("2026-10-03T00:00:00Z");
+  const doneAt = { "competitors-changed": "2026-10-01T12:00:00.000Z" };
+  assert.ok(!ids(buildFindings(depts(), changedAt("2026-10-01T06:00:00Z"), withRival(), doneAt, now)).includes("competitors-changed"), "changes before 'done' stay hidden");
+  assert.ok(ids(buildFindings(depts(), changedAt("2026-10-02T06:00:00Z"), withRival(), doneAt, now)).includes("competitors-changed"), "a change after 'done' brings it back");
+});
+
+test("the weakest lever becomes one finding for the workflow's owner", () => {
+  const weakest = { lever: "keep", metric: "activation_rate", label: "Activation in week 1", value: 0.306, baseline: 0.46, unit: "rate", workflow: "Onboarding to first value", owner: "engineering", why: "down from 46.0% (4-week average)" };
+  const f = buildFindings(depts(), facts({ scorecard: card({ weakest }) }), profile()).find((y) => y.id === "weakest-lever")!;
+  assert.equal(f.dept, "engineering");
+  assert.equal(f.severity, "decision");
+  assert.match(f.title, /Keep customers/);
+  assert.match(f.title, /30\.6%/);
+  assert.match(f.action, /Onboarding to first value/);
+});

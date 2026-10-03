@@ -40,8 +40,8 @@ there's a payroll to run.
   no Homebrew), bind it to 127.0.0.1, and run it as a `com.hq.*` service with
   `npm run hq -- services add-defaults && npm run hq -- services install`. If there's no way to run it without
   Docker on this Mac, stop and tell the owner rather than working around the rule.
-- **How HQ checks it:** no live check is defined yet, so the tab shows it as missing even when installed.
-  `/hq:add-tool` adds a `port` check to `lib/registry.ts` when it installs it.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/frappe-hr` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ## 2. Accounts and connections
 
@@ -63,9 +63,9 @@ There are no `/hq:` skills here. Run `/hq:dept people` for the department's plan
 
 - The department tab shows all five skills as ready. If any are missing, the CEO tab's **N expected skills
   aren't installed** finding names them; reinstall the plugin they belong to.
-- Until Frappe HR has a live check, the tab grades People as skills-only and the CEO's **N departments run on
-  skills alone** finding lists it. That's expected for a business without a payroll; leave it, or mark it done
-  on the CEO tab.
+- Until Frappe HR is installed in `~/.local/opt/frappe-hr`, the tab grades People as skills only and the CEO's
+  **N departments run on skills alone** finding lists it. Once it's there, People drops off that finding. Without
+  a payroll that's expected; leave it, or mark it done on the CEO tab.
 - This shows the department's state:
 
   ```bash

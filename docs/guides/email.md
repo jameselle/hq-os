@@ -57,8 +57,8 @@ The department needs **one** email tool: Listmonk or Mautic. Start with Listmonk
 - **Licence or plan:** open source, GPL-3.0.
 - **Set it up:** through `/hq:add-tool Mautic for email`, from source (no Docker on the Mac), bound to 127.0.0.1 and
   run as a `com.hq.*` service. It's a heavier web app with its own database, so check the owner wants it first.
-- **How HQ checks it:** HQ has no live check for Mautic yet, so the tab shows it as missing even if it is installed.
-  `/hq:add-tool` adds a check (its port) to `lib/registry.ts` when it installs it.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/mautic` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ## 2. Accounts and connections
 

@@ -85,8 +85,9 @@ their behalf.
   launchd service (`npm run hq -- services install`, then `npm run hq -- services status`). It fetches rankings
   through a search-results scraping provider: pick one with a free plan that covers your keyword count, and the
   owner enters that provider's key in SerpBear's own settings, never in chat. If none fits for free, skip it.
-- **How HQ checks it:** no live check yet, so the tab always shows it as **missing**. Being optional, that
-  never counts against readiness.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/serpbear` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**. Until then it shows **missing**, which,
+  being optional, never counts against readiness.
 
 ## 2. Accounts and connections
 

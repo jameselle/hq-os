@@ -47,9 +47,9 @@ The department needs one **web-analytics** tool (Umami, Plausible CE or PostHog)
   `com.hq.*` service. **Decide with the owner where it runs first:** an analytics server only counts visitors whose
   browsers can reach it, and HQ's services bind to 127.0.0.1. Then add Umami's tracking script to each site in the
   profile; changing a live site is the owner's call.
-- **How HQ checks it:** no live check yet, so the tab shows Umami as missing even once installed. `/hq:add-tool` adds
-  one to `lib/registry.ts` (a port, a path, or `web` if it is hosted elsewhere), and that is what clears the CEO's
-  "No analytics tool is running" finding. Pick a free port: 3001 is already Uptime Kuma's.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/umami` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**. Either state clears the CEO's "No
+  analytics tool is running" finding. Pick a free port: 3001 is already Uptime Kuma's.
 
 ### Plausible CE
 
@@ -57,7 +57,8 @@ The department needs one **web-analytics** tool (Umami, Plausible CE or PostHog)
 - **Needed or optional:** an alternative to Umami in the web-analytics group; one is enough.
 - **Licence or plan:** open source, AGPL-3.0 (the self-hosted Community Edition; Plausible's cloud is paid).
 - **Set it up:** through `/hq:add-tool`, same rules and the same "where does it run" question as Umami.
-- **How HQ checks it:** no live check yet; `/hq:add-tool` adds one.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/plausible` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ### PostHog
 
@@ -66,7 +67,8 @@ The department needs one **web-analytics** tool (Umami, Plausible CE or PostHog)
   in-product events, not just page views.
 - **Licence or plan:** open core, MIT.
 - **Set it up:** through `/hq:add-tool`. It is heavy to self-host; check the owner wants it first.
-- **How HQ checks it:** no live check yet; `/hq:add-tool` adds one.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/posthog` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ### Metabase
 
@@ -76,7 +78,8 @@ The department needs one **web-analytics** tool (Umami, Plausible CE or PostHog)
 - **Licence or plan:** open core, AGPL-3.0.
 - **Set it up:** through `/hq:add-tool`, bound to 127.0.0.1, as a `com.hq.*` service. Give it a **read-only**
   database user; the owner creates it and enters the password in Metabase themselves.
-- **How HQ checks it:** no live check yet; `/hq:add-tool` adds one.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/metabase` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ### Apache Superset
 
@@ -84,7 +87,8 @@ The department needs one **web-analytics** tool (Umami, Plausible CE or PostHog)
 - **Needed or optional:** an alternative in the dashboards group; only when Metabase isn't enough.
 - **Licence or plan:** open source, Apache-2.0.
 - **Set it up:** through `/hq:add-tool`, same rules as Metabase.
-- **How HQ checks it:** no live check yet; `/hq:add-tool` adds one.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/superset` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ### DuckDB
 
@@ -179,7 +183,7 @@ Search Console comes through the SEO department (`/hq:connections connect google
 | The scorecard's currency no longer matches the profile (`scorecard-stale`) | The profile's currency changed | Make the adapter report the profile's currency, then refresh |
 | N paying members disagree between billing and our records (`scorecard-records-mismatch`) | Billing vs our records is above 0 | Fix each member's record, then the webhook cause; clears on the next refresh |
 | N Get customers / Keep customers / Expand revenue / Foundation numbers can't be measured yet (`scorecard-missing-get`, `-keep`, `-expand`, `-base`) | Those numbers are missing | Each note names its fix: history building up, an event the product doesn't record yet, or ad spend posted to the ledger (cost to win) |
-| No analytics tool is running (`no-analytics`) | No web-analytics tool is live | Install Umami (or Plausible CE or PostHog) with `/hq:add-tool`, including its live check |
+| No analytics tool is running (`no-analytics`) | No web-analytics tool is live | Install Umami (or Plausible CE or PostHog) with `/hq:add-tool`, which puts it in `~/.local/opt/` where HQ checks |
 
 ## Done when
 

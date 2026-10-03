@@ -21,6 +21,7 @@ import type { Profile } from "./profile";
 import { channelStatuses, type ConnectionsSnapshot } from "./publishing";
 import { scorecardState } from "./scorecard";
 import { scorecardRows } from "./scorecard-metrics";
+import { weakestLever } from "./levers";
 import { doneFindings, latestPlan, listBusinesses, readConfig, readConnections, resolveCurrent } from "./store";
 import type { DeptStatus, HostFacts, StatusReport, ToolCheck, ToolState } from "./types";
 
@@ -220,7 +221,8 @@ function scorecardFacts(slug: string): HostFacts["scorecard"] {
     const s = scorecardState(slug);
     const missing = s.snapshot ? scorecardRows(s.snapshot).filter((m) => m.quality === "missing").map((m) => ({ lever: m.lever, label: m.label, note: m.note })) : [];
     return { connected: s.connected, demo: s.demo, stale: s.stale, failed: s.failed, hasSnapshot: Boolean(s.snapshot), currencyChanged: s.currencyChanged,
-      mismatch: s.snapshot?.weeks[0].metrics.find((m) => m.id === "records_mismatch")?.value ?? null, missing };
+      mismatch: s.snapshot?.weeks[0].metrics.find((m) => m.id === "records_mismatch")?.value ?? null,
+      weakest: s.snapshot ? weakestLever(s.snapshot.weeks, s.snapshot.currency) : null, missing };
   } catch {
     return null;
   }

@@ -83,3 +83,15 @@ test("every Redis HQ starts binds to 127.0.0.1", () => {
   assert.ok(redis.length >= 2);
   for (const line of redis) assert.match(line, /"--bind", "127\.0\.0\.1"/, line.trim());
 });
+
+test("every tool has a check that can pass once it's installed", () => {
+  const empty = DEPARTMENTS.flatMap((d) => d.tools.filter((t) => !t.check || Object.keys(t.check).length === 0).map((t) => `${d.slug}:${t.name}`));
+  assert.deepEqual(empty, []);
+});
+
+test("the backups need can only be met by restic, the tool HQ's backup actually runs", () => {
+  const security = DEPARTMENTS.find((d) => d.slug === "security")!;
+  assert.equal(security.tools.find((t) => t.name === "restic")?.group, undefined, "restic is a need on its own, not one of a group");
+  assert.equal(security.tools.some((t) => t.group === "backups"), false);
+  assert.equal(security.tools.find((t) => t.name === "Kopia")?.optional, true);
+});

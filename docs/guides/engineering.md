@@ -119,7 +119,8 @@ and camofox-browser are optional and never count against readiness. Every server
   16 GB of RAM, and HQ runs no Docker on the Mac, so leave it unless it runs on another machine.
 - **Licence or plan:** FSL-1.1, free to self-host.
 - **Set it up:** not on this Mac.
-- **How HQ checks it:** no live check is defined (shows missing; optional, so it doesn't count).
+- **How HQ checks it:** the folder `~/.local/opt/sentry` (**installed**). It isn't set up on this Mac, so it shows
+  **missing**; it's optional, so that doesn't count.
 
 ### Grafana
 
@@ -127,7 +128,9 @@ and camofox-browser are optional and never count against readiness. Every server
 - **Needed or optional:** optional, with Prometheus, for when there's a fleet to watch.
 - **Licence or plan:** open source, AGPL-3.0.
 - **Set it up:** if wanted, `/hq:add-tool` for Grafana, bound to 127.0.0.1 as a `com.hq.*` service.
-- **How HQ checks it:** no live check is defined (shows missing; optional).
+- **How HQ checks it:** shows **installed** once the `grafana` command is on PATH or it's in `~/.local/opt/grafana`
+  (where `/hq:add-tool` puts it); `/hq:add-tool` also adds its port so the tab can show it **running**. Until then
+  it shows **missing**; it's optional, so that doesn't count.
 
 ### Prometheus
 
@@ -135,7 +138,9 @@ and camofox-browser are optional and never count against readiness. Every server
 - **Needed or optional:** optional, with Grafana.
 - **Licence or plan:** open source, Apache-2.0.
 - **Set it up:** if wanted, `/hq:add-tool` for Prometheus (a single release binary), bound to 127.0.0.1.
-- **How HQ checks it:** no live check is defined (shows missing; optional).
+- **How HQ checks it:** shows **installed** once the `prometheus` command is on PATH or it's in
+  `~/.local/opt/prometheus` (where `/hq:add-tool` puts it); `/hq:add-tool` also adds its port so the tab can show
+  it **running**. Until then it shows **missing**; it's optional, so that doesn't count.
 
 ### camofox-browser
 
@@ -144,7 +149,8 @@ and camofox-browser are optional and never count against readiness. Every server
 - **Licence or plan:** open source, MIT.
 - **Set it up:** don't, without the owner's yes. Its crash reports go to public GitHub issues by default, and
   it binds to all interfaces without a key, which breaks HQ's 127.0.0.1 rule.
-- **How HQ checks it:** no live check is defined (shows missing; optional).
+- **How HQ checks it:** the folder `~/.local/opt/camofox-browser` (**installed**). Until it's there it shows
+  **missing**; it's optional, so that doesn't count.
 
 ## 2. Accounts and connections
 

@@ -22,14 +22,14 @@ Drive, so it uses iCloud storage you already have; Strix, if ever used, drives a
 
 ## 1. Tools
 
-The department tab is http://127.0.0.1:3150/security. It needs **one backup tool** (restic or Kopia) and
-**Syncthing**. Vaultwarden and Strix are optional and never count against readiness.
+The department tab is http://127.0.0.1:3150/security. It needs **restic** (the backup HQ runs and checks)
+and **Syncthing**. Kopia, Vaultwarden and Strix are optional and never count against readiness.
 
 ### restic
 
 - **What it's for:** encrypted, deduplicated backups to disk or cloud. HQ's own backup commands use it.
-- **Needed or optional:** needed. It shares the "backups" group with Kopia, but only restic is wired into
-  `npm run hq -- backup`, `/hq:backup`, `/hq:restore`, the nightly service and the CEO's backup findings. Choose restic.
+- **Needed or optional:** needed, on its own: it's the backup HQ runs and checks. Only restic is wired into
+  `npm run hq -- backup`, `/hq:backup`, `/hq:restore`, the nightly service and the CEO's backup findings.
 - **Licence or plan:** open source, BSD-2-Clause.
 - **Set it up:**
   1. Run `/hq:backup`. If restic is missing it downloads the official release from GitHub, checks it against
@@ -49,9 +49,9 @@ The department tab is http://127.0.0.1:3150/security. It needs **one backup tool
 ### Kopia
 
 - **What it's for:** backups with a desktop UI and scheduling.
-- **Needed or optional:** the alternative to restic in the backups group. Installing Kopia alone turns the
-  department's backup need green, but HQ's data still has no backup, and the CEO keeps saying so. Only add it
-  for backing up things outside HQ.
+- **Needed or optional:** optional, an extra desktop UI for backups, and it never counts against readiness. It
+  doesn't replace restic: HQ's backups, the nightly service and the CEO's backup checks all use restic, so
+  installing Kopia alone leaves the backup need unmet. Only add it for backing up things outside HQ.
 - **Licence or plan:** open source, Apache-2.0.
 - **Set it up:** `/hq:add-tool` for Kopia: the CLI from a checksum-verified GitHub release, or the notarised
   KopiaUI app dragged to /Applications by the owner.
@@ -79,7 +79,9 @@ The department tab is http://127.0.0.1:3150/security. It needs **one backup tool
   already on the Mac. Consider Vaultwarden only for sharing passwords across a team.
 - **Licence or plan:** open source, AGPL-3.0.
 - **Set it up:** if wanted, `/hq:add-tool` for Vaultwarden, bound to 127.0.0.1 as a `com.hq.*` service.
-- **How HQ checks it:** no live check is defined yet (shows missing; it's optional, so it doesn't count).
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/vaultwarden` (where `/hq:add-tool` puts
+  it); `/hq:add-tool` also adds its port so the tab can show it **running**. Until then it shows **missing**; it's
+  optional, so that doesn't count.
 
 ### Strix
 

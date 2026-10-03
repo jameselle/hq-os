@@ -87,6 +87,8 @@ export type Finding = {
   title: string;
   detail: string;
   action: string;
+  /** The newest evidence behind the finding (ISO). Marking it done hides it only until evidence newer than that arrives. */
+  since?: string;
 };
 
 export type BusinessSummary = { slug: string; name: string; demo: boolean };
@@ -128,5 +130,7 @@ export type HostFacts = {
   /** Latest /hq:connections snapshot (ids, aliases, statuses only), or null if never taken. */
   connections: import("./publishing").ConnectionsSnapshot | null;
   /** The current business's growth scorecard: whether it reports, and which numbers it can't measure yet. */
-  scorecard?: { connected: boolean; demo: boolean; stale: boolean; failed: boolean; hasSnapshot?: boolean; currencyChanged?: string | null; mismatch?: number | null; missing: { lever: string; label: string; note: string }[] } | null;
+  scorecard?: { connected: boolean; demo: boolean; stale: boolean; failed: boolean; hasSnapshot?: boolean; currencyChanged?: string | null; mismatch?: number | null;
+    /** The weakest growth lever this week and the workflow that moves it (lib/levers.ts), or null. */
+    weakest?: import("./levers").Weakest | null; missing: { lever: string; label: string; note: string }[] } | null;
 };

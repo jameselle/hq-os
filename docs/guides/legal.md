@@ -36,8 +36,8 @@ tool**, DocuSeal or Documenso, and only once there's something to get signed.
   source (no Docker, no Homebrew), bind it to 127.0.0.1, and run it as a `com.hq.*` service with
   `npm run hq -- services add-defaults && npm run hq -- services install`. The owner creates its admin login
   on first visit and keeps it in their password manager.
-- **How HQ checks it:** no live check is defined yet, so the tab shows it as missing even when installed.
-  `/hq:add-tool` adds a `port` check to `lib/registry.ts` when it installs it.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/docuseal` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ### Documenso
 
@@ -47,7 +47,8 @@ tool**, DocuSeal or Documenso, and only once there's something to get signed.
 - **Set it up:** `/hq:add-tool` for Documenso, the same way: from source, bound to 127.0.0.1, run as a
   `com.hq.*` service. If it needs a database, give it its own, the way Twenty CRM got its own Postgres
   (see [Product & Engineering](/guides/engineering)): HQ doesn't hold the shared Postgres's superuser password.
-- **How HQ checks it:** no live check is defined yet (shows missing until `/hq:add-tool` adds one).
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/documenso` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 A tool bound to 127.0.0.1 can't be reached by the other party, so a signing request can't simply be emailed
 as a link. Until the owner decides how signers reach it, the practical route is to prepare the document with
@@ -84,8 +85,9 @@ department's notes.
   ```
 
 - No CEO finding is filed under Legal & Compliance. Two Operations findings can name it:
-  - **N departments run on skills alone:** lists Legal & Compliance until an e-signature tool has a live
-    check. Expected until there's something to sign; leave it, or mark it done on the CEO tab.
+  - **N departments run on skills alone:** lists Legal & Compliance until DocuSeal or Documenso is
+    installed in `~/.local/opt/`, then Legal drops off it. Expected until there's something to sign; leave it, or
+    mark it done on the CEO tab.
   - **N expected skills aren't installed:** names any missing legal skill; reinstall the plugin it belongs to.
 
 ## Done when

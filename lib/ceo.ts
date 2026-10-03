@@ -8,6 +8,7 @@ import type { Profile } from "./profile";
 import { recentChanges, shortUrl, watchTargets } from "./competitors";
 import { channelStatuses } from "./publishing";
 import { LEVERS, type Lever } from "./workflows";
+import { formatValue } from "./scorecard-metrics";
 import type { DeptStatus, Finding, HostFacts, Severity } from "./types";
 
 export const SEVERITY_RANK: Record<Severity, number> = { critical: 0, attention: 1, decision: 2, info: 3 };
@@ -201,6 +202,7 @@ export function buildFindings(
           severity: "attention",
           dept: "competitors",
           title: `${changed.length} competitor page(s) changed this week`,
+          since: changed.map((c) => c.lastChanged!).sort().at(-1),
           detail: changed.map((c) => `${c.competitor}: ${shortUrl(c.url)}`).join(", "),
           action: "Run `/hq:competitors` to read the changes and brief what they mean for Content, SEO, Ads and Sales.",
         });
@@ -329,6 +331,18 @@ export function buildFindings(
         action: `Run \`npm run hq -- scorecard refresh ${profile.slug}\` and read its error; check that \`com.hq.scorecard\` is installed with \`npm run hq -- services status\`.`,
       });
     }
+    if (card.weakest) {
+      const w = card.weakest;
+      const owner = depts.find((d) => d.slug === w.owner)?.label ?? w.owner;
+      out.push({
+        id: "weakest-lever",
+        severity: "decision",
+        dept: w.owner,
+        title: `Weakest lever this week: ${LEVERS[w.lever as Lever]?.name ?? w.lever}, ${w.label.toLowerCase()} ${formatValue(w.unit as "rate", w.value, profile.currency)}`,
+        detail: `${w.label} is ${w.why}. The workflow that moves it is "${w.workflow}", owned by ${owner}.`,
+        action: `Tell Claude "run the ${w.workflow} workflow" (Workflows tab). Log what you try with \`npm run hq -- experiment add ${profile.slug} "<hypothesis>" --metric ${w.metric}\`, and check the number next week.`,
+      });
+    }
     if (card.mismatch && card.mismatch > 0) {
       out.push({
         id: "scorecard-records-mismatch",
@@ -366,6 +380,7 @@ export function buildFindings(
   }
 
   return out
-    .filter((x) => !done[x.id])
+    // Done hides a finding until evidence newer than the moment it was marked done arrives.
+    .filter((x) => !done[x.id] || (x.since !== undefined && Date.parse(x.since) > Date.parse(done[x.id])))
     .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
 }

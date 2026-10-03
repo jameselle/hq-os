@@ -59,8 +59,9 @@ never signs up on their behalf.
   launchd service (`npm run hq -- services add-defaults && npm run hq -- services install`, check with
   `npm run hq -- services status`). Turn its telemetry off in its settings if it offers it. Experiments then
   need the GrowthBook SDK added to the site, which is [Product & Engineering](/guides/engineering)'s job.
-- **How HQ checks it:** no live check yet, so the tab always shows it as **missing**. Being optional, that never
-  counts against readiness.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/growthbook` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**. Until then it shows **missing**, which,
+  being optional, never counts against readiness.
 
 ### claude-ads
 

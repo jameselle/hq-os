@@ -54,8 +54,8 @@ The department needs **one** CRM: Twenty or EspoCRM. Start with Twenty.
 - **Licence or plan:** open source, AGPL-3.0.
 - **Set it up:** through `/hq:add-tool EspoCRM for sales`, from source (no Docker), bound to 127.0.0.1 and run as a
   `com.hq.*` service. The owner creates the admin account in the browser, as with Twenty.
-- **How HQ checks it:** HQ has no live check for EspoCRM yet, so the tab shows it as missing even if it is
-  installed. `/hq:add-tool` adds one (its port) when it installs it.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/espocrm` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ## 2. Accounts and connections
 

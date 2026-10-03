@@ -65,8 +65,8 @@ projects tool when there's more work than a weekly plan holds.
 - **Licence or plan:** open source, AGPL-3.0.
 - **Set it up:** `/hq:add-tool` for Docmost. It's a server: install from a checksum-verified release or from
   source (no Docker, no Homebrew), bind it to 127.0.0.1, and run it as a `com.hq.*` service.
-- **How HQ checks it:** no live check is defined yet, so the tab shows it as missing even when installed.
-  `/hq:add-tool` adds a `port` check to `lib/registry.ts` when it installs it.
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/docmost` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ### Plane
 
@@ -76,7 +76,8 @@ projects tool when there's more work than a weekly plan holds.
 - **Licence or plan:** open source, AGPL-3.0.
 - **Set it up:** `/hq:add-tool` for Plane. Before choosing it, check its install docs for a route without
   Docker; if there isn't one, choose Vikunja instead.
-- **How HQ checks it:** no live check is defined yet (shows missing until `/hq:add-tool` adds one).
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/plane` (where `/hq:add-tool` puts it);
+  `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ### Vikunja
 
@@ -86,7 +87,9 @@ projects tool when there's more work than a weekly plan holds.
 - **Set it up:** `/hq:add-tool` for Vikunja: release binary verified against its checksum into
   `~/.local/opt/vikunja/`, data in `~/.local/var/vikunja/`, bound to 127.0.0.1, run as a `com.hq.vikunja`
   service.
-- **How HQ checks it:** no live check is defined yet (shows missing until `/hq:add-tool` adds one).
+- **How HQ checks it:** shows **installed** once the `vikunja` command is on PATH or it's in
+  `~/.local/opt/vikunja` (where `/hq:add-tool` puts it); `/hq:add-tool` also adds its port so the tab can show it
+  **running**. Either one meets the projects group.
 
 ### Composio
 
@@ -116,7 +119,8 @@ projects tool when there's more work than a weekly plan holds.
 - **Licence or plan:** open core, MIT (the core is what HQ uses; the enterprise folder is not).
 - **Set it up:** `/hq:add-tool` for Activepieces, from source or a checksum-verified release, no Docker,
   bound to 127.0.0.1.
-- **How HQ checks it:** no live check is defined yet (shows missing until `/hq:add-tool` adds one).
+- **How HQ checks it:** shows **installed** once it's in `~/.local/opt/activepieces` (where `/hq:add-tool` puts
+  it); `/hq:add-tool` also adds its port so the tab can show it **running**.
 
 ## 2. Accounts and connections
 
@@ -162,8 +166,9 @@ projects tool when there's more work than a weekly plan holds.
 - CEO findings filed under Operations, and how each clears:
   - **No business connected yet:** run `/hq:new-business`.
   - **N departments run on skills alone:** add tools with `/hq:add-tool` in priority order (backups, analytics,
-    accounting, then CRM and help desk). Departments whose tools have no live check yet (Legal, People) stay on
-    this list; leave them, or mark the finding done.
+    accounting, then CRM and help desk). A department drops off this list as soon as one of its tools shows
+    installed, including Legal (DocuSeal or Documenso) and People (Frappe HR) once they're in `~/.local/opt/`.
+    To leave a department on skills alone by choice, mark the finding done.
   - **N expected skills aren't installed:** reinstall the plugin the named skills belong to.
 - To dismiss a finding you've chosen to leave: **Mark done** on the CEO tab, or
   `npm run hq -- done <slug> <finding-id>` (`--undo` brings it back).
@@ -180,8 +185,9 @@ projects tool when there's more work than a weekly plan holds.
 ## Good to know
 
 - One tool per group is enough. More tools means more services to keep up, not a better score.
-- A tool with no live check reads as missing on the tab even when it works. That's a gap in `lib/registry.ts`,
-  fixed by `/hq:add-tool`, not by marking anything done.
+- Every tool has a live check. A self-hosted tool shows installed once it's in `~/.local/opt/<name>`, the folder
+  `/hq:add-tool` installs into, so one that works but reads as missing was installed somewhere else: reinstall it
+  with `/hq:add-tool`, don't mark anything done.
 - Free tools only: open source first, free proprietary where it's clearly better, nothing that needs a paid
   plan. Installs are from checksum-verified or notarised releases or source, never `curl | sh`, no Homebrew,
   no Docker on the Mac. Servers bind to 127.0.0.1 and run as launchd services:

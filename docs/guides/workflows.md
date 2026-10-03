@@ -29,12 +29,16 @@ customers *and* spots upgrades; Market & Competitors feeds the product roadmap, 
 
 ## How to use it each week
 
-1. Open the [scorecard](/guides/scorecard) on the CEO tab and find the weakest lever.
-2. On this tab, pick a workflow for that lever whose trigger has happened (for example "Onboarding to first value"
-   when activation is low, or "Failed payment recovery" when payments fail).
-3. Tell Claude: **"run the <workflow> workflow"**. It names the owner, then works each step with the
+1. The CEO tab does the first step for you: the finding **"Weakest lever this week"** compares each headline number
+   on the [scorecard](/guides/scorecard) with its own 4-week average (and a few hard limits, such as weekly churn above
+   5%), picks the worst, and names the workflow that moves it and that workflow's owner.
+2. Tell Claude: **"run the <workflow> workflow"**. It names the owner, then works each step with the
    department's tools and skills, asking you before anything customer-facing ships.
-4. Next week, check the workflow's metric on the scorecard.
+3. Log what you're trying, so next week's review can see it worked or not:
+   `npm run hq -- experiment add <slug> "<hypothesis>" --metric <metric id> --baseline <this week's value>`.
+   Close it when you know: `npm run hq -- experiment close <slug> <id> won|lost|inconclusive --result <value>`.
+   The log is mirrored to the business's vault (`Departments/Data & Analytics/Experiments.md`).
+4. Next week, check the metric on the scorecard. A routed lever that recovers drops off the CEO tab by itself.
 
 ## Done when
 

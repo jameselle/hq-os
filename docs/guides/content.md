@@ -196,8 +196,9 @@ then check with `npm run hq -- services status`.
 - **Licence or plan:** DaVinci Resolve: free edition (Studio is paid). Kdenlive: GPL-3.0. OpenCut: MIT.
 - **Set it up:** `/hq:add-tool`. Mac apps come as the official notarised download, which the owner drags to
   Applications.
-- **How HQ checks it:** the DaVinci Resolve or Kdenlive app (**installed**). OpenCut has no check yet, so it
-  always shows **missing**; that doesn't count against readiness while HQ Studio is installed.
+- **How HQ checks it:** the DaVinci Resolve or Kdenlive app (**installed**). OpenCut shows **installed** once it's in
+  `~/.local/opt/opencut` (where `/hq:add-tool` puts it); until then it shows **missing**, which doesn't count
+  against readiness while HQ Studio is installed.
 
 ### OBS Studio or Recordly
 

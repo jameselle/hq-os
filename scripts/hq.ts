@@ -10,6 +10,7 @@
 // Competitors  competitors sync <slug> · competitors changes <slug> [--days N] [--json] · competitors log <slug> <name> <file|-> · competitors recheck <slug>
 // Brain        brain init · brain read <slug> <dept> [--chars N] · brain write <slug|hq> <note.json|-> · brain promote <slug> <note> [--title T] [--body file] · brain show <slug>
 // Tools        finance init <slug> · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug>
+// Experiments  experiment add <slug> "<hypothesis>" --metric <id> [--baseline N] · experiment close <slug> <id> won|lost|inconclusive [--result N] [--note "…"] · experiment list <slug>
 // Health       doctor
 //
 // Never reads .env files. Secrets it creates (the restic password) go straight
@@ -28,6 +29,7 @@ import { backupIsExternal } from "../lib/ceo";
 import { brainStats, candidates, hqBrainRoot, initBrain, promote, readBundle, writeNote, type NoteInput } from "../lib/brain-store";
 import { NOTE_TYPES, TYPE_INFO } from "../lib/brain";
 import { runScorecard, scorecardState } from "../lib/scorecard";
+import { addExperiment, closeExperiment, experimentsMarkdown, listExperiments, type Verdict } from "../lib/experiments";
 import { formatValue, scorecardRows } from "../lib/scorecard-metrics";
 import { validateProfile } from "../lib/profile";
 import { PLATFORMS, captionProblems, channelStatuses, resolveRoute } from "../lib/publishing";
@@ -1008,10 +1010,32 @@ async function main() {
       }
       return die("brain: init | read <slug> <dept> | write <slug|hq> <note.json|-> | promote <slug> <note> | show <slug>");
     }
+    case "experiment": {
+      const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+      const valueOf = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
+      const num = (v?: string) => (v === undefined ? null : Number.isFinite(Number(v)) ? Number(v) : die(`not a number: ${v}`));
+      if (pos[0] === "add") {
+        const e = addExperiment(p.slug, { hypothesis: pos[2] ?? "", metric: (valueOf("--metric") ?? "") as never, baseline: num(valueOf("--baseline")) });
+        console.log(`experiment ${e.id} started: ${e.hypothesis} (${e.metric}, ${e.lever})`);
+      } else if (pos[0] === "close") {
+        const verdict = pos[3] as Verdict;
+        if (!["won", "lost", "inconclusive"].includes(verdict)) return die("experiment close <slug> <id> won|lost|inconclusive [--result N] [--note \"…\"]");
+        const e = closeExperiment(p.slug, Number(pos[2]), { verdict, result: num(valueOf("--result")), note: valueOf("--note") });
+        console.log(`experiment ${e.id}: ${e.status}`);
+      } else if (pos[0] === "list") {
+        for (const e of listExperiments(p.slug)) console.log(`${String(e.id).padStart(3)}  ${e.status.padEnd(12)} ${e.metric.padEnd(22)} ${e.hypothesis}`);
+        return;
+      } else return die("experiment: add | close | list");
+      const vdir = path.join(vaultRoot(p), "Departments", "Data & Analytics");
+      fs.mkdirSync(vdir, { recursive: true });
+      fs.writeFileSync(path.join(vdir, "Experiments.md"), experimentsMarkdown(listExperiments(p.slug)));
+      return;
+    }
     case "doctor":
       return cmdDoctor();
     default: {
-      const head = fs.readFileSync(new URL(import.meta.url), "utf8").split("\n").slice(0, 12).join("\n");
+      const lines = fs.readFileSync(new URL(import.meta.url), "utf8").split("\n");
+      const head = lines.slice(0, lines.findIndex((l) => l.startsWith("// Health")) + 1).join("\n");
       console.log(head.replace(/^\/\/ ?/gm, ""));
       if (cmd && cmd !== "help") process.exit(1);
     }

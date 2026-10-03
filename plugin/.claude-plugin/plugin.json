@@ -1,6 +1,6 @@
 {
   "name": "hq",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "Run any business from HQ: a CEO that reviews and delegates, department heads that plan the week, onboarding for new businesses, free-tool installs, restic backups with restore tests, and launchd services.",
   "author": { "name": "HQ" },
   "keywords": ["business", "operations", "ceo", "obsidian", "backup"]
