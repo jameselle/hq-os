@@ -7,6 +7,7 @@
 import type { Profile } from "./profile";
 import { recentChanges, shortUrl, watchTargets } from "./competitors";
 import { channelStatuses } from "./publishing";
+import { LEVERS, type Lever } from "./workflows";
 import type { DeptStatus, Finding, HostFacts, Severity } from "./types";
 
 export const SEVERITY_RANK: Record<Severity, number> = { critical: 0, attention: 1, decision: 2, info: 3 };
@@ -89,6 +90,17 @@ export function buildFindings(
       title: "The last restore test failed",
       detail: "A backup you can't restore is not a backup.",
       action: "Run `/hq:restore` in test mode and fix what it reports.",
+    });
+  }
+
+  if (f.backup.stagingFailed?.length) {
+    out.push({
+      id: "service-data-not-staged",
+      severity: "attention",
+      dept: "security",
+      title: "A service's data didn't make it into the last backup",
+      detail: `Before each backup, live databases are copied somewhere consistent. This failed for: ${f.backup.stagingFailed.join("; ")}. The last good copy is still backed up.`,
+      action: "Run `npm run hq -- backup run` and read the staging lines; `npm run hq -- services status` shows whether the service came back.",
     });
   }
 
@@ -289,6 +301,56 @@ export function buildFindings(
       detail: `${skillsOnly.join(", ")}: the skills work from pasted text or files, with no tool behind them.`,
       action: "Add tools with `/hq:add-tool` in priority order: backups, analytics, accounting, then CRM and help desk as volume grows.",
     });
+  }
+
+  // ---- Growth scorecard: the CEO routes by lever, so it needs the lever numbers ----
+  const card = f.scorecard;
+  if (profile && card) {
+    if (!card.connected && !card.demo) {
+      out.push({
+        id: "scorecard-none",
+        severity: "decision",
+        dept: "data",
+        title: "HQ can't see this business's growth",
+        detail: "There is no scorecard adapter, so new customers, churn and upgrades are invisible and the weekly review can't pick the weakest lever.",
+        action: `Write a private read-only adapter in this business's HQ data folder and point scorecard-connection.json at it (docs/guides/scorecard.md), then run \`npm run hq -- scorecard refresh ${profile.slug}\`.`,
+      });
+    } else if (card.stale || card.failed) {
+      out.push({
+        id: "scorecard-stale",
+        severity: "attention",
+        dept: "data",
+        title: card.currencyChanged ? "The scorecard's currency no longer matches the profile" : card.failed ? "The last scorecard refresh failed" : card.hasSnapshot === false ? "The scorecard has never been refreshed" : "The scorecard is out of date",
+        detail: card.currencyChanged
+          ? `The kept scorecard is in ${card.currencyChanged} but the profile now says ${profile.currency}, so it is hidden. Update the adapter to report ${profile.currency}.`
+          : card.failed
+          ? card.hasSnapshot === false ? "The adapter errored or reported something HQ rejected, and there is no earlier snapshot to show." : "The adapter errored or reported something HQ rejected; the card still shows the previous snapshot."
+          : card.hasSnapshot === false ? "The adapter is connected but hasn't reported yet, so this week's review has no lever numbers." : "No fresh numbers for more than 36 hours, so this week's review would read old figures.",
+        action: `Run \`npm run hq -- scorecard refresh ${profile.slug}\` and read its error; check that \`com.hq.scorecard\` is installed with \`npm run hq -- services status\`.`,
+      });
+    }
+    if (card.mismatch && card.mismatch > 0) {
+      out.push({
+        id: "scorecard-records-mismatch",
+        severity: "attention",
+        dept: "data",
+        title: `${card.mismatch} paying member${card.mismatch === 1 ? "" : "s"} disagree between billing and our records`,
+        detail: "The payment provider or app store says one thing and the membership records say another. A member recorded wrongly may have lost access they paid for, or kept access they didn't.",
+        action: "Read the Billing vs our records breakdown on the scorecard, fix each member's record, then check the billing webhooks for the cause.",
+      });
+    }
+    const byLever = new Map<string, { label: string; note: string }[]>();
+    for (const m of card.missing) byLever.set(m.lever, [...(byLever.get(m.lever) ?? []), m]);
+    for (const [lever, ms] of byLever) {
+      out.push({
+        id: `scorecard-missing-${lever}`,
+        severity: "info",
+        dept: "data",
+        title: `${ms.length} ${LEVERS[lever as Lever]?.name ?? lever} number${ms.length === 1 ? "" : "s"} can't be measured yet`,
+        detail: ms.map((m) => `${m.label}: ${m.note || "no source"}`).join(" · "),
+        action: "Each fix is named above. Most need history to build up, an event the product doesn't record yet, or spend entered in the ledger.",
+      });
+    }
   }
 
   const missingSkills = depts.flatMap((d) => d.skills.filter((s) => !s.ready).map((s) => `${s.id} (${d.label})`));

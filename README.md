@@ -5,9 +5,11 @@ tools** (open source first) and **Claude skills**. A **CEO** reads it all, ranks
 asks you for at most five decisions and delegates the rest. Each business keeps its memory in its
 own **Obsidian vault**.
 
-![The CEO page: what needs you, ranked, with the latest review](docs/images/hq-ceo.png)
+![The CEO page: the growth scorecard, what needs you, and the latest review](docs/images/hq-ceo.png)
 
 ![A department tab: its tools (checked live), skills, and publishing routes](docs/images/hq-content.png)
+
+![Workflows: how the departments feed each other, and which workflows already run for this business, with the proof](docs/images/hq-workflows.png)
 
 ## Set up on a Mac
 
@@ -18,12 +20,15 @@ claude plugin marketplace add jameselle/hq-os && claude plugin install hq@hq
 npm run hq -- services init && npm run hq -- services install   # starts at login
 ```
 
-Open http://127.0.0.1:3150. In Claude Code, run `/hq:new-business` to connect a business.
+Open http://127.0.0.1:3150. In Claude Code, run `/hq:new-business` to connect a business, then **`/hq:setup`**:
+it walks you through backups and every department, one step at a time, from the guides in the **Guides** tab
+(`docs/guides/`). Start with [Getting started](docs/guides/start-here.md).
 
 ## Everyday use
 
 | Want to… | Do |
 |---|---|
+| Get walked through setting HQ up, or one department | `/hq:setup` (or open the Guides tab) |
 | See what needs you | Open the CEO tab |
 | Get a review and a plan for the week | `/hq:ceo` |
 | Plan one department's week | `/hq:dept content` (or seo, finance, …) |
@@ -33,10 +38,14 @@ Open http://127.0.0.1:3150. In Claude Code, run `/hq:new-business` to connect a 
 | Recover something | `/hq:restore` |
 | See or connect posting accounts | `/hq:connections` |
 | Post to channels | `/hq:publish` |
+| What's winning in your niche → topics, hooks, edit style, pace targets | `/hq:style` |
+| Your own post: script → teleprompter → Claude edits → post | `/hq:self-post` |
 | Long video → short clips | `/hq:clip` |
 | Footage + brief → finished video | `/hq:edit` |
+| "How it works" videos of your app, in your own cloned voice | `/hq:walkthrough` |
 | Watch competitors, weekly brief | `/hq:competitors` (`setup` first) |
 | See what's running | `/hq:services` or `npm run hq -- services status` |
+| Connect Stripe, the App Store or your own database to the scorecard | `/hq:scorecard` |
 | Health check | `npm run hq -- doctor` |
 
 ## How publishing works
@@ -75,7 +84,7 @@ No hand editing. `/hq:clip` and `/hq:edit` write an edit description (`spec.json
 | Businesses: profiles, reviews, plans, vaults | `~/hq-data` | restic, nightly, encrypted, in iCloud Drive |
 | Backup password | login Keychain, `hq-restic` | **you**: copy it into your password manager |
 | Services | `~/Library/LaunchAgents/com.hq.*` | regenerated from `~/hq-data/services.json` |
-| Tool data: Listmonk (Postgres), Uptime Kuma, Syncthing config | `~/.local/var/…` | not in the backup yet; configs are reproducible |
+| Tool data: Listmonk (Postgres), Uptime Kuma, Syncthing config | `~/.local/var/…` | services with a `backup` spec in `services.json` (a Postgres cold copy or a SQLite copy) are staged into the nightly restic backup; other configs are reproducible |
 
 ## Local tools (all bind to 127.0.0.1)
 
@@ -96,6 +105,7 @@ The framework knows nothing about any particular business. A business is a `prof
 (offer, audience, channels, country, regulated industries, departments it skips) plus a vault.
 Connect as many as you like; switch between them in the top bar.
 
-## Access and licence
+## Licence
 
-HQ is shared by invitation. This repository is licensed for **evaluation and personal use** — see [LICENSE](LICENSE); redistribution or offering it as a service needs written permission. Questions or access for a team: open an issue in this repository.
+MIT: free to use, change and share. See [LICENSE](LICENSE). HQ is built in public; issues and pull
+requests are welcome.

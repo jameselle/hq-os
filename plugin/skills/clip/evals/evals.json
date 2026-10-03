@@ -14,6 +14,47 @@
         "Looked at the contact sheet image for each clip",
         "Did not call /hq:publish or any posting tool"
       ]
+    },
+    {
+      "id": 2,
+      "prompt": "I recorded today's video on the teleprompter, clip it: ~/Movies/Teleprompter/<script-folder>",
+      "expected_output": "A studio job made by from-teleprompter (master.mp4 + sections.json), clipped like any source; any missing kept take is reported to the owner, not patched over.",
+      "files": [],
+      "expectations": [
+        "Made the job with `npm run studio -- from-teleprompter`, not new-job plus a hand-written ffmpeg concat",
+        "Used master.mp4 as the source and read sections.json",
+        "If the command refused (a section with no kept take), told the owner which section and stopped",
+        "Did not post"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Make the HQ bit into a clip, and show HQ on screen while I talk about it.",
+      "expected_output": "A clip whose spec uses cutaways over the words about HQ, from 2x captures that were read for private details first; hook and punchline stay on the face; QA passes including the rotation check.",
+      "files": [],
+      "expectations": [
+        "Captured the screens at 2x and looked at them before using any region",
+        "Kept connected account names, emails and other businesses out of every panned region, and said so",
+        "Placed cutaways with from/to words from the transcript, not hand-made ffmpeg overlays",
+        "Left the hook and the final line on the speaker's face",
+        "Ran check and looked at the contact sheet before handing over",
+        "Did not post"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "fix my review notes on <job>/promo-vertical.mp4",
+      "expected_output": "Every open note read with its frame still, fixed in the spec, re-rendered, QA passing, and each fixed note marked with what changed.",
+      "files": [],
+      "expectations": [
+        "Ran studio notes on the video",
+        "Read each note's frame image before editing",
+        "Changed the spec (or the job's words.json) rather than editing the video by hand",
+        "Re-rendered and studio check passes",
+        "Ran notes-fixed with a description for each fixed note",
+        "Left unfixable notes open and said why",
+        "Did not post"
+      ]
     }
   ]
 }

@@ -53,7 +53,7 @@ function BusinessSwitcher({ report, onSwitched }: { report: StatusReport | null;
     );
   }
   return (
-    <label className="flex items-center gap-2 rounded-full border border-bb-blue/30 bg-bb-blue/5 pl-3 pr-1 py-0.5 text-[11px]">
+    <label className="flex min-w-0 max-w-full items-center gap-2 rounded-full border border-bb-blue/30 bg-bb-blue/5 pl-3 pr-1 py-0.5 text-[11px]">
       <span className="font-mono uppercase tracking-[0.12em] text-bb-dim">Business</span>
       <select
         aria-label="Business"
@@ -70,7 +70,7 @@ function BusinessSwitcher({ report, onSwitched }: { report: StatusReport | null;
           onSwitched();
           router.refresh();
         }}
-        className="bg-transparent text-bb-fg font-medium rounded-full px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-bb-blue/40 [&>option]:bg-bb-surface"
+        className="min-w-0 max-w-full bg-transparent text-bb-fg font-medium rounded-full px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-bb-blue/40 [&>option]:bg-bb-surface"
       >
         {report.businesses.map((b) => (
           <option key={b.slug} value={b.slug}>
@@ -116,7 +116,7 @@ export function TopBar() {
   }, [load]);
 
   return (
-    <div className="flex items-center gap-2.5 px-6 h-12 border-b border-bb-border/70">
+    <div className="flex flex-wrap items-center gap-2.5 px-4 md:px-6 min-h-12 py-2 border-b border-bb-border/70">
       <BusinessSwitcher report={report} onSwitched={load} />
       <div className="flex-1" />
       {badges(report, failed).map((b) => (

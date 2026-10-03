@@ -11,6 +11,7 @@ export type ToolCheck = {
   npx?: boolean; // runs with `npx <pkg>`, nothing to install
   web?: boolean; // a free web service: nothing on this Mac to check
   composio?: string; // Composio toolkit slug: "connected" when the snapshot shows an active account
+  launchd?: string; // a launchd job label: "running" when launchctl reports the job running
 };
 
 export type Licence = {
@@ -121,9 +122,11 @@ export type HostFacts = {
   gcloud: boolean;
   postizUp: boolean;
   postizInstalled: boolean;
-  backup: { repository?: string; lastSnapshotAt?: string; restoreTestOk?: boolean };
+  backup: { repository?: string; lastSnapshotAt?: string; restoreTestOk?: boolean; /** "<label>: why" for each service the last backup couldn't stage. */ stagingFailed?: string[] };
   /** The current business's competitor watching (null rows = watcher unreachable). */
   intel: { watcherUp: boolean; rows: import("./competitors").WatchRow[] | null; lastBriefAt: string | null };
   /** Latest /hq:connections snapshot (ids, aliases, statuses only), or null if never taken. */
   connections: import("./publishing").ConnectionsSnapshot | null;
+  /** The current business's growth scorecard: whether it reports, and which numbers it can't measure yet. */
+  scorecard?: { connected: boolean; demo: boolean; stale: boolean; failed: boolean; hasSnapshot?: boolean; currencyChanged?: string | null; mismatch?: number | null; missing: { lever: string; label: string; note: string }[] } | null;
 };

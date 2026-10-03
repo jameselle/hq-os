@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 
 import { AutoRefresh, CopyCommand, DoneButton, RecheckButton } from "@/components/Controls";
 import { Rich } from "@/components/Rich";
+import { ScorecardCard } from "@/components/ScorecardCard";
 import { Tile } from "@/components/Tile";
 import { preferredBusiness } from "@/lib/current";
 import { getStatus } from "@/lib/status";
@@ -29,8 +30,9 @@ function ago(iso: string): string {
 
 const reviewLabel = (file: string) => file.replace(/^(\d{4}-\d{2}-\d{2})-(\d{2})(\d{2})\.md$/, "$1 $2:$3");
 
-export default async function CeoPage({ searchParams }: { searchParams: { review?: string } }) {
-  const report = await getStatus(preferredBusiness());
+export default async function CeoPage({ searchParams: query }: { searchParams: Promise<{ review?: string }> }) {
+  const searchParams = await query;
+  const report = await getStatus(await preferredBusiness());
   const { totals, findings, business } = report;
   const departments = report.departments.filter((d) => d.active);
   const reviews = business ? listReviews(business.slug) : [];
@@ -84,6 +86,8 @@ export default async function CeoPage({ searchParams }: { searchParams: { review
           ))}
         </section>
       )}
+
+      {business && <ScorecardCard business={business} />}
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Tile

@@ -36,6 +36,7 @@ export const PLATFORMS: Record<string, Platform> = {
           "POST_IG_USER_MEDIA returns a container id, not the post id. Creating a container without publishing is a safe dry run (it expires in ~24 h).",
           "Reels: media_type=REELS. Carousels use INSTAGRAM_CREATE_CAROUSEL_CONTAINER.",
           "Insights live on INSTAGRAM_GET_IG_MEDIA_INSIGHTS; asking the media node for view fields fails the whole request.",
+          "Trial reels (shown to non-followers only, auto-graduate on performance) need trial_params, which Composio's tool refuses: post them through the Graph API with comment-dm's Meta app token (me/media with trial_params.graduation_strategy, then me/media_publish). They read back with is_shared_to_feed=false. Give each post its own comment-dm campaign scoped to its id.",
           COMPOSIO_UPLOAD_NOTE,
         ],
       },
@@ -51,6 +52,7 @@ export const PLATFORMS: Record<string, Platform> = {
         tools: ["YOUTUBE_MULTIPART_UPLOAD_VIDEO", "YOUTUBE_GET_VIDEO_DETAILS_BATCH"],
         traps: [
           "Plain YOUTUBE_UPLOAD_VIDEO creates a record YouTube deletes ~10 s later. Use a resumable upload through the Composio proxy (POST /upload/youtube/v3/videos?uploadType=resumable, then PUT the bytes to the returned Location).",
+          "From a Claude session the Composio workbench's proxy_execute returns no response headers (no Location), so there use YOUTUBE_MULTIPART_UPLOAD_VIDEO with an upload_local_file s3key: proved to deliver the file byte-exact.",
           "Verify with GET_VIDEO_DETAILS: processingStatus must reach 'succeeded' and fileDetails must exist; a missing video means it was deleted.",
         ],
       },
@@ -224,4 +226,15 @@ export function channelStatuses(
     }
     return { ...base, state: "connected" as const, detail: `${route.toolkit}: ${who.name ?? who.alias ?? who.id}` };
   });
+}
+
+/** The owner's hard rule for every caption that gets posted: no em dashes (and no en dashes, which pass for
+ *  them). Returns one problem per kind found; empty means the caption may go out. */
+export function captionProblems(text: string): string[] {
+  const out: string[] = [];
+  const em = (text.match(/\u2014/g) ?? []).length;
+  const en = (text.match(/\u2013/g) ?? []).length;
+  if (em) out.push(`${em} em dash${em > 1 ? "es" : ""} (—): rewrite with a comma, colon or full stop`);
+  if (en) out.push(`${en} en dash${en > 1 ? "es" : ""} (–): use a hyphen or the word "to"`);
+  return out;
 }

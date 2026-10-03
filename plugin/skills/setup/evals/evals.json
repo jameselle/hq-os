@@ -1,0 +1,41 @@
+{
+  "skill_name": "setup",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I'm new to HQ, set it up for my business",
+      "expected_output": "Checks doctor, businesses and status first; installs or fixes what doctor names; runs /hq:new-business if there's no business; sets up backups before anything else; then walks departments in the start-here order using each guide, one step at a time.",
+      "files": [],
+      "expectations": [
+        "Ran `npm run hq -- doctor` and read the status before asking questions",
+        "Ran /hq:new-business when no business existed",
+        "Did backups (/hq:backup) before any department",
+        "Opened the department's guide from docs/guides and followed its sections in order",
+        "Never asked for a password, key or token in chat"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Set up the Finance department",
+      "expected_output": "Opens docs/guides/finance.md, checks what's already live, walks Before you start, Tools, Accounts, Skills, Check it's working, and ticks Done when; saves a progress note to the vault.",
+      "files": [],
+      "expectations": [
+        "Used docs/guides/finance.md (or /guides/finance)",
+        "Checked existing state before asking",
+        "Ran the guide's checks and showed the results",
+        "Saved a progress note with save-plan"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "What's left to set up?",
+      "expected_output": "Reads doctor and the status API, lists departments that aren't equipped or whose guides aren't done, in start-here order, with the next step and its time.",
+      "files": [],
+      "expectations": [
+        "Read live state (doctor and /api/status) rather than guessing",
+        "Listed remaining departments in the start-here order",
+        "Named the single next step"
+      ]
+    }
+  ]
+}

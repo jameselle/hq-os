@@ -33,6 +33,8 @@ export type BackupConfig = {
   passwordCommand: string; // e.g. security find-generic-password -s hq-restic -w
   lastSnapshot?: { id: string; at: string };
   lastRestoreTest?: { ok: boolean; at: string; detail: string };
+  /** Services whose live data the last backup run staged (lib/backup.ts). */
+  lastStaging?: { at: string; results: { label: string; ok: boolean; skipped?: boolean; detail: string }[] };
 };
 
 /** `done`: machine-wide findings marked done (business ones live in each business's state.json). */
@@ -354,6 +356,7 @@ export function initLedger(profile: Profile): string {
     ["Equity:Opening-Balances", ""],
     ["Income:Sales", c],
     ["Expenses:Advertising", c],
+    ["Expenses:Commissions", c], // affiliate and partner commissions: the scorecard counts these as acquisition spend
     ["Expenses:Contractors", c],
     ["Expenses:Fees:Bank", c],
     ["Expenses:Hosting", c],

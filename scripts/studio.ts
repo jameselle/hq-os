@@ -4,19 +4,33 @@
 //   npm run studio -- render <spec.json>                        render every format in the spec
 //   npm run studio -- check <video> [--hook "text"]             QA: probe, loudness, black/silence, contact sheet, hook re-read
 //   npm run studio -- new-job <slug> <title>                     make a job folder and print its path
+//   npm run studio -- from-teleprompter <slug> <script-folder> [title]   new job whose master.mp4 joins the kept takes
+//   npm run studio -- review [folder] [--port 8794]              the review page: watch renders, note what looks wrong
+//   npm run studio -- notes <video|folder> [--all]               the review notes (open ones unless --all), with frame stills
+//   npm run studio -- notes-fixed <video> <note-id> "<what changed>"   mark a note fixed after re-rendering
+//   npm run studio -- apply-edits <video>                        apply the cuts and export speed marked on the review page
+//   npm run studio -- cover <video> --day "Day 2" --title "My own ManyChat" [--at <s>] [--face 0.5]   the post's cover: a clean
+//                          source frame (the planner's cover, --at, or a third of the way in) with the day and title
+//   npm run studio -- measure <video|url> [--outlier 4.2] [--dir <folder>]   a clip's style in numbers: cuts per 10 s,
+//                          first cut, shot length, words per minute, first word, the hook line, loudness (a URL is fetched with yt-dlp)
+//   npm run studio -- style <slug> <measure.json…> [--niche "…"]   the business's style targets (medians of the
+//                          niche's winning clips) → $HQ_DATA/businesses/<slug>/style.json; `check` reports against it
 //
 // Tools: FFmpeg/ffprobe and whisper.cpp (installed by HyperFrames). Nothing is posted:
 // finished videos go to /hq:publish, which asks the owner.
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { DEFAULT_BRAND, mergeBrand, type Brand } from "../lib/studio/brand";
+import { DEFAULT_BRAND, mergeBrand, renderSpeed, type Brand } from "../lib/studio/brand";
 import { FORMATS, validateSpec, type EditSpec, type Format } from "../lib/studio/spec";
-import { buildAss, captionLines, keepPieces, outputDuration, reframeFilter, type Word } from "../lib/studio/timeline";
-import { businessDir, getProfile, stamp, vaultRoot } from "../lib/store";
+import { concatArgs, readTakes } from "../lib/studio/teleprompter";
+import { buildAss, buildCoverAss, buildSeriesCoverAss, captionLines, gridCrop as gridCropOf, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, sourceAt, type Piece, type Word } from "../lib/studio/timeline";
+import { applyEdits, formatNotes, listVideos, readEdits, readMap, readNotes, readPlans, serveReview, updateNote } from "../lib/studio/review";
+import { businessDir, getProfile, hqData, stamp, vaultRoot } from "../lib/store";
+import { compareToStyle, paceStats, parseCuts, styleFrom, validStyle, type Measure, type Style } from "../lib/studio/style";
 
 const HOME = os.homedir();
 const WHISPER = path.join(HOME, ".cache", "hyperframes", "whisper", "whisper.cpp", "build", "bin", "whisper-cli");
@@ -47,9 +61,10 @@ function probe(file: string): Probe {
 
 // ---------------------------------------------------------------- transcribe
 
-/** Word-level transcript via whisper.cpp. Cached as <video>.words.json next to the video (or in --out). */
-function transcribe(video: string, model = "small.en", outDir?: string): Word[] {
-  const cache = path.join(outDir ?? path.dirname(video), `${path.basename(video)}.words.json`);
+/** Word-level transcript via whisper.cpp. Cached as <video>.words.json next to the video (or in --out).
+ *  `tempo` < 1 slows the audio first (a sped-up render is heard at normal pace); times are then on that slower clock. */
+function transcribe(video: string, model = "small.en", outDir?: string, tempo = 1): Word[] {
+  const cache = path.join(outDir ?? path.dirname(video), `${path.basename(video)}${tempo === 1 ? "" : `.x${tempo.toFixed(3)}`}.words.json`);
   if (fs.existsSync(cache) && fs.statSync(cache).mtimeMs > fs.statSync(video).mtimeMs) return JSON.parse(fs.readFileSync(cache, "utf8")) as Word[];
   if (!fs.existsSync(WHISPER)) die("whisper-cli isn't built (see the hyperframes-local-setup memory note)");
   const modelFile = path.join(MODELS, `ggml-${model}.bin`);
@@ -59,7 +74,7 @@ function transcribe(video: string, model = "small.en", outDir?: string): Word[] 
   // Lead in with 0.5 s of silence: whisper drops a first word that starts at 0.0 s,
   // and in a clip that first word is the hook. Offsets are shifted back below.
   const LEAD = 0.5;
-  run("ffmpeg", ["-y", "-v", "error", "-i", video, "-vn", "-ac", "1", "-ar", "16000", "-af", `adelay=${LEAD * 1000}:all=1`, "-c:a", "pcm_s16le", wav]);
+  run("ffmpeg", ["-y", "-v", "error", "-i", video, "-vn", "-ac", "1", "-ar", "16000", "-af", `${tempo === 1 ? "" : `atempo=${tempo},`}adelay=${LEAD * 1000}:all=1`, "-c:a", "pcm_s16le", wav]);
   // DTW token timestamps are far more accurate than segment offsets (0.1 s vs ~1 s of drift on
   // an 81 s test), but whisper.cpp silently skips DTW while flash attention is on: hence -nfa.
   run(WHISPER, ["-m", modelFile, "-f", wav, "-ml", "1", "-sow", "-ojf", "-dtw", model, "-nfa", "-of", path.join(tmp, "out"), "-np"]);
@@ -113,6 +128,11 @@ function loadBrand(slug: string): Brand {
   }
 }
 
+/** Where each stretch of a render came from: lets the review page turn "delete 0:40-0:44" into source cuts. */
+function writeMap(jobDir: string, fmt: Format, specFile: string, pieces: Piece[], windows: { start: number; end: number }[], speed: number) {
+  fs.writeFileSync(path.join(jobDir, `${fmt}.map.json`), JSON.stringify({ spec: path.resolve(specFile), speed, pieces, cutaways: windows }, null, 2) + "\n");
+}
+
 function renderFormat(
   spec: EditSpec,
   fmt: Format,
@@ -120,6 +140,7 @@ function renderFormat(
   words: Record<string, Word[]>,
   sil: Record<string, [number, number][]>,
   brand: Brand,
+  specFile: string,
 ): string {
   const dims = FORMATS[fmt];
   const pieces = keepPieces(spec, words, sil);
@@ -165,7 +186,7 @@ function renderFormat(
   f.push(`[${aOut}]loudnorm=I=${spec.loudness ?? brand.loudness}:TP=-1.5:LRA=11[aout]`);
 
   const out = path.join(jobDir, `${slugify(spec.title)}-${fmt}.mp4`);
-  const wantText = spec.captions !== false || Boolean(spec.hook);
+  const wantText = spec.captions !== false || Boolean(spec.hook) || Boolean(spec.cutaways?.length);
   // Pass 1: the cut itself. When text follows, keep it near-lossless for the second encode.
   const cut = wantText ? path.join(jobDir, `.${fmt}.cut.mp4`) : out;
   run("ffmpeg", [
@@ -177,24 +198,108 @@ function renderFormat(
     "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart",
     cut,
   ]);
-  if (!wantText) return out;
+  if (!wantText) {
+    writeMap(jobDir, fmt, specFile, pieces, [], renderSpeed(spec, brand));
+    return out;
+  }
 
   // Pass 2: captions come from transcribing the cut itself, so they match exactly what's
   // heard. Mapping source timestamps across cuts dropped words that landed in a removed pause.
-  const heard = spec.captions === false ? [] : transcribe(cut, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "hq-cap-")));
+  // Cutaways are placed by the same words, so they need the transcript even without captions.
+  const cutaways = spec.cutaways ?? [];
+  const heard =
+    spec.captions === false && !cutaways.length
+      ? []
+      : reconcileWords(
+          transcribe(cut, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "hq-cap-"))),
+          outputWords(pieces, words).map((w) => w.w),
+          joinsOf(pieces, words),
+          spec.captionText ?? "heard",
+        );
   const lines = captionLines(heard);
+  let windows: { start: number; end: number }[] = [];
+  try {
+    windows = cutawayWindows(lines, cutaways);
+    // The hook sits in the top half for its first seconds: top-half cutaways wait for it (full-frame ones too).
+    if (spec.hook) {
+      const hookEnd = spec.hook.seconds ?? 3;
+      const moved = clearOfHook(windows, hookEnd);
+      moved.forEach((w, i) => {
+        if (w.start !== windows[i].start) console.log(`cutaway ${i + 1} waits for the hook: starts at ${w.start.toFixed(2)}s, not ${windows[i].start.toFixed(2)}s`);
+      });
+      windows = moved;
+    }
+  } catch (e) {
+    die(`${(e as Error).message}\n  what the cut says: ${heard.map((w) => w.w).join(" ")}`);
+  }
+  const vertical = dims.h > dims.w;
   const ass = path.join(jobDir, `${fmt}.ass`);
-  fs.writeFileSync(ass, buildAss(dims, lines, { font: brand.font, primary: brand.primary, outline: brand.outline, highlight: brand.highlight }, spec.hook));
+  fs.writeFileSync(
+    ass,
+    buildAss(
+      dims,
+      spec.captions === false ? [] : lines,
+      { font: brand.font, primary: brand.primary, outline: brand.outline, highlight: brand.highlight, animate: brand.captions, hook: brand.hook },
+      spec.hook,
+      { seams: vertical ? windows.filter((_, i) => !cutaways[i].full) : [] },
+    ),
+  );
   const esc = (p: string) => p.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
-  run("ffmpeg", [
-    "-y", "-v", "error", "-i", cut,
-    "-vf", `subtitles='${esc(ass)}':fontsdir='${esc(brand.fontsDir)}'`,
-    "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
-    "-c:a", "copy", "-movflags", "+faststart",
-    out,
-  ]);
+  const subs = `subtitles='${esc(ass)}':fontsdir='${esc(brand.fontsDir)}'`;
+  const enc = ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", out];
+  if (!windows.length) {
+    run("ffmpeg", ["-y", "-v", "error", "-i", cut, "-vf", subs, ...enc]);
+  } else {
+    // Vertical: the footage fills the top half and the face moves to the bottom half. Other shapes: full frame.
+    // A `full` cutaway fills the frame instead (a title card over a change of shot).
+    const panel = vertical ? { w: dims.w, h: Math.round(dims.h / 2) } : { w: dims.w, h: dims.h };
+    const split = windows.filter((_, i) => !(vertical && cutaways[i].full));
+    const on = split.map((w) => `between(t,${w.start},${w.end})`).join("+");
+    const ins: string[] = ["-i", cut];
+    const g: string[] = [];
+    let last = "0:v";
+    if (vertical && split.length) {
+      const centre = (spec.faceY ?? 0.5) * dims.h;
+      const y0 = Math.round(Math.min(Math.max(centre - panel.h / 2, 0), dims.h - panel.h));
+      g.push(`[0:v]split[base][f]`, `[f]crop=${dims.w}:${panel.h}:0:${y0}[face]`, `[base][face]overlay=0:${panel.h}:enable='${on}'[split]`);
+      last = "split";
+    }
+    cutaways.forEach((c, i) => {
+      if (!fs.existsSync(c.file)) die(`cutaway ${i + 1}: no such file ${c.file}`);
+      const { start, end } = windows[i];
+      const d = Math.max(0.04, Number((end - start).toFixed(3))); // a window squeezed out by the hook still needs a valid input
+      const image = /\.(png|jpe?g|webp)$/i.test(c.file);
+      if (image) ins.push("-loop", "1", "-framerate", "30", "-t", String(d), "-i", c.file);
+      else ins.push("-i", c.file);
+      const box = vertical && c.full ? { w: dims.w, h: dims.h } : panel;
+      const cover = `scale=${box.w}:${box.h}:force_original_aspect_ratio=increase,crop=${box.w}:${box.h}`;
+      const fit = image && c.pan ? `${panCrop(c.pan, box, d)},scale=${box.w}:${box.h}:flags=lanczos` : cover;
+      const shot = image ? fit : `trim=duration=${d},setpts=PTS-STARTPTS,fps=30,${fit},tpad=stop_mode=clone:stop_duration=${d}`;
+      g.push(`[${i + 1}:v]${shot},setsar=1,format=yuv420p,setpts=PTS-STARTPTS+${start}/TB[c${i}]`);
+      g.push(`[${last}][c${i}]overlay=0:0:enable='between(t,${start},${end})'[o${i}]`);
+      last = `o${i}`;
+    });
+    if (vertical && split.length) {
+      g.push(`[${last}]drawbox=x=0:y=${panel.h - 3}:w=iw:h=6:color=0x0b0c0e:t=fill:enable='${on}'[seam]`);
+      last = "seam";
+    }
+    g.push(`[${last}]${subs}[vout]`);
+    // A cutaway's input is padded past its window (it holds its last frame), so cap the output at the cut's own
+    // length: a video cutaway at the very end otherwise ran the picture on, frozen and silent, past the audio.
+    run("ffmpeg", ["-y", "-v", "error", ...ins, "-filter_complex", g.join(";"), "-map", "[vout]", "-map", "0:a", "-t", String(dur), ...enc]);
+  }
   fs.rmSync(cut, { force: true });
+  writeMap(jobDir, fmt, specFile, pieces, windows, renderSpeed(spec, brand));
   return out;
+}
+
+/** Plays the finished video `speed` times faster, voice at its own pitch (atempo), 30 fps kept. */
+function speedUp(file: string, speed: number) {
+  if (speed === 1) return;
+  const tmp = file.replace(/\.mp4$/, ".speed.mp4");
+  run("ffmpeg", ["-y", "-v", "error", "-i", file, "-filter_complex", `[0:v]setpts=PTS/${speed},fps=30[v];[0:a]atempo=${speed}[a]`, "-map", "[v]", "-map", "[a]",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", tmp]);
+  fs.renameSync(tmp, file);
 }
 
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "video";
@@ -221,7 +326,8 @@ function cmdRender(specFile: string | undefined) {
   });
   const sil: Record<string, [number, number][]> = {};
   if (spec.tightenPauses) for (const [id, file] of Object.entries(spec.sources)) if (probe(file).hasAudio) sil[id] = silences(file);
-  const outs = spec.formats.map((fmt) => renderFormat(spec, fmt, jobDir, words, sil, brand));
+  const outs = spec.formats.map((fmt) => renderFormat(spec, fmt, jobDir, words, sil, brand, specFile));
+  for (const o of outs) speedUp(o, renderSpeed(spec, brand));
   for (const o of outs) console.log(`rendered ${o}`);
   writeJobNote(profile.slug, spec, jobDir, outs);
 }
@@ -243,6 +349,77 @@ function writeJobNote(slug: string, spec: EditSpec, jobDir: string, outs: string
 
 // ---------------------------------------------------------------- check (QA)
 
+// ---------------------------------------------------------------- style
+
+/** Shot changes, on a small copy of the picture (scene scores barely change with size, and it's ~10x faster). */
+function sceneCuts(video: string, threshold = 0.3): number[] {
+  const r = run("ffmpeg", ["-hide_banner", "-nostats", "-i", video, "-vf", `scale=240:-2,select='gt(scene,${threshold})',showinfo`, "-an", "-f", "null", "-"], { quiet: true });
+  return parseCuts(r.stderr);
+}
+
+function lufsOf(video: string): number | null {
+  const loud = run("ffmpeg", ["-hide_banner", "-nostats", "-i", video, "-af", "ebur128", "-f", "null", "-"], { quiet: true });
+  const v = Number(/I:\s+(-?[\d.]+) LUFS/.exec(loud.stderr.split("Summary:").pop() ?? "")?.[1]);
+  return Number.isFinite(v) ? v : null;
+}
+
+/** Measure one clip as it plays (words at playback speed: that's the pace a viewer hears). */
+function measureFile(file: string, meta: Partial<Measure> = {}): Measure {
+  const p = probe(file);
+  const cuts = sceneCuts(file);
+  const words = p.hasAudio ? transcribe(file, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "hq-measure-"))) : [];
+  return { source: file, ...meta, duration: Math.round(p.duration * 100) / 100, cuts, ...paceStats(p.duration, cuts, words), lufs: p.hasAudio ? lufsOf(file) : null };
+}
+
+/** Fetch a public clip with yt-dlp (first 3 minutes, mp4) and say who posted it and its views. */
+function fetchClip(url: string, dir: string): { file: string; account?: string; views?: number } {
+  fs.mkdirSync(dir, { recursive: true });
+  const r = run("yt-dlp", ["-q", "--no-warnings", "--no-playlist", "-f", "bv*[ext=mp4][height<=1920]+ba[ext=m4a]/b[ext=mp4]/b", "--download-sections", "*0-180",
+    "-o", path.join(dir, "%(extractor)s-%(id)s.%(ext)s"), "--print", "after_move:%(filepath)s\t%(uploader,channel)s\t%(view_count)s", url]);
+  const [file, account, views] = r.stdout.trim().split("\n").pop()!.split("\t");
+  if (!file || !fs.existsSync(file)) die(`yt-dlp didn't save ${url}`);
+  return { file, account: account && account !== "NA" ? account : undefined, views: Number(views) || undefined };
+}
+
+function cmdMeasure(target: string | undefined, outlier?: string, dir?: string) {
+  if (!target) die("usage: measure <video|url> [--outlier 4.2] [--dir <folder>]");
+  const url = /^https?:\/\//.test(target);
+  const got = url ? fetchClip(target, path.resolve(dir ?? path.join(os.tmpdir(), "hq-style"))) : { file: path.resolve(target) };
+  const m = measureFile(got.file, { source: url ? target : got.file, account: got.account, views: got.views, outlier: outlier ? Number(outlier) : undefined });
+  const out = `${got.file}.measure.json`;
+  fs.writeFileSync(out, JSON.stringify(m, null, 2));
+  console.log(`${m.account ? `${m.account} · ` : ""}${m.views ? `${m.views.toLocaleString("en-AU")} views · ` : ""}${m.duration}s`);
+  console.log(`cuts      ${m.cutsPer10s} per 10 s (first at ${m.firstCut ?? "none"} s, median shot ${m.medianShot} s, longest ${m.longestShot} s)`);
+  console.log(`speech    ${m.wpm} wpm, first word at ${m.firstWord ?? "none"} s, speaking ${Math.round(m.speaking * 100)}% of the time`);
+  console.log(`hook      "${m.hookLine}"`);
+  console.log(`loudness  ${m.lufs ?? "?"} LUFS`);
+  console.log(`→ ${out}${url ? `\n  video ${got.file} (study only: delete it when the teardown is done)` : ""}`);
+}
+
+function cmdStyle(slug: string | undefined, files: string[], niche?: string) {
+  if (!slug || !files.length) die('usage: style <slug> <measure.json…> [--niche "…"]');
+  if (!fs.existsSync(businessDir(slug))) die(`no business "${slug}" under ${path.dirname(businessDir(slug))}`);
+  const measures = files.map((f) => JSON.parse(fs.readFileSync(f, "utf8")) as Measure);
+  const style = styleFrom(slug, measures, niche);
+  const out = path.join(businessDir(slug), "style.json");
+  fs.writeFileSync(out, JSON.stringify(style, null, 2));
+  const t = style.targets;
+  console.log(`${slug}: ${measures.length} winning clips → ${out}`);
+  console.log(`  cuts ${t.cutsPer10s}/10 s · first cut ${t.firstCut} s · median shot ${t.medianShot} s · ${t.wpm} wpm · first word ${t.firstWord} s · ${t.duration} s long`);
+}
+
+/** The business a render belongs to, from its path ($HQ_DATA/businesses/<slug>/…). */
+function styleFor(video: string): Style | null {
+  const m = /[\\/]businesses[\\/]([^\\/]+)[\\/]/.exec(path.resolve(video));
+  if (!m) return null;
+  try {
+    const s = JSON.parse(fs.readFileSync(path.join(businessDir(m[1]), "style.json"), "utf8"));
+    return validStyle(s) ? s : null;
+  } catch {
+    return null;
+  }
+}
+
 type Check = { name: string; ok: boolean; detail: string };
 
 function cmdCheck(video: string | undefined, hook?: string) {
@@ -253,6 +430,16 @@ function cmdCheck(video: string | undefined, hook?: string) {
   checks.push({ name: "format", ok: Boolean(shape), detail: `${p.w}x${p.h}${shape ? ` (${shape})` : " — not a known format"}` });
   checks.push({ name: "duration", ok: p.duration >= 3 && p.duration <= 600, detail: `${p.duration.toFixed(2)} s` });
   checks.push({ name: "audio", ok: p.hasAudio, detail: p.hasAudio ? "present" : "missing" });
+  // The picture must not outlast the sound (a frozen, silent tail reads as a broken video).
+  const streams = run("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type,duration", "-of", "csv=p=0", video], { quiet: true }).stdout;
+  const vDur = Number(/video,([\d.]+)/.exec(streams)?.[1]);
+  const aDur = Number(/audio,([\d.]+)/.exec(streams)?.[1]);
+  if (Number.isFinite(vDur) && Number.isFinite(aDur))
+    checks.push({ name: "picture ends with the sound", ok: vDur - aDur <= 0.3, detail: `video ${vDur.toFixed(2)} s, audio ${aDur.toFixed(2)} s` });
+  // A rotation tag on a render means players turn it again: upright frames come out sideways.
+  const rot = run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream_side_data=rotation", "-of", "csv=p=0", video], { quiet: true }).stdout.trim();
+  const turned = rot !== "" && Number(rot) % 360 !== 0;
+  checks.push({ name: "no rotation tag", ok: !turned, detail: turned ? `tagged ${rot}°: players will turn it sideways` : "none" });
 
   const loud = run("ffmpeg", ["-hide_banner", "-nostats", "-i", video, "-af", "ebur128", "-f", "null", "-"], { quiet: true });
   const lufs = Number(/I:\s+(-?[\d.]+) LUFS/.exec(loud.stderr.split("Summary:").pop() ?? "")?.[1]);
@@ -272,9 +459,19 @@ function cmdCheck(video: string | undefined, hook?: string) {
   run("ffmpeg", ["-y", "-v", "error", "-i", video, "-vf", `fps=1/${every.toFixed(3)},scale=360:-2,tile=3x3:padding=6:color=black`, "-frames:v", "1", sheet]);
   checks.push({ name: "contact sheet", ok: fs.existsSync(sheet), detail: sheet });
 
+  // A sped-up render is heard at its natural pace: slow it back down before transcribing.
+  // The render map records the speed it was made at (a spec may inherit the business's); else the spec's.
+  const specNear = path.join(path.dirname(video), "spec.json");
+  const speed = (() => {
+    try {
+      return readMap(video)?.speed || Number(JSON.parse(fs.readFileSync(specNear, "utf8")).speed) || 1;
+    } catch {
+      return 1;
+    }
+  })();
   // The hook must actually be said or shown in the first seconds: re-read the opening.
-  const opening = transcribe(video, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "hq-qa-")))
-    .filter((w) => w.start < 4)
+  const opening = transcribe(video, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "hq-qa-")), 1 / speed)
+    .filter((w) => w.start < 4 * speed)
     .map((w) => w.w)
     .join(" ");
   checks.push({ name: "opening words", ok: opening.length > 0, detail: opening || "(nothing said in the first 4 s)" });
@@ -294,7 +491,7 @@ function cmdCheck(video: string | undefined, hook?: string) {
         .flatMap((g) => (src[g.source] ?? []).filter((w) => (w.start + w.end) / 2 >= g.start && (w.start + w.end) / 2 <= g.end))
         .map((w) => norm(w.w))
         .filter(Boolean);
-      const got = transcribe(video, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "hq-qa-"))).map((w) => norm(w.w)).filter(Boolean);
+      const got = transcribe(video, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "hq-qa-")), 1 / speed).map((w) => norm(w.w)).filter(Boolean);
       const score = expected.length ? lcs(expected, got) / expected.length : 1;
       const missing = expected.filter((w) => !got.includes(w));
       checks.push({
@@ -303,6 +500,14 @@ function cmdCheck(video: string | undefined, hook?: string) {
         detail: `${Math.round(score * 100)}% of ${expected.length} expected words heard in the render${missing.length ? ` (missing: ${missing.slice(0, 8).join(" ")})` : ""}`,
       });
     }
+  }
+
+  // Against the niche's winners (style.json from /hq:style): advisory, never a fail. At playback speed.
+  const style = styleFor(video);
+  if (style) {
+    const words = transcribe(video, "small.en", fs.mkdtempSync(path.join(os.tmpdir(), "hq-qa-")));
+    const m = paceStats(p.duration, sceneCuts(video), words);
+    for (const c of compareToStyle(m, style.targets)) checks.push({ name: "style", ok: true, detail: `${c.off ? "⚠ " : ""}${c.line}` });
   }
 
   const ok = checks.every((c) => c.ok);
@@ -346,16 +551,144 @@ function lcs(a: string[], b: string[]): number {
   return dp[b.length];
 }
 
-function cmdNewJob(slug: string | undefined, title: string | undefined) {
+function newJob(slug: string | undefined, title: string | undefined): string {
   const profile = (slug ? getProfile(slug) : null) ?? die(`no such business: ${slug ?? "(none)"}`);
   if (!title) die("usage: new-job <slug> <title>");
   const { date, time } = stamp(profile);
   const dir = path.join(businessDir(profile.slug), "studio", `${date}-${time}-${slugify(title)}`);
   fs.mkdirSync(dir, { recursive: true });
-  console.log(dir);
+  return dir;
+}
+
+function cmdNewJob(slug: string | undefined, title: string | undefined) {
+  console.log(newJob(slug, title));
+}
+
+/** A job whose master.mp4 is the teleprompter's kept takes joined in script order. The takes stay
+ *  where the teleprompter saved them; sections.json records where each one starts in the master. */
+function cmdFromTeleprompter(slug: string | undefined, folder: string | undefined, title: string | undefined) {
+  if (!slug || !folder) die("usage: from-teleprompter <slug> <script-folder> [title]");
+  const dir = path.resolve(folder.replace(/^~(?=\/)/, HOME));
+  if (!fs.existsSync(dir)) die(`no such folder: ${dir}`);
+  const takes = readTakes(dir);
+  for (const w of takes.warnings) console.error(`warning: ${w}`);
+  if (takes.problems.length) die(`can't build the master:\n  ${takes.problems.join("\n  ")}`);
+  if (!takes.sections.length) die(`no kept takes in ${dir}`);
+  const job = newJob(slug, title || path.basename(dir).replace(/^\d+-/, ""));
+  const master = path.join(job, "master.mp4");
+  run("ffmpeg", concatArgs(takes.sections.map((s) => s.file), master));
+  let at = 0;
+  const sections = takes.sections.map((s) => {
+    const d = probe(s.file).duration;
+    const row = { section: s.section, take: s.take, source: s.file, start: Number(at.toFixed(3)), duration: Number(d.toFixed(3)) };
+    at += d;
+    return row;
+  });
+  fs.writeFileSync(path.join(job, "sections.json"), JSON.stringify({ from: dir, sections }, null, 2) + "\n");
+  const m = probe(master);
+  console.log(JSON.stringify({ job, master, sections: sections.length, duration: Number(m.duration.toFixed(2)), size: `${m.w}x${m.h}`, warnings: takes.warnings }, null, 2));
+}
+
+// ---------------------------------------------------------------- the review page's "Apply edits"
+
+/** Renders a spec in a child process (the review server must keep answering meanwhile), then runs QA on each
+ *  output. Rejects only if the render fails; returns the QA verdicts as one line. */
+function renderInChild(specFile: string): Promise<string> {
+  const self = new URL(import.meta.url).pathname;
+  const tsx = path.join(path.dirname(self), "..", "node_modules", "tsx", "dist", "cli.mjs");
+  const go = (args: string[]) =>
+    new Promise<{ code: number; out: string }>((resolve) => {
+      const child = spawn(process.execPath, [tsx, self, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+      let out = "";
+      child.stdout.on("data", (c) => (out += c));
+      child.stderr.on("data", (c) => (out += c));
+      child.on("close", (code) => resolve({ code: code ?? 1, out }));
+    });
+  return go(["render", specFile]).then(async (r) => {
+    if (r.code !== 0) throw new Error(r.out.trim().split("\n").find((l) => l.startsWith("studio:"))?.replace(/^studio: /, "") ?? "the render failed");
+    const outs = [...r.out.matchAll(/^rendered (.+)$/gm)].map((m) => m[1]);
+    const hook = (() => {
+      try {
+        return JSON.parse(fs.readFileSync(specFile, "utf8")).hook?.text as string | undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+    const verdicts: string[] = [];
+    for (const o of outs) {
+      const c = await go(["check", o, ...(hook ? ["--hook", hook] : [])]);
+      const failed = c.out.split("\n").filter((l) => l.startsWith("✗")).map((l) => l.replace(/^✗\s+/, "").replace(/\s{2,}/g, ": "));
+      verdicts.push(failed.length ? `QA failed on ${path.basename(o)}: ${failed.join("; ")}` : `QA passed (${path.basename(o)})`);
+    }
+    return verdicts.join(" · ");
+  });
 }
 
 // ---------------------------------------------------------------- main
+
+/** The post's cover: the frame the owner picked in the planner (or `at`, or a third of the way in), taken from
+ *  the clean source through the render map so no caption or hook is burned in, with the day and title on top,
+ *  inside the profile grid's 3:4 crop. Writes <video>.cover.jpg (full size, for Instagram's cover_url and
+ *  WoopSocial's TikTok cover). */
+function cmdCover(video: string, text: { day: string; title: string }, at?: number, face?: number): string {
+  const v = path.resolve(video);
+  const p = probe(v);
+  const root = path.join(hqData(), "businesses");
+  const planned = readPlans(root).flatMap((pl) => pl.items).find((it) => path.resolve(root, it.v) === v)?.cover;
+  const t = at ?? planned ?? Math.min(p.duration / 3, 1);
+  const map = readMap(v);
+  let src = v;
+  let time = t;
+  let brand = DEFAULT_BRAND;
+  let faceY = 0.5;
+  if (map) {
+    const spec = JSON.parse(fs.readFileSync(map.spec, "utf8")) as EditSpec;
+    const hit = sourceAt(map.pieces, map.speed, t);
+    if (!hit) die(`cover: ${t}s is past the end of ${path.basename(v)}`);
+    src = spec.sources[hit.source];
+    time = hit.time;
+    if (spec.business) brand = loadBrand(spec.business);
+    if (typeof spec.faceY === "number") faceY = spec.faceY;
+    if (face !== undefined) faceY = face; // this frame's own face height, when the shot moved
+  } else console.log("no render map beside the video: the cover frame comes from the render itself (captions included)");
+  const dims = { w: p.w, h: p.h };
+  const ass = v.replace(/\.mp4$/i, ".cover.ass");
+  const colours = { font: brand.font, primary: brand.primary, outline: brand.outline, highlight: brand.highlight };
+  const series = brand.cover?.style === "series" && dims.h > dims.w;
+  const out = v.replace(/\.mp4$/i, ".cover.jpg");
+  const esc = (x: string) => x.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
+  const fit = `scale=${dims.w}:${dims.h}:force_original_aspect_ratio=increase,crop=${dims.w}:${dims.h},setsar=1`;
+  const [top, bottom] = gridCropOf(dims);
+  const subs = `subtitles='${esc(ass)}':fontsdir='${esc(brand.fontsDir)}'`;
+  let graph: string;
+  if (series) {
+    // Series: move the face down to sit between the day number and the title boxes, darken the space that
+    // opens above it, and a light vignette for the moody look.
+    fs.writeFileSync(ass, buildSeriesCoverAss(dims, colours, { ...text, header: brand.cover?.header, sub: brand.cover?.sub, headerHighlight: brand.cover?.headerHighlight }));
+    // The photo shrinks to 82% on a blurred, darkened copy of itself, its face centred at 50% of the height.
+    const k = 0.82;
+    const pw = Math.round((dims.w * k) / 2) * 2, ph = Math.round((dims.h * k) / 2) * 2;
+    const px0 = Math.round((dims.w - pw) / 2);
+    const py0 = Math.round(dims.h * 0.52 - faceY * ph);
+    const fadeH = Math.max(top + Math.round(dims.h * 0.2), py0 + Math.round(ph * 0.12));
+    graph =
+      `[0:v]${fit},split[a][b];[a]boxblur=30:2,eq=brightness=-0.22[bg];[b]scale=${pw}:${ph},eq=brightness=-0.03:saturation=1.05,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*min(1,min(min(X,W-X)/90,min(Y,H-Y)/140))'[fg];` +
+      `[bg][fg]overlay=${px0}:${py0},vignette=PI/4.5[base];` +
+      `color=c=black:s=${dims.w}x${fadeH},format=rgba,geq=r=0:g=0:b=0:a='215*pow(1-Y/H,1.3)'[fade];` +
+      `[base][fade]overlay=0:0,${subs}`;
+  } else {
+    // Simple: the face's centre is the spec's faceY (else the middle): keep the words above the top of the head.
+    const above = Math.round(dims.h * (faceY - 0.13));
+    fs.writeFileSync(ass, buildCoverAss(dims, colours, text, { above }));
+    // A soft dark fade from the top of the grid tile down, so the words stand off the face behind them.
+    const fadeH = top + Math.round((bottom - top) * 0.5); // from the frame's top edge: no seam on the full-size video
+    graph = `[0:v]${fit}[base];color=c=black:s=${dims.w}x${fadeH},format=rgba,geq=r=0:g=0:b=0:a='170*pow(1-Y/H,1.6)'[fade];[base][fade]overlay=0:0,${subs}`;
+  }
+  run("ffmpeg", ["-y", "-v", "error", "-ss", time.toFixed(3), "-i", src, "-frames:v", "1", "-filter_complex", graph, "-q:v", "2", out]);
+  fs.rmSync(ass, { force: true });
+  console.log(`cover ${out}  (frame at ${t.toFixed(2)}s of the render${src !== v ? `, ${time.toFixed(2)}s of ${path.basename(src)}` : ""}${planned !== undefined && at === undefined ? ", the planner's pick" : ""})`);
+  return out;
+}
 
 const [cmd, ...args] = process.argv.slice(2);
 const opt = (name: string) => {
@@ -379,7 +712,60 @@ switch (cmd) {
   case "new-job":
     cmdNewJob(pos[0], pos.slice(1).join(" "));
     break;
+  case "from-teleprompter":
+    cmdFromTeleprompter(pos[0], pos[1], pos.slice(2).join(" "));
+    break;
+  case "review": {
+    const root = path.resolve(pos[0] ?? path.join(hqData(), "businesses"));
+    const port = Number(opt("--port") ?? 8794);
+    serveReview({ root, port, title: "HQ Studio review", render: renderInChild }).on("listening", () =>
+      console.log(`review page: http://127.0.0.1:${port}  (videos under ${root}; Ctrl-C to stop)`));
+    break;
+  }
+  case "notes": {
+    const target = path.resolve(pos[0] ?? die("usage: notes <video|folder> [--all]"));
+    const all = args.includes("--all");
+    if (fs.statSync(target).isDirectory()) {
+      const withNotes = listVideos(target).filter((v) => (all ? v.total : v.open));
+      if (!withNotes.length) console.log(`no ${all ? "" : "open "}review notes under ${target}`);
+      for (const v of withNotes) console.log(formatNotes(path.join(target, v.v), readNotes(path.join(target, v.v)), all) + "\n");
+    } else console.log(formatNotes(target, readNotes(target), all));
+    break;
+  }
+  case "apply-edits": {
+    const video = path.resolve(pos[0] ?? die("usage: apply-edits <video>"));
+    const e = readEdits(video);
+    console.log(`applying ${e.cuts.length} cut(s)${e.speed !== undefined ? `, export speed ${e.speed}x` : ""} to ${path.basename(video)} …`);
+    applyEdits(video, renderInChild).then(
+      (r) => console.log(`done: ${r.removed}s cut${r.speed ? `, now ${r.speed}x` : ""}${r.droppedCutaways.length ? `; dropped cutaways: ${r.droppedCutaways.join(", ")}` : ""}${r.qa ? `\n${r.qa}` : ""}`),
+      (err) => die(err instanceof Error ? err.message : String(err)),
+    );
+    break;
+  }
+  case "cover": {
+    const v = pos[0] ?? die('usage: cover <video> --day "Day 2" --title "My own ManyChat" [--at <seconds>]');
+    const day = opt("--day") ?? die("cover: --day is required");
+    const title = opt("--title") ?? die("cover: --title is required");
+    const at = opt("--at");
+    const face = opt("--face");
+    if (face !== undefined && !(Number(face) > 0 && Number(face) < 1)) die("cover: --face is the face centre as a fraction of the height (0 to 1)");
+    cmdCover(v, { day, title }, at === undefined ? undefined : Number(at), face === undefined ? undefined : Number(face));
+    break;
+  }
+  case "measure":
+    cmdMeasure(pos[0], opt("--outlier"), opt("--dir"));
+    break;
+  case "style":
+    cmdStyle(pos[0], pos.slice(1), opt("--niche"));
+    break;
+  case "notes-fixed": {
+    const [video, id, ...fix] = pos;
+    if (!video || !id) die('usage: notes-fixed <video> <note-id> "<what changed>"');
+    const n = updateNote(path.resolve(video), id, { status: "fixed", fix: fix.join(" ") || undefined });
+    console.log(`fixed [${n.id}] ${n.text}`);
+    break;
+  }
   default:
-    console.log(fs.readFileSync(new URL(import.meta.url), "utf8").split("\n").slice(0, 10).join("\n").replace(/^\/\/ ?/gm, ""));
+    console.log(fs.readFileSync(new URL(import.meta.url), "utf8").split("\n").filter((l, i, all) => all.slice(0, i + 1).every((x) => x.startsWith("//"))).join("\n").replace(/^\/\/ ?/gm, ""));
     if (cmd && cmd !== "help") process.exit(1);
 }

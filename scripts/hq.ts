@@ -8,7 +8,7 @@
 // Services     services init · services add-defaults · services install · services status · services start · services stop · services uninstall
 // Publishing   connections save <file.json|-> · connections show · publishing <slug> · log-post <slug> <post.json|->
 // Competitors  competitors sync <slug> · competitors changes <slug> [--days N] [--json] · competitors log <slug> <name> <file|-> · competitors recheck <slug>
-// Tools        finance init <slug>
+// Tools        finance init <slug> · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug>
 // Health       doctor
 //
 // Never reads .env files. Secrets it creates (the restic password) go straight
@@ -21,9 +21,13 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
+import { keptTakeFiles, TELEPROMPTER_APP, TELEPROMPTER_TAKES } from "../lib/studio/teleprompter";
+import { excludedFromBackup, realRun, resticExcludeArgs, stageServiceData, type ServiceBackup, type StageOps } from "../lib/backup";
 import { backupIsExternal } from "../lib/ceo";
+import { runScorecard, scorecardState } from "../lib/scorecard";
+import { formatValue, scorecardRows } from "../lib/scorecard-metrics";
 import { validateProfile } from "../lib/profile";
-import { PLATFORMS, channelStatuses, resolveRoute } from "../lib/publishing";
+import { PLATFORMS, captionProblems, channelStatuses, resolveRoute } from "../lib/publishing";
 import { WATCHER_KEYCHAIN, WATCHER_URL, competitorFromTitle, competitorNoteHead, recentChanges, shortUrl, watchTag, watchTargets, type WatchRow } from "../lib/competitors";
 import {
   businessDir,
@@ -159,6 +163,10 @@ function keychainHasPassword(): boolean {
 function backupPaths(): string[] {
   const paths = new Set([hqData()]);
   for (const p of listBusinesses().profiles) if (path.isAbsolute(p.vault.path)) paths.add(p.vault.path);
+  // The teleprompter's scripts are git-ignored in its public repo, and its takes live outside HQ_DATA:
+  // back up the scripts and only the takes the owner kept (choices.json), never the discards.
+  paths.add(path.join(TELEPROMPTER_APP, "scripts"));
+  for (const f of keptTakeFiles()) paths.add(f);
   return [...paths].filter((p) => fs.existsSync(p));
 }
 
@@ -187,13 +195,17 @@ function cmdBackupInit(repoArg?: string) {
 function cmdBackupRun() {
   const cfg = readConfig();
   const repository = cfg.backup?.repository ?? die("no backup configured — run: npm run hq -- backup init");
+  // Live databases first: copied somewhere consistent under $HQ_DATA/service-data, which restic then takes.
+  const staging = stageServiceData(readServices(), liveStageOps);
+  for (const r of staging) console.log(`${r.ok ? (r.skipped ? "-" : "✓") : "✗"} stage ${r.label}: ${r.detail}`);
+  writeConfig({ ...readConfig(), backup: { ...readConfig().backup!, lastStaging: { at: new Date().toISOString(), results: staging } } });
   const paths = backupPaths();
   // Recorded BEFORE restic starts: a file changed while the backup runs may or may not be
   // in the snapshot, so the restore test must treat anything newer than this as "edited since".
   const startedAt = new Date().toISOString();
   const r = spawnSync(
     restic(),
-    ["backup", "--json", "--tag", "hq", "--exclude", "*.tmp", "--exclude", ".DS_Store", "--exclude", "*/studio/*.mp4", "--exclude", "*/studio/*/*.mp4", "--exclude", "*/studio/*/*/*.mp4", "--exclude", "*/studio/**/*.aiff", "--exclude", "*/studio/**/*.wav", "--exclude", path.join(hqData(), "logs"), ...paths],
+    ["backup", "--json", "--tag", "hq", ...resticExcludeArgs(hqData()), ...paths],
     { env: resticEnv(repository), encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   );
   if (r.status !== 0) die(`restic backup failed:\n${r.stderr}`);
@@ -208,9 +220,9 @@ function cmdBackupRun() {
     env: resticEnv(repository),
     stdio: "ignore",
   });
-  writeConfig({ ...readConfig(), backup: { ...cfg.backup!, lastSnapshot: { id: summary.snapshot_id, at: startedAt } } });
+  writeConfig({ ...readConfig(), backup: { ...readConfig().backup!, lastSnapshot: { id: summary.snapshot_id, at: startedAt } } });
   console.log(
-    `snapshot ${summary.snapshot_id.slice(0, 8)}: ${summary.total_files_processed} files, ${Math.round((summary.data_added ?? 0) / 1024)} KiB new, paths: ${paths.join(", ")}`,
+    `snapshot ${summary.snapshot_id.slice(0, 8)}: ${summary.total_files_processed} files, ${Math.round((summary.data_added ?? 0) / 1024)} KiB new, paths: ${paths.filter((p) => !p.startsWith(TELEPROMPTER_TAKES)).join(", ")}${paths.some((p) => p.startsWith(TELEPROMPTER_TAKES)) ? ` + ${paths.filter((p) => p.startsWith(TELEPROMPTER_TAKES) && p.endsWith(".mp4")).length} kept teleprompter takes` : ""}`,
   );
 }
 
@@ -219,11 +231,14 @@ function sha256(file: string) {
 }
 
 function walk(dir: string, out: string[] = []): string[] {
+  if (fs.statSync(dir).isFile()) {
+    if (!excludedFromBackup(dir, hqData())) out.push(dir); // a single file named in backupPaths
+    return out;
+  }
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
-    if (e.isDirectory()) {
-      if (p !== path.join(hqData(), "logs")) walk(p, out);
-    } else if (e.isFile() && !e.name.endsWith(".tmp") && e.name !== ".DS_Store") out.push(p);
+    if (e.isDirectory()) walk(p, out);
+    else if (e.isFile() && !excludedFromBackup(p, hqData())) out.push(p);
   }
   return out;
 }
@@ -293,6 +308,8 @@ type Service = {
   /** launchd StartCalendarInterval, for jobs rather than daemons. */
   schedule?: { Hour?: number; Minute?: number; Weekday?: number };
   port?: number;
+  /** How the nightly backup captures this service's live data (lib/backup.ts). */
+  backup?: ServiceBackup;
 };
 
 const servicesFile = () => path.join(hqData(), "services.json");
@@ -316,6 +333,7 @@ function defaultServices(): Service[] {
   const vardir = (...p: string[]) => path.join(HOME, ".local", "var", ...p);
   const services: Service[] = [
     { label: "com.hq.web", description: "HQ site on 127.0.0.1:3150", program: [node, "start"], cwd: hqRoot(), keepAlive: true, port: 3150 },
+    { label: "com.hq.review", description: "Studio review page on 127.0.0.1:8794: watch renders, note what looks wrong", program: [node, "run", "studio", "--", "review"], cwd: hqRoot(), keepAlive: true, port: 8794 },
     {
       label: "com.hq.backup",
       description: "Nightly restic backup of HQ data, weekly restore test",
@@ -324,17 +342,34 @@ function defaultServices(): Service[] {
       keepAlive: false,
       schedule: { Hour: 2, Minute: 30 },
     },
+    {
+      label: "com.hq.scorecard",
+      description: "Daily growth scorecard refresh for every connected business",
+      program: [node, "run", "hq", "--", "scorecard", "refresh", "--all"],
+      cwd: hqRoot(),
+      keepAlive: false,
+      schedule: { Hour: 6, Minute: 0 },
+    },
   ];
   const postiz = path.join(HOME, "postiz-app");
   const pg = opt("pg17", "package", "native", "bin", "postgres");
   if (fs.existsSync(postiz) && fs.existsSync(pg)) {
     const data = vardir("postiz");
     services.push(
-      { label: "com.hq.postiz.postgres", description: "Postgres for Postiz (and Listmonk)", program: [pg, "-D", path.join(data, "pg"), "-p", "5432", "-k", "/tmp"], keepAlive: true, port: 5432 },
+      {
+        label: "com.hq.postiz.postgres",
+        description: "Postgres for Postiz (and Listmonk)",
+        program: [pg, "-D", path.join(data, "pg"), "-p", "5432", "-k", "/tmp"],
+        keepAlive: true,
+        port: 5432,
+        // launchd's SIGTERM is Postgres's "smart" shutdown, which waits on Postiz's pooled
+        // connections until launchd SIGKILLs it; pg_ctl's fast mode shuts down cleanly in ~1 s.
+        backup: { cold: path.join(data, "pg"), lock: "postmaster.pid", fastStop: [path.join(path.dirname(pg), "pg_ctl"), "stop", "-D", path.join(data, "pg"), "-m", "fast", "-w", "-t", "30"] },
+      },
       {
         label: "com.hq.postiz.redis",
         description: "Redis for Postiz",
-        program: [opt("redis", "bin", "redis-server"), "--port", "6379", "--dir", data, "--daemonize", "no"],
+        program: [opt("redis", "bin", "redis-server"), "--port", "6379", "--bind", "127.0.0.1", "--dir", data, "--daemonize", "no"],
         keepAlive: true,
         port: 6379,
       },
@@ -377,6 +412,52 @@ function defaultServices(): Service[] {
       env: { UPTIME_KUMA_HOST: "127.0.0.1", UPTIME_KUMA_PORT: "3001", DATA_DIR: vardir("uptime-kuma") + "/" },
       keepAlive: true,
       port: 3001,
+      backup: { sqlite: vardir("uptime-kuma", "kuma.db") },
+    });
+  }
+  // Twenty CRM: its own Postgres and Redis (Postiz's Postgres needs a superuser password HQ doesn't
+  // hold, and Twenty flushes its Redis on start). Secrets are read from the Keychain by twenty.sh.
+  if (fs.existsSync(opt("twenty", "src", "packages", "twenty-server", "dist", "main.js")) && fs.existsSync(vardir("twenty", "pg"))) {
+    const pgBin = opt("pg17", "package", "native", "bin");
+    const pgData = vardir("twenty", "pg");
+    const twenty = path.join(hqRoot(), "scripts", "twenty.sh");
+    services.push(
+      {
+        label: "com.hq.twenty.postgres",
+        description: "Postgres for Twenty CRM on 127.0.0.1:5433",
+        program: [path.join(pgBin, "postgres"), "-D", pgData, "-p", "5433", "-k", "/tmp", "-c", "listen_addresses=127.0.0.1"],
+        keepAlive: true,
+        port: 5433,
+        backup: { cold: pgData, lock: "postmaster.pid", fastStop: [path.join(pgBin, "pg_ctl"), "stop", "-D", pgData, "-m", "fast", "-w", "-t", "30"] },
+      },
+      {
+        label: "com.hq.twenty.redis",
+        description: "Redis for Twenty CRM on 127.0.0.1:6380",
+        program: [opt("redis", "bin", "redis-server"), "--port", "6380", "--bind", "127.0.0.1", "--dir", vardir("twenty", "redis"), "--daemonize", "no"],
+        keepAlive: true,
+        port: 6380,
+      },
+      { label: "com.hq.twenty", description: "Twenty CRM on 127.0.0.1:3020 (pipeline for Sales & Partnerships)", program: [twenty, "server"], cwd: hqRoot(), keepAlive: true, port: 3020 },
+      { label: "com.hq.twenty.worker", description: "Twenty CRM background worker", program: [twenty, "worker"], cwd: hqRoot(), keepAlive: true },
+    );
+  }
+  // VoiceStudio: its backend runs here so the desktop app attaches to it and its MCP (/mcp/) is always up.
+  // Built from source (the upstream Mac release is unsigned); binds 127.0.0.1 by default.
+  if (fs.existsSync(opt("voicestudio", "src", ".venv", "bin", "python"))) {
+    services.push({
+      label: "com.hq.voicestudio",
+      description: "VoiceStudio backend + MCP on 127.0.0.1:3900 (the app attaches to it)",
+      program: [opt("voicestudio", "src", ".venv", "bin", "python"), "main.py"],
+      cwd: opt("voicestudio", "src", "backend"),
+      env: {
+        OMNIVOICE_PORT: "3900",
+        // Renders go to disk, not into the agent's context; the base path is the MCP's file boundary.
+        OMNIVOICE_MCP_OUTPUT_MODE: "files",
+        OMNIVOICE_MCP_BASE_PATH: path.join(hqData(), "voicestudio"),
+      },
+      keepAlive: true,
+      port: 3900,
+      backup: { cold: path.join(HOME, "Library", "Application Support", "OmniVoice") },
     });
   }
   if (which("changedetection.io") && fs.existsSync(vardir("changedetection", "changedetection.json"))) {
@@ -409,14 +490,25 @@ function cmdServicesInit() {
   console.log(`wrote ${servicesFile()} with ${services.length} services: ${services.map((x) => x.label).join(", ")}`);
 }
 
-/** Add default services that aren't in services.json yet (e.g. a tool installed since init). Never edits existing ones. */
+/** Add default services that aren't in services.json yet (e.g. a tool installed since init), and give
+ *  existing ones a default `backup` spec they lack. Never changes a field that is already set. */
 function cmdServicesAddDefaults() {
   const current = readServices();
+  const defaults = new Map(defaultServices().map((x) => [x.label, x]));
+  const filled: string[] = [];
+  for (const s of current) {
+    const d = defaults.get(s.label);
+    if (d?.backup && !s.backup) {
+      s.backup = d.backup;
+      filled.push(s.label);
+    }
+  }
   const have = new Set(current.map((x) => x.label));
-  const added = defaultServices().filter((x) => !have.has(x.label));
-  if (!added.length) return console.log("services.json already has every default service");
+  const added = [...defaults.values()].filter((x) => !have.has(x.label));
+  if (!added.length && !filled.length) return console.log("services.json already has every default service");
   fs.writeFileSync(servicesFile(), JSON.stringify({ services: [...current, ...added] }, null, 2) + "\n");
-  console.log(`added: ${added.map((x) => x.label).join(", ")} — now run: services install`);
+  if (filled.length) console.log(`backup spec added to: ${filled.join(", ")}`);
+  if (added.length) console.log(`added: ${added.map((x) => x.label).join(", ")} — now run: services install`);
 }
 
 const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -475,6 +567,17 @@ function bootout(label: string) {
   for (let i = 0; i < 100 && loaded(label); i++) spawnSync("/bin/sleep", ["0.1"]);
   if (loaded(label)) die(`${label} is still loaded 10 s after bootout`);
 }
+
+const liveStageOps: StageOps = {
+  isLoaded: loaded,
+  unload: (label) => void spawnSync("/bin/launchctl", ["bootout", `gui/${uid()}/${label}`], { stdio: "ignore" }),
+  waitUnloaded: (label) => {
+    for (let i = 0; i < 300 && loaded(label); i++) spawnSync("/bin/sleep", ["0.1"]);
+    return !loaded(label);
+  },
+  start: bootstrap,
+  run: realRun,
+};
 
 function cmdServicesInstall() {
   const services = readServices();
@@ -690,6 +793,11 @@ async function cmdDoctor() {
   line(Boolean(b?.lastSnapshot), `last snapshot ${b?.lastSnapshot?.at ?? "never"}`, "npm run hq -- backup run");
   line(b?.lastRestoreTest?.ok === true, `last restore test ${b?.lastRestoreTest ? `${b.lastRestoreTest.ok ? "passed" : "FAILED"} ${b.lastRestoreTest.at}` : "never"}`, "npm run hq -- backup restore-test");
   line(fs.existsSync(servicesFile()), "services.json present", "npm run hq -- services init");
+  const staged = b?.lastStaging?.results ?? [];
+  if (staged.length) {
+    const bad = staged.filter((r) => !r.ok);
+    line(!bad.length, `service data staged for backup: ${staged.filter((r) => r.ok && !r.skipped).map((r) => r.label).join(", ") || "none yet"}`, bad.map((r) => `${r.label}: ${r.detail}`).join("; "));
+  }
 }
 
 // ---------------------------------------------------------------- main
@@ -761,6 +869,13 @@ async function main() {
       }
       if (pos[0] === "show" || !pos[0]) return cmdConnectionsShow();
       return die("connections: save <file.json|-> | show");
+    case "caption-check": {
+      // Hard rule: no em or en dashes in a caption. Exits 1 (and names the problem) when one is found.
+      const text = readInput(pos[0]);
+      const problems = captionProblems(text);
+      if (problems.length) return die(`caption refused: ${problems.join("; ")}`);
+      return console.log("caption ok: no em or en dashes");
+    }
     case "publishing":
       return cmdPublishing(pos[0]);
     case "log-post": {
@@ -799,6 +914,60 @@ async function main() {
       console.log(`ledger: ${file}${check ? (check.status === 0 ? " (bean-check: OK)" : `\n${check.stderr}${check.stdout}`) : ""}`);
       if (loaded("com.hq.fava")) spawnSync("/bin/launchctl", ["kickstart", "-k", `gui/${uid()}/com.hq.fava`], { stdio: "ignore" });
       return;
+    }
+    case "scorecard": {
+      if (pos[0] === "refresh") {
+        const slugs = flag("--all")
+          ? listBusinesses().profiles.filter((p) => p.demo || scorecardState(p.slug).connected).map((p) => p.slug)
+          : [pos[1] ?? die("scorecard refresh <slug> | --all")];
+        let failed = 0;
+        for (const slug of slugs) {
+          try {
+            const s = await runScorecard(slug);
+            console.log(`ok ${slug} ${s.snapshot?.weeks[0].week}${s.demo ? " (demo)" : ""}`);
+          } catch (e) {
+            failed++;
+            console.log(`failed ${slug}: ${e instanceof Error ? e.message : e}`);
+          }
+        }
+        if (failed) process.exit(1);
+        return;
+      }
+      if (pos[0] === "show") {
+        const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+        const s = scorecardState(p.slug);
+        if (!s.snapshot) return die(`${p.slug}: no scorecard yet${s.connected || s.demo ? "; run: scorecard refresh " + p.slug : " (no connection)"}`);
+        console.log(`${p.name} · ${s.snapshot.weeks[0].week} · observed ${s.snapshot.observedAt}${s.stale ? " · STALE" : ""}${s.failed ? " · LAST RUN FAILED" : ""}${s.demo ? " · demo" : ""}`);
+        for (const r of scorecardRows(s.snapshot))
+          console.log(`${r.lever.padEnd(7)} ${r.label.padEnd(32)} ${formatValue(r.unit, r.value, s.snapshot.currency).padStart(12)}  ${r.quality}${r.note && r.quality !== "exact" ? "  " + r.note : ""}`);
+        return;
+      }
+      if (pos[0] === "check-billing") {
+        const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+        const file = path.join(hqData(), "businesses", p.slug, "scorecard-billing.json");
+        if (!fs.existsSync(file)) return die(`${p.slug}: no ${file} (see /guides/scorecard-billing)`);
+        const cfg = JSON.parse(fs.readFileSync(file, "utf8"));
+        const billing = await import("../templates/scorecard/billing-sources.mjs");
+        const tierIn = (map: Record<string, string[]>) => (v: string) => Object.entries(map ?? {}).find(([, ids]) => ([] as string[]).concat(ids).includes(v))?.[0] ?? null;
+        const tierByWord = (map: Record<string, string>) => (n: string) => Object.entries(map ?? {}).find(([, w]) => String(n).toLowerCase().includes(String(w).toLowerCase()))?.[0] ?? null;
+        let failed = 0;
+        if (cfg.stripe) {
+          try {
+            const s = await billing.fetchStripe({ keychainService: cfg.stripe.keychain, tierOf: tierIn(cfg.stripe.tiers), sinceMs: Date.now() - 30 * 86400e3, ignore: cfg.stripe.ignore });
+            const now = billing.cardNow(s.subs);
+            console.log(`stripe     ok  ${s.subs.length} subscriptions on your products, ${s.invoices.length} invoices in 30 days; paying ${JSON.stringify(now.byTier)}, trials ${now.trials}, set to cancel ${JSON.stringify(now.cancelling)}${now.discountsKnown ? "" : " (discounts unreadable)"}`);
+          } catch (e) { failed++; console.log(`stripe     FAILED  ${e instanceof Error ? e.message : e}`); }
+        } else console.log("stripe     not configured");
+        if (cfg.appStore) {
+          try {
+            const a = await billing.fetchApple({ keychainService: cfg.appStore.keychain, keyId: cfg.appStore.keyId, issuerId: cfg.appStore.issuerId, vendorNumber: cfg.appStore.vendorNumber, tierOf: tierByWord(cfg.appStore.tiers) });
+            console.log(`app store  ok  report ${a.day}: paying ${JSON.stringify(a.byTier)}, trials ${a.trials}, billing retry ${a.retry}, grace ${a.grace}`);
+          } catch (e) { failed++; console.log(`app store  FAILED  ${e instanceof Error ? e.message : e}`); }
+        } else console.log("app store  not configured");
+        if (failed) process.exit(1);
+        return;
+      }
+      return die("scorecard: refresh <slug|--all> | show <slug> | check-billing <slug>");
     }
     case "doctor":
       return cmdDoctor();

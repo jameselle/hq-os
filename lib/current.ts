@@ -5,6 +5,6 @@ import { cookies } from "next/headers";
 
 export const BUSINESS_COOKIE = "hq.business";
 
-export function preferredBusiness(): string | null {
-  return cookies().get(BUSINESS_COOKIE)?.value ?? null;
+export async function preferredBusiness(): Promise<string | null> {
+  return (await cookies()).get(BUSINESS_COOKIE)?.value ?? null;
 }

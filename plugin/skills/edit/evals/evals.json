@@ -13,6 +13,33 @@
         "studio check passes",
         "Did not post"
       ]
+    },
+    {
+      "id": 2,
+      "prompt": "fix my review notes on <job>/promo-vertical.mp4",
+      "expected_output": "Every open note read with its frame still, fixed in the spec, re-rendered, QA passing, and each fixed note marked with what changed.",
+      "files": [],
+      "expectations": [
+        "Ran studio notes on the video",
+        "Read each note's frame image before editing",
+        "Changed the spec (or the job's words.json) rather than editing the video by hand",
+        "Re-rendered and studio check passes",
+        "Ran notes-fixed with a description for each fixed note",
+        "Left unfixable notes open and said why",
+        "Did not post"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "make the cover for <job>/day-2-vertical.mp4: Day 2, My own ManyChat",
+      "expected_output": "A cover.jpg beside the video from the clean source frame, the day and title inside the 3:4 grid crop and above the face, looked at before it's offered.",
+      "files": [],
+      "expectations": [
+        "Ran studio cover with --day and --title",
+        "Looked at the cover image (full size and the 3:4 crop) before offering it",
+        "No em or en dash in the cover text",
+        "Did not post"
+      ]
     }
   ]
 }

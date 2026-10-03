@@ -12,3 +12,7 @@ data/
 # skill eval workspaces
 *-workspace/
 .private-names
+test-results/
+playwright-report/
+# agent build workspaces (plans ledgers, review packages)
+.superpowers/

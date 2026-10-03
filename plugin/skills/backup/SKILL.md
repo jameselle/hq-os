@@ -14,8 +14,15 @@ description: >
 What's covered: `$HQ_DATA` (default `~/hq-data`: profiles, reviews, plans,
 services config, and the vaults that live inside HQ), plus any external vault a
 business profile points at. What's covered elsewhere: the framework code is on
-GitHub, and tool installs are reproducible with `/hq:add-tool`. What's not
-covered: tools' own databases (e.g. Postiz's Postgres). Say so if asked.
+GitHub, and tool installs are reproducible with `/hq:add-tool`. Tools' own
+databases are covered when their service in `services.json` has a `backup` spec:
+before restic runs, each is copied into `$HQ_DATA/service-data/<label>/` (the
+Postgres that holds Postiz and Listmonk is stopped for about a second and cloned;
+Uptime Kuma's SQLite is copied live once it exists). The run prints a `stage` line
+per service; a ✗ there means that service is on its last good copy. Studio
+renders (`*.mp4`, `*.aiff`, `*.wav` under `studio/`) are left out on purpose.
+Restoring a service's data means stopping the service and copying its staged
+folder back; ask the owner first.
 
 Run commands from `$HQ_ROOT` (default `~/business-os`).
 

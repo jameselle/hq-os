@@ -5,7 +5,9 @@
 import type { EditSpec, Format } from "./spec";
 
 export type Word = { w: string; start: number; end: number }; // seconds, source timeline
-export type Piece = { source: string; start: number; end: number; outStart: number };
+/** `seg`: the spec segment a piece came from. Gaps inside a segment are trimmed pauses; gaps between segments are
+ *  the owner's cuts. */
+export type Piece = { source: string; start: number; end: number; outStart: number; seg?: number };
 
 /** Split each segment at pauses longer than `maxPause`, keeping a little air either side.
  *  Pauses come from the audio's own silence (FFmpeg silencedetect) when available: whisper
@@ -15,7 +17,7 @@ export function keepPieces(spec: EditSpec, words: Record<string, Word[]>, silenc
   const pad = 0.15; // seconds of air kept either side of a cut
   const out: Piece[] = [];
   let t = 0;
-  for (const seg of spec.segments) {
+  for (const [segIdx, seg] of spec.segments.entries()) {
     // Gaps to remove inside this segment, as [start, end] on the source clock.
     let gaps: [number, number][] = [];
     if (maxPause > 0) {
@@ -38,7 +40,7 @@ export function keepPieces(spec: EditSpec, words: Record<string, Word[]>, silenc
     ranges.push([a, seg.end]);
     for (const [s0, e0] of ranges) {
       if (e0 - s0 < 0.05) continue;
-      out.push({ source: seg.source, start: round(s0), end: round(e0), outStart: round(t) });
+      out.push({ source: seg.source, start: round(s0), end: round(e0), outStart: round(t), seg: segIdx });
       t += e0 - s0;
     }
   }
@@ -49,30 +51,160 @@ export const outputDuration = (pieces: Piece[]) =>
   pieces.length ? round(pieces.at(-1)!.outStart + (pieces.at(-1)!.end - pieces.at(-1)!.start)) : 0;
 
 /** Words that survive the cut, re-timed onto the output clock. */
+/** Each join between pieces, with the source words said within `span` s of either side of it. */
+export function joinsOf(pieces: Piece[], words: Record<string, Word[]>, span = 0.6): Join[] {
+  return pieces.slice(1).map((p, i) => {
+    const prev = pieces[i];
+    const near = (src: string, t: number) => (words[src] ?? []).filter((w) => w.end >= t - span && w.start <= t + span).map((w) => w.w);
+    return { at: p.outStart, nearby: [...near(prev.source, prev.end), ...near(p.source, p.start)] };
+  });
+}
+
 export function outputWords(pieces: Piece[], words: Record<string, Word[]>): Word[] {
   const out: Word[] = [];
-  for (const p of pieces) {
+  pieces.forEach((p, k) => {
+    const next = pieces[k + 1];
+    // The pause trimmed between this piece and the next one from the same segment: whisper dates a sentence's
+    // last word late, sometimes inside that silence, though it was said just before it. It belongs here.
+    // A gap between two segments is a part the owner cut out: its words were never in the video.
+    const gapEnd = next && next.source === p.source && next.seg === p.seg && next.start > p.end ? next.start : p.end;
     for (const w of words[p.source] ?? []) {
-      // whisper can stretch a word across the pause after it: judge it by its first 0.8 s
-      const mid = (w.start + Math.min(w.end, w.start + 0.8)) / 2;
-      if (mid < p.start || mid > p.end) continue;
+      // whisper stretches a sentence's last word across the pause after it, so judge a word by when it starts
+      // (cuts only happen in silence): its midpoint can land in the trimmed pause and drop a word that's heard.
+      const at = w.start + Math.min(0.1, (Math.min(w.end, w.start + 0.8) - w.start) / 2);
+      if (at < p.start || at > gapEnd || (at > p.end && at >= gapEnd)) continue;
+      const len = p.end - p.start;
+      const start = at > p.end ? Math.max(0, len - Math.min(0.3, len / 2)) : Math.max(0, w.start - p.start);
       out.push({
         w: w.w,
-        start: round(p.outStart + Math.max(0, w.start - p.start)),
-        end: round(p.outStart + Math.min(p.end, w.end) - p.start),
+        start: round(p.outStart + start),
+        end: round(p.outStart + Math.max(start + 0.05, Math.min(p.end, w.end) - p.start)),
       });
     }
-  }
+  });
   return out;
 }
 
-/** Group words into short caption lines: at most `maxWords`, broken at sentence ends and long gaps. */
-export function captionLines(words: Word[], maxWords = 3, maxGap = 0.6): { text: string; start: number; end: number }[] {
-  const lines: { text: string; start: number; end: number }[] = [];
+export type CaptionLine = { text: string; start: number; end: number; words?: Word[] };
+
+/** Captions come from re-transcribing the finished cut (so the timing matches what's heard), but a second
+ *  pass can mishear a word the source transcript got right ("Or get a message" for "You'll get a message").
+ *  Align the two word by word; where a heard word stands one-for-one in place of a different expected word,
+ *  use the expected spelling with the heard timing. Extra or missing words are left as heard: only swaps change. */
+/** `joins`: where two pieces meet in the output, with the source's own words either side of the join.
+ *  A short word the cut's transcript has, the expected list lacks, starting at a join, and not said
+ *  anywhere near that join in the source, is a breath or a clipped syllable heard as a word: dropped.
+ *  (The expected list can miss a piece's first or last word, so "not expected" alone isn't enough.) */
+export type Join = { at: number; nearby: string[] };
+export function reconcileWords(heard: Word[], expected: string[], joins: Join[] = [], mode: "heard" | "source" = "heard"): Word[] {
+  if (mode === "source") return sourceWords(heard, expected);
+  const n = (s: string) => s.toLowerCase().replace(/[^a-z0-9$%']/g, "");
+  const a = heard.map((w) => n(w.w));
+  const b = expected.map(n);
+  // Edit distance table, then walk back from the end choosing match, swap, or skip.
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1), d[i - 1][j] + 1, d[i][j - 1] + 1);
+  const out = heard.map((w) => ({ ...w }));
+  const drop = new Set<number>();
+  const atJoin = (w: Word) => {
+    const k = n(w.w);
+    return k.length > 0 && k.length <= 3 && joins.some((j) => w.start >= j.at - 0.05 && w.start <= j.at + 0.4 && !j.nearby.map(n).includes(k));
+  };
+  let i = a.length;
+  let j = b.length;
+  while (i > 0 && j > 0) {
+    const same = a[i - 1] === b[j - 1];
+    if (d[i][j] === d[i - 1][j - 1] + (same ? 0 : 1)) {
+      if (!same) out[i - 1].w = expected[j - 1];
+      i--;
+      j--;
+    } else if (d[i][j] === d[i - 1][j] + 1) {
+      if (expected.length && atJoin(heard[i - 1])) drop.add(i - 1);
+      i--;
+    } else j--;
+  }
+  return drop.size ? out.filter((_, k) => !drop.has(k)) : out;
+}
+
+/** Source mode: the captions are exactly `expected` (a checked transcript), timed by what the cut heard. A heard
+ *  word with no counterpart is folded into its neighbour's time ("many" + "chat" both time "ManyChat"); an
+ *  expected word the cut didn't hear gets the time the cut spent there, or a share of the gap around it. */
+function sourceWords(heard: Word[], expected: string[]): Word[] {
+  if (!expected.length) return [];
+  if (!heard.length) return [];
+  const n = (x: string) => x.toLowerCase().replace(/[^a-z0-9$%']/g, "");
+  const a = heard.map((w) => n(w.w));
+  const b = expected.map(n);
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1), d[i - 1][j] + 1, d[i][j - 1] + 1);
+  const ops: [number | null, number | null][] = [];
+  let i = a.length;
+  let j = b.length;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && d[i][j] === d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)) ops.push([--i, --j]);
+    else if (i > 0 && (j === 0 || d[i][j] === d[i - 1][j] + 1)) ops.push([--i, null]);
+    else ops.push([null, --j]);
+  }
+  ops.reverse();
+  type Slot = { w: string; start: number | null; end: number | null };
+  const out: Slot[] = [];
+  let floating: { start: number; end: number } | null = null;
+  for (const [hi, ej] of ops) {
+    if (hi !== null && ej === null) {
+      const h = heard[hi];
+      const last = out.at(-1);
+      if (last && last.end !== null) last.end = Math.max(last.end, h.end); // an extra heard word belongs to the word before it
+      else floating = floating ? { start: floating.start, end: h.end } : { start: h.start, end: h.end };
+      continue;
+    }
+    const slot: Slot = { w: expected[ej!], start: null, end: null };
+    if (hi !== null) {
+      slot.start = heard[hi].start;
+      slot.end = heard[hi].end;
+    }
+    if (floating) {
+      if (slot.start === null) {
+        slot.start = floating.start;
+        slot.end = floating.end;
+      } else slot.start = Math.min(slot.start, floating.start);
+      floating = null;
+    }
+    out.push(slot);
+  }
+  // Words the cut didn't hear: share out the gap between their timed neighbours (or the previous word's time).
+  for (let k = 0; k < out.length; k++) {
+    if (out[k].start !== null) continue;
+    let m = k;
+    while (m < out.length && out[m].start === null) m++;
+    const prevEnd = k > 0 ? out[k - 1].end! : 0;
+    const nextStart = m < out.length ? out[m].start! : prevEnd + 0.3 * (m - k);
+    let from = prevEnd;
+    let to = nextStart;
+    if (to - from < 0.05 * (m - k) && k > 0) {
+      from = (out[k - 1].start! + out[k - 1].end!) / 2; // no gap: take the back half of the word before
+      out[k - 1].end = from;
+      to = Math.max(to, from + 0.05 * (m - k));
+    }
+    const step = (to - from) / (m - k);
+    for (let q = k; q < m; q++) {
+      out[q].start = from + step * (q - k);
+      out[q].end = from + step * (q - k + 1);
+    }
+    k = m - 1;
+  }
+  return out.map((o) => ({ w: o.w, start: o.start!, end: o.end! }));
+}
+
+/** Group words into short caption lines: at most `maxWords`, broken at sentence ends and long gaps.
+ *  Each line keeps its words, so the captions can reveal them one at a time. */
+export function captionLines(words: Word[], maxWords = 3, maxGap = 0.6): CaptionLine[] {
+  const lines: CaptionLine[] = [];
   let cur: Word[] = [];
   const flush = () => {
     if (!cur.length) return;
-    lines.push({ text: cur.map((w) => w.w).join(" "), start: cur[0].start, end: cur.at(-1)!.end });
+    lines.push({ text: cur.map((w) => w.w).join(" "), start: cur[0].start, end: cur.at(-1)!.end, words: cur });
     cur = [];
   };
   for (const w of words) {
@@ -89,7 +221,52 @@ export function captionLines(words: Word[], maxWords = 3, maxGap = 0.6): { text:
   return lines;
 }
 
-export type CaptionStyle = { font: string; primary: string; outline: string; highlight: string };
+/** `pop` (the default): words appear as they're spoken, the current one in the highlight colour with a
+ *  quick pop, like CapCut's auto captions. `none`: each line appears whole. */
+export type CaptionStyle = { font: string; primary: string; outline: string; highlight: string; animate?: "pop" | "none"; hook?: "text" | "box" };
+
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9$%]/g, "");
+
+/** Top-half cutaways wait for the hook to leave the screen (the hook sits in the top half too). A window that
+ *  would end before the hook does collapses to nothing (start = end) and is skipped by the renderer. */
+export function clearOfHook(windows: { start: number; end: number }[], hookEnd: number): { start: number; end: number }[] {
+  return windows.map((w) => (w.start >= hookEnd ? w : { start: hookEnd, end: Math.max(hookEnd, w.end) }));
+}
+
+/** Where each cutaway sits on the output timeline: from the start of the caption line holding its first
+ *  words to the end of the line holding its last words. Searched in order; each after the one before. */
+export function cutawayWindows(lines: CaptionLine[], cutaways: readonly { from: string; to: string; [extra: string]: unknown }[]): { start: number; end: number }[] {
+  const flat: { t: string; line: number }[] = [];
+  lines.forEach((l, i) => (l.words ?? l.text.split(/\s+/).map((w) => ({ w }))).forEach((w) => flat.push({ t: norm(w.w), line: i })));
+  const find = (phrase: string, from: number) => {
+    const want = phrase.split(/\s+/).map(norm).filter(Boolean);
+    for (let i = from; i + want.length <= flat.length; i++) if (want.every((w, k) => flat[i + k].t === w)) return [i, i + want.length - 1];
+    return null;
+  };
+  const out: { start: number; end: number }[] = [];
+  let cursor = 0;
+  cutaways.forEach((c, n) => {
+    const a = find(c.from, cursor);
+    if (!a) throw new Error(`cutaway ${n + 1}: couldn't find "${c.from}" in what the cut says (after the previous cutaway)`);
+    const b = find(c.to, a[0]);
+    if (!b) throw new Error(`cutaway ${n + 1}: couldn't find "${c.to}" after "${c.from}"`);
+    out.push({ start: lines[flat[a[0]].line].start, end: lines[flat[b[1]].line].end });
+    cursor = flat.findIndex((f) => f.line > flat[b[1]].line);
+    if (cursor < 0) cursor = flat.length;
+  });
+  return out;
+}
+
+/** An ffmpeg crop that pans across an image from one region to another, easing in and out, keeping the
+ *  panel's shape. Regions are [x, y, width] in image pixels. */
+export function panCrop(pan: { from: [number, number, number]; to: [number, number, number] }, panel: { w: number; h: number }, seconds: number): string {
+  const [x0, y0, w] = pan.from;
+  const [x1, y1, w1] = pan.to;
+  if (w !== w1) throw new Error("pan: from and to need the same width (the crop size can't change mid-shot)");
+  const h = Math.round((w * panel.h) / panel.w);
+  const ease = `(3*pow(min(t/${seconds},1),2)-2*pow(min(t/${seconds},1),3))`;
+  return `crop=${w}:${h}:'${x0}+(${x1}-${x0})*${ease}':'${y0}+(${y1}-${y0})*${ease}'`;
+}
 
 const assTime = (t: number) => {
   const cs = Math.max(0, Math.round(t * 100));
@@ -106,14 +283,73 @@ export const assColour = (hex: string) => {
   return `&H00${m[3]}${m[2]}${m[1]}`.toUpperCase();
 };
 
-const escapeAss = (t: string) => t.replace(/\\/g, "\\\\").replace(/\{/g, "(").replace(/\}/g, ")").replace(/\n/g, "\\N");
+/** No em or en dashes on screen, ever (the owner's rule): an em dash becomes a comma, an en dash a hyphen. */
+export const noDashes = (t: string) => t.replace(/\s*\u2014\s*/g, ", ").replace(/\u2013/g, "-");
+const escapeAss = (t: string) => noDashes(t).replace(/\\/g, "\\\\").replace(/\{/g, "(").replace(/\}/g, ")").replace(/\n/g, "\\N");
 
-/** An ASS subtitle file: bold word-group captions in the lower third, and the hook up top. */
+/** One caption line as a run of events, one per word. Words not yet spoken are fully transparent but still
+ *  laid out, so the line never shifts; spoken words are in the primary colour; the current word is in the
+ *  highlight colour and pops from 125% to full size. */
+function popEvents(line: CaptionLine, style: CaptionStyle): string[] {
+  const words = line.words!;
+  const primary = `\\1c${assColour(style.primary)}&`;
+  const highlight = `\\1c${assColour(style.highlight)}&`;
+  const events: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const start = i === 0 ? line.start : words[i].start;
+    const end = i < words.length - 1 ? words[i + 1].start : line.end;
+    if (end <= start) continue;
+    const text = words
+      .map((w, j) => {
+        const word = escapeAss(w.w.toUpperCase());
+        if (j < i) return `{${primary}\\alpha&H00&}${word}`;
+        if (j > i) return `{\\alpha&HFF&}${word}`;
+        return `{${highlight}\\alpha&H00&\\fscx125\\fscy125\\t(0,110,\\fscx100\\fscy100)}${word}`;
+      })
+      .join(" ");
+    events.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Caption,,0,0,0,,${text}`);
+  }
+  return events;
+}
+
+/** How far from the top the hook starts. Vertical: just inside the 3:4 tile Instagram and TikTok crop a
+ *  9:16 video to on the profile grid (they hide (h - w*4/3)/2 px above it), so the hook shows there too. */
+export function hookTop(format: { w: number; h: number }, fallback: number): number {
+  const { w, h } = format;
+  if (h <= w) return Math.round(h * fallback);
+  return Math.round((h - (w * 4) / 3) / 2 + h * 0.035);
+}
+
+/** The hook's style: "box" puts dark words on a filled highlight box; "text" is big outlined words. */
+function hookStyleLine(style: CaptionStyle, format: { w: number; h: number }, hookSize: number): string {
+  const { w, h } = format;
+  if ((style.hook ?? "box") === "box")
+    return `Style: Hook,${style.font},${hookSize},${assColour(style.outline)},${assColour(style.outline)},${assColour(style.highlight)},${assColour(style.highlight)},-1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,${Math.round(w * 0.07)},${Math.round(w * 0.07)},${hookTop(format, 0.1)},1`;
+  const size = Math.round(Math.min(w, h) * 0.092);
+  return `Style: Hook,${style.font},${size},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H64000000,-1,0,0,0,100,100,0,0,1,${Math.round(size / 7)},4,8,${Math.round(w * 0.06)},${Math.round(w * 0.06)},${hookTop(format, 0.09)},1`;
+}
+
+/** The hook's text: a box hook is plain; a text hook pops in, fades out, and colours `highlight`. */
+function hookText(hook: { text: string; highlight?: string }, style: CaptionStyle): string {
+  const text = escapeAss(hook.text);
+  if ((style.hook ?? "box") === "box") return text;
+  let body = text;
+  const hl = hook.highlight ? escapeAss(hook.highlight) : "";
+  const at = hl ? text.toLowerCase().indexOf(hl.toLowerCase()) : -1;
+  if (at >= 0)
+    body = `${text.slice(0, at)}{\\1c${assColour(style.highlight)}&}${text.slice(at, at + hl.length)}{\\1c${assColour(style.primary)}&}${text.slice(at + hl.length)}`;
+  return `{\\fad(0,200)\\fscx70\\fscy70\\t(0,160,\\fscx100\\fscy100)}${body}`;
+}
+
+/** An ASS subtitle file: bold word-group captions in the lower third, and the hook up top.
+ *  `seams`: output windows (cutaways) where captions move to the middle of the frame, on the seam
+ *  between the screen footage and the face. */
 export function buildAss(
   format: { w: number; h: number },
-  lines: { text: string; start: number; end: number }[],
+  lines: CaptionLine[],
   style: CaptionStyle,
-  hook?: { text: string; seconds?: number },
+  hook?: { text: string; seconds?: number; highlight?: string },
+  opts: { seams?: { start: number; end: number }[] | [number, number][] } = {},
 ): string {
   const { w, h } = format;
   const size = Math.round(Math.min(w, h) * 0.075);
@@ -129,14 +365,205 @@ ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Caption,${style.font},${size},${assColour(style.primary)},${assColour(style.highlight)},${assColour(style.outline)},&H80000000,-1,0,0,0,100,100,0,0,1,${Math.round(size / 9)},2,2,${Math.round(w * 0.08)},${Math.round(w * 0.08)},${marginV},1
-Style: Hook,${style.font},${hookSize},${assColour(style.outline)},${assColour(style.outline)},${assColour(style.highlight)},${assColour(style.highlight)},-1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,${Math.round(w * 0.07)},${Math.round(w * 0.07)},${Math.round(h * 0.1)},1
+${hookStyleLine(style, format, hookSize)}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
-  const events = lines.map((l) => `Dialogue: 0,${assTime(l.start)},${assTime(l.end)},Caption,,0,0,0,,${escapeAss(l.text.toUpperCase())}`);
-  if (hook) events.unshift(`Dialogue: 1,${assTime(0)},${assTime(hook.seconds ?? 3)},Hook,,0,0,0,,${escapeAss(hook.text)}`);
+  const pop = (style.animate ?? "pop") === "pop";
+  const seams = (opts.seams ?? []).map((s) => (Array.isArray(s) ? { start: s[0], end: s[1] } : s));
+  const onSeam = (t: number) => seams.some((s) => t >= s.start - 0.001 && t < s.end - 0.001);
+  const events = lines
+    .flatMap((l) =>
+      pop && l.words?.length
+        ? popEvents(l, style)
+        : [`Dialogue: 0,${assTime(l.start)},${assTime(l.end)},Caption,,0,0,0,,${escapeAss(l.text.toUpperCase())}`],
+    )
+    .map((e) => {
+      const f = e.split(",");
+      const [hh, mm, ss] = f[1].split(":");
+      const t = Number(hh) * 3600 + Number(mm) * 60 + Number(ss);
+      if (!onSeam(t)) return e;
+      const at = e.indexOf(",,0,0,0,,") + ",,0,0,0,,".length;
+      return `${e.slice(0, at)}{\\an5\\pos(${Math.round(w / 2)},${Math.round(h / 2)})}${e.slice(at)}`;
+    });
+  if (hook) events.unshift(`Dialogue: 1,${assTime(0)},${assTime(hook.seconds ?? 3)},Hook,,0,0,0,,${hookText(hook, style)}`);
   return header + events.join("\n") + "\n";
+}
+
+// ---------------------------------------------------------------- covers
+
+/** The part of a vertical video Instagram and TikTok show as its tile on the profile grid (3:4): [top, bottom]. */
+export function gridCrop(format: { w: number; h: number }): [number, number] {
+  const { w, h } = format;
+  if (h <= (w * 4) / 3) return [0, h];
+  const top = Math.round((h - (w * 4) / 3) / 2);
+  return [top, h - top];
+}
+
+/** Where a moment on a render came from: `t` seconds into the render (which plays at `speed`) → the source and
+ *  its time. Null past the end. */
+export function sourceAt(pieces: Piece[], speed: number, t: number): { source: string; time: number } | null {
+  const out = t * (speed || 1);
+  for (const p of pieces) {
+    if (out >= p.outStart && out < p.outStart + (p.end - p.start)) return { source: p.source, time: round(p.start + out - p.outStart) };
+  }
+  return null;
+}
+
+/** A cover title in at most two lines, split where the two halves come out most even. */
+export function coverLines(title: string): string[] {
+  const words = title.trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.join(" ").length <= 9) return [words.join(" ")];
+  let best = [words.join(" ")];
+  let worst = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const a = words.slice(0, i).join(" ");
+    const b = words.slice(i).join(" ");
+    const longest = Math.max(a.length, b.length);
+    if (longest < worst) {
+      worst = longest;
+      best = [a, b];
+    }
+  }
+  return best;
+}
+
+/** The cover's text as an ASS file over a still: the day in the highlight colour, the title under it in big
+ *  outlined words, all inside the profile grid's 3:4 crop. `above`: where the face starts (px); the words
+ *  shrink to end above it. Em and en dashes are refused, not swapped. */
+export function buildCoverAss(
+  format: { w: number; h: number },
+  style: Pick<CaptionStyle, "font" | "primary" | "outline" | "highlight">,
+  text: { day: string; title: string },
+  opts: { above?: number } = {},
+): string {
+  if (/[\u2013\u2014]/.test(text.day + text.title)) throw new Error("cover text: no em or en dashes");
+  const { w, h } = format;
+  const [top] = gridCrop(format);
+  const usable = w * 0.86;
+  const lines = coverLines(text.title);
+  // Arial Black capitals run about 0.78 em wide each: size the title so its longest line fits the width.
+  let daySize = Math.round(w * 0.135);
+  let titleSize = Math.min(Math.round(w * 0.15), Math.floor(usable / (Math.max(...lines.map((l) => l.length)) * 0.78)));
+  let y0 = top + Math.round(h * 0.045);
+  const blockEnd = () => y0 + Math.round(daySize * 1.15) + (lines.length - 1) * Math.round(titleSize * 1.05) + titleSize;
+  if (opts.above !== undefined && blockEnd() > opts.above) {
+    y0 = top + Math.round(h * 0.02);
+    const k = Math.max(0.5, (opts.above - y0) / (blockEnd() - y0));
+    daySize = Math.floor(daySize * k);
+    titleSize = Math.floor(titleSize * k);
+  }
+  const esc = (t: string) => t.replace(/\\/g, "\\\\").replace(/\{/g, "(").replace(/\}/g, ")");
+  const at = (y: number, size: number, colour: string, t: string) =>
+    `Dialogue: 0,0:00:00.00,0:00:10.00,Cover,,0,0,0,,{\\an8\\pos(${Math.round(w / 2)},${y})\\fs${size}\\bord${Math.round(size / 9)}\\1c${assColour(colour)}}${esc(t)}`;
+  const events = [at(y0, daySize, style.highlight, text.day.trim().toUpperCase())];
+  let y = y0 + Math.round(daySize * 1.15);
+  for (const l of lines) {
+    events.push(at(y, titleSize, style.primary, l));
+    y += Math.round(titleSize * 1.05);
+  }
+  return `[Script Info]
+ScriptType: v4.00+
+PlayResX: ${w}
+PlayResY: ${h}
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Cover,${style.font},${titleSize},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H64000000,-1,0,0,0,100,100,0,0,1,${Math.round(titleSize / 9)},5,8,0,0,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+${events.join("\n")}
+`;
+}
+
+/** A series cover (vertical): a header line with rules either side ("$5K IN 30 DAYS", one word in the highlight
+ *  colour) and a spaced subline, a huge "DAY n" with the number in the highlight colour over a brush stroke,
+ *  and the title in two boxes at the bottom (primary on outline, then outline on highlight). Everything sits
+ *  inside the 3:4 profile-grid crop; the photo is placed by the caller with the face between the day and the
+ *  title. Em and en dashes are refused. */
+export function buildSeriesCoverAss(
+  format: { w: number; h: number },
+  style: Pick<CaptionStyle, "font" | "primary" | "outline" | "highlight">,
+  text: { day: string; title: string; header?: string; sub?: string; headerHighlight?: string },
+): string {
+  const all = [text.day, text.title, text.header ?? "", text.sub ?? ""].join(" ");
+  if (/[\u2013\u2014]/.test(all)) throw new Error("cover text: no em or en dashes");
+  const { w, h } = format;
+  const [top, bottom] = gridCrop(format);
+  const s = w / 1080; // every size below is for a 1080-wide frame
+  const px = (n: number) => Math.round(n * s);
+  const esc = (t: string) => t.replace(/\\/g, "\\\\").replace(/\{/g, "(").replace(/\}/g, ")");
+  const c = (hex: string) => `\\1c${assColour(hex)}`;
+  const ev = (st: string, body: string) => `Dialogue: 0,0:00:00.00,0:00:10.00,${st},,0,0,0,,${body}`;
+  const events: string[] = [];
+  // Drawings are positioned at the top-left of the grid crop and use coordinates relative to it.
+  const draw = (colour: string, path: string) => ev("Shape", `{\\an7\\pos(0,${top})\\p1${c(colour)}\\bord0\\shad0}${path}{\\p0}`);
+  let y = top + px(30);
+  if (text.header) {
+    const size = px(66);
+    const head = esc(text.header.trim().toUpperCase());
+    const hl = text.headerHighlight ? esc(text.headerHighlight.toUpperCase()) : "";
+    const at = hl ? head.indexOf(hl) : -1;
+    const body = at >= 0 ? `${head.slice(0, at)}{${c(style.highlight)}}${hl}{${c(style.primary)}}${head.slice(at + hl.length)}` : head;
+    events.push(ev("Header", `{\\an8\\pos(${Math.round(w / 2)},${y})\\fs${size}${c(style.primary)}}${body}`));
+    const half = Math.min(w * 0.42, (head.length * 0.74 * size) / 2);
+    const ruleY = y - top + Math.round(size * 0.62);
+    const x1 = px(70), x2 = Math.round(w / 2 - half - px(28)), x3 = Math.round(w / 2 + half + px(28)), x4 = w - px(70);
+    if (x2 - x1 > px(40)) {
+      events.push(draw(style.primary, `m ${x1} ${ruleY} l ${x2} ${ruleY} l ${x2} ${ruleY + px(4)} l ${x1} ${ruleY + px(4)}`));
+      events.push(draw(style.primary, `m ${x3} ${ruleY} l ${x4} ${ruleY} l ${x4} ${ruleY + px(4)} l ${x3} ${ruleY + px(4)}`));
+    }
+    y += Math.round(size * 1.18);
+  }
+  if (text.sub) {
+    const size = px(32);
+    events.push(ev("Sub", `{\\an8\\pos(${Math.round(w / 2)},${y})\\fs${size}\\fsp${px(13)}${c(style.primary)}}${esc(text.sub.trim().toUpperCase())}`));
+    y += Math.round(size * 1.5);
+  }
+  // The day: "DAY" in the primary colour, the number in the highlight colour, as wide as the frame allows.
+  const m = /^(.*?)(\d+)\s*$/.exec(text.day.trim().toUpperCase());
+  const word = m ? m[1].trim() : text.day.trim().toUpperCase();
+  const num = m ? m[2] : "";
+  // Arial Black runs about 0.62 em per capital or digit at this size (a space about 0.3).
+  const daySize = Math.min(px(400), Math.floor((w * 0.9) / ((word.length + num.length) * 0.6 + 0.3)));
+  events.push(ev("Day", `{\\an8\\pos(${Math.round(w / 2)},${y - Math.round(daySize * 0.12)})\\fs${daySize}\\fscy118${c(style.primary)}}${esc(word)}${num ? ` {${c(style.highlight)}}${num}` : ""}`));
+  const brushY = y - top + Math.round(daySize * 1.02);
+  events.push(draw(style.highlight, `m ${px(110)} ${brushY + px(14)} l ${w - px(120)} ${brushY - px(10)} l ${w - px(104)} ${brushY + px(12)} l ${px(126)} ${brushY + px(38)}`));
+  // The title: two boxes at the bottom of the grid crop (one if the title is one line).
+  const lines = coverLines(text.title);
+  const fit = (t: string, max: number) => Math.min(max, Math.floor((w * 0.8) / (t.length * 0.68)));
+  const lowSize = fit(lines.at(-1)!, px(190));
+  const lowY = bottom - px(40) - Math.round(lowSize * 1.2);
+  if (lines.length === 2) {
+    const upSize = fit(lines[0], px(140));
+    events.push(ev("TitleTop", `{\\an8\\pos(${Math.round(w / 2)},${lowY - Math.round(upSize * 1.32)})\\fs${upSize}}${esc(lines[0])}`));
+  }
+  events.push(ev("TitleBottom", `{\\an8\\pos(${Math.round(w / 2)},${lowY})\\fs${lowSize}}${esc(lines.at(-1)!)}`));
+  const pad = px(18);
+  return `[Script Info]
+ScriptType: v4.00+
+PlayResX: ${w}
+PlayResY: ${h}
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Header,${style.font},${px(66)},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H80000000,-1,0,0,0,100,100,0,0,1,${px(4)},${px(3)},8,0,0,0,1
+Style: Sub,Arial,${px(32)},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H80000000,-1,0,0,0,100,100,0,0,1,${px(2)},${px(2)},8,0,0,0,1
+Style: Day,${style.font},${daySize},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H90000000,-1,0,0,0,100,100,-2,0,1,${px(6)},${px(8)},8,0,0,0,1
+Style: Shape,${style.font},20,${assColour(style.highlight)},${assColour(style.highlight)},${assColour(style.outline)},&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
+Style: TitleTop,${style.font},${px(112)},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},${assColour(style.outline)},-1,0,0,0,100,100,0,0,3,${pad},0,8,0,0,0,1
+Style: TitleBottom,${style.font},${px(140)},${assColour(style.outline)},${assColour(style.outline)},${assColour(style.highlight)},${assColour(style.highlight)},-1,0,0,0,100,100,0,0,3,${pad},0,8,0,0,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+${events.join("\n")}
+`;
 }
 
 /** The ffmpeg video filter that fits a source into the format. */

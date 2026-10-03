@@ -72,6 +72,8 @@ overwrites an existing business.
 4. Remind them: back up with `/hq:backup`, which covers the new business automatically.
 5. Run `/hq:connections` so the Content tab shows which of the new business's channels can post already.
 6. If there are no competitors in the profile, run `/hq:competitors setup`.
+7. Offer to set up the rest now with `/hq:setup`, which walks backups and then each department in order
+   from its guide (also readable in HQ at /guides).
 
 ## Rules
 

@@ -57,3 +57,13 @@ test("an account only counts when it's pinned or its name matches the handle, ne
   assert.equal(channelStatuses({ instagram: { handle: "@anything", account: "instagram_a" } }, snap, true)[0].state, "connected");
   assert.equal(channelStatuses({ instagram: "https://instagram.com/acme/" }, snap, true)[0].state, "connected");
 });
+
+test("captions never carry an em dash or an en dash (hard rule)", async () => {
+  const { captionProblems } = await import("../lib/publishing");
+  assert.deepEqual(captionProblems("Comment CLIP and I'll send you the tools. Day 2 drops tomorrow."), []);
+  assert.equal(captionProblems("Two tools — both free").length, 1);
+  assert.equal(captionProblems("2–3 days").length, 1);
+  assert.match(captionProblems("a—b–c")[0], /em dash/);
+  assert.equal(captionProblems("a—b–c").length, 2);
+  assert.deepEqual(captionProblems("hyphen-ated is fine"), []);
+});

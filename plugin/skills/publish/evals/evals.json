@@ -35,6 +35,18 @@
         "Showed an approval summary with account, caption and media",
         "Did not call INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH"
       ]
+    },
+    {
+      "id": 4,
+      "prompt": "(channels connected; <video>.cover.jpg exists) Post this reel to Instagram and TikTok. Dry run only.",
+      "expected_output": "Uses the cover on both: Instagram cover_url and WoopSocial cover; shows the cover in the approval summary; publishes nothing.",
+      "files": [],
+      "expectations": [
+        "Passed the cover as cover_url to the Instagram container",
+        "Uploaded the cover to WoopSocial and set it as the TikTok cover in VALIDATE_POST",
+        "Showed the cover in the approval summary",
+        "Did not publish"
+      ]
     }
   ]
 }

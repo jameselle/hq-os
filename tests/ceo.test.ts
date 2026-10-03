@@ -34,6 +34,16 @@ test("an external, fresh backup clears the critical finding; a stale one warns",
   assert.ok(ids(stale).includes("backup-stale"));
 });
 
+test("a service whose data couldn't be staged for the backup is named, and silent when all staged", () => {
+  const b = { repository: "/Volumes/B/hq", lastSnapshotAt: new Date().toISOString(), restoreTestOk: true };
+  const bad = buildFindings(depts(), facts({ backup: { ...b, stagingFailed: ["com.hq.postiz.postgres: still running after the stop"] } }), profile());
+  const x = bad.find((y) => y.id === "service-data-not-staged");
+  assert.equal(x?.severity, "attention");
+  assert.match(x!.detail, /com\.hq\.postiz\.postgres/);
+  const good = buildFindings(depts(), facts({ backup: { ...b, stagingFailed: [] } }), profile());
+  assert.ok(!ids(good).includes("service-data-not-staged"));
+});
+
 test("a failed restore test is critical", () => {
   const f = buildFindings(depts(), facts({ backup: { repository: "/Volumes/B/hq", lastSnapshotAt: new Date().toISOString(), restoreTestOk: false } }), profile());
   assert.equal(f.find((x) => x.id === "restore-failed")?.severity, "critical");
@@ -150,4 +160,68 @@ test("old changes don't count; blocked pages are reported; a fresh brief clears 
 test("a business that skips the department gets no competitor findings", () => {
   const skipping = depts().filter((d) => d.slug !== "competitors");
   assert.ok(!buildFindings(skipping, facts(), profile()).some((f) => f.dept === "competitors"));
+});
+
+const card = (over = {}) => ({ connected: true, demo: false, stale: false, failed: false, hasSnapshot: true, missing: [], ...over });
+const scorecardIds = (xs: { id: string }[]) => ids(xs).filter((i) => i.startsWith("scorecard"));
+
+test("a business with no scorecard connection is a decision for Data", () => {
+  const f = buildFindings(depts(), facts({ scorecard: card({ connected: false }) }), profile());
+  const x = f.find((y) => y.id === "scorecard-none")!;
+  assert.equal(x.severity, "decision");
+  assert.equal(x.dept, "data");
+  assert.deepEqual(scorecardIds(buildFindings(depts(), facts({ scorecard: card({ connected: false, demo: true }) }), profile())), []);
+});
+
+test("a stale or failed scorecard needs attention", () => {
+  for (const over of [{ stale: true }, { failed: true }]) {
+    const x = buildFindings(depts(), facts({ scorecard: card(over) }), profile()).find((y) => y.id === "scorecard-stale")!;
+    assert.equal(x.severity, "attention");
+    assert.equal(x.dept, "data");
+  }
+  assert.match(buildFindings(depts(), facts({ scorecard: card({ failed: true }) }), profile()).find((y) => y.id === "scorecard-stale")!.title, /failed/);
+});
+
+test("missing scorecard numbers are grouped per lever with their fix", () => {
+  const missing = [
+    { lever: "keep", label: "Payments recovered", note: "Needs three weeks of history" },
+    { lever: "keep", label: "Paying churn", note: "Needs one full week" },
+    { lever: "expand", label: "Net revenue retention", note: "Needs four weeks of history" },
+  ];
+  const f = buildFindings(depts(), facts({ scorecard: card({ missing }) }), profile());
+  assert.deepEqual(scorecardIds(f).sort(), ["scorecard-missing-expand", "scorecard-missing-keep"]);
+  const keep = f.find((y) => y.id === "scorecard-missing-keep")!;
+  assert.equal(keep.severity, "info");
+  assert.match(keep.detail, /Payments recovered: Needs three weeks of history/);
+  assert.match(keep.detail, /Paying churn: Needs one full week/);
+});
+
+test("no scorecard findings without a business or without scorecard facts", () => {
+  assert.deepEqual(scorecardIds(buildFindings(depts(), facts({ scorecard: card({ connected: false }) }), null)), []);
+  assert.deepEqual(scorecardIds(buildFindings(depts(), facts(), profile())), []);
+});
+
+test("scorecard actions name the business, and never-refreshed reads as such", () => {
+  const p = profile();
+  const none = buildFindings(depts(), facts({ scorecard: card({ connected: false }) }), p).find((y) => y.id === "scorecard-none")!;
+  assert.ok(none.action.includes(`scorecard refresh ${p.slug}`));
+  assert.ok(!none.action.includes("<slug>"));
+  const fresh = buildFindings(depts(), facts({ scorecard: card({ stale: true, hasSnapshot: false }) }), p).find((y) => y.id === "scorecard-stale")!;
+  assert.match(fresh.title, /never been refreshed/);
+  assert.ok(!/previous snapshot|36 hours/.test(fresh.detail));
+});
+
+test("a scorecard hidden by a currency change says why", () => {
+  const x = buildFindings(depts(), facts({ scorecard: card({ stale: true, hasSnapshot: false, currencyChanged: "AUD" }) }), profile()).find((y) => y.id === "scorecard-stale")!;
+  assert.match(x.title, /currency/);
+  assert.match(x.detail, /AUD/);
+});
+
+test("billing and our records disagreeing needs attention, with the count", () => {
+  const f = buildFindings(depts(), facts({ scorecard: card({ mismatch: 2 }) }), profile());
+  const x = f.find((y) => y.id === "scorecard-records-mismatch")!;
+  assert.equal(x.severity, "attention");
+  assert.equal(x.dept, "data");
+  assert.match(x.title, /2 paying members/);
+  assert.equal(buildFindings(depts(), facts({ scorecard: card({ mismatch: 0 }) }), profile()).some((y) => y.id === "scorecard-records-mismatch"), false);
 });

@@ -5,6 +5,7 @@
 import "server-only";
 
 import { execFileSync } from "node:child_process";
+import { launchdRunning } from "./launchd";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -18,6 +19,8 @@ import { DEPARTMENTS, EXCLUDED } from "./registry";
 import { WATCHER_KEYCHAIN, WATCHER_PORT, WATCHER_URL, competitorFromTitle, watchTag, type WatchRow } from "./competitors";
 import type { Profile } from "./profile";
 import { channelStatuses, type ConnectionsSnapshot } from "./publishing";
+import { scorecardState } from "./scorecard";
+import { scorecardRows } from "./scorecard-metrics";
 import { doneFindings, latestPlan, listBusinesses, readConfig, readConnections, resolveCurrent } from "./store";
 import type { DeptStatus, HostFacts, StatusReport, ToolCheck, ToolState } from "./types";
 
@@ -137,12 +140,22 @@ export function portOpen(port: number, timeoutMs = 350): Promise<boolean> {
   });
 }
 
+function launchdJobRunning(label: string): boolean {
+  try {
+    const uid = typeof process.getuid === "function" ? process.getuid() : 501;
+    return launchdRunning(execFileSync("/bin/launchctl", ["print", `gui/${uid}/${label}`], { encoding: "utf8", timeout: 3000 }));
+  } catch {
+    return false;
+  }
+}
+
 function composioActive(snapshot: ConnectionsSnapshot | null, toolkit: string): boolean {
   return Boolean(snapshot?.toolkits[toolkit]?.accounts.some((a) => a.status.toLowerCase() === "active"));
 }
 
 async function toolState(check: ToolCheck, snapshot: ConnectionsSnapshot | null): Promise<ToolState> {
   if (check.port !== undefined && (await portOpen(check.port))) return "running";
+  if (check.launchd && launchdJobRunning(check.launchd)) return "running";
   if (check.composio && composioActive(snapshot, check.composio)) return "connected";
   if (check.paths?.some(hasPath)) return "installed";
   if (check.bins?.some(hasBin)) return "installed";
@@ -202,6 +215,17 @@ async function competitorRows(profile: Profile | null): Promise<{ up: boolean; r
   }
 }
 
+function scorecardFacts(slug: string): HostFacts["scorecard"] {
+  try {
+    const s = scorecardState(slug);
+    const missing = s.snapshot ? scorecardRows(s.snapshot).filter((m) => m.quality === "missing").map((m) => ({ lever: m.lever, label: m.label, note: m.note })) : [];
+    return { connected: s.connected, demo: s.demo, stale: s.stale, failed: s.failed, hasSnapshot: Boolean(s.snapshot), currencyChanged: s.currencyChanged,
+      mismatch: s.snapshot?.weeks[0].metrics.find((m) => m.id === "records_mismatch")?.value ?? null, missing };
+  } catch {
+    return null;
+  }
+}
+
 async function hostFacts(profile: Profile | null): Promise<HostFacts> {
   const intel = await competitorRows(profile);
   const backup = readConfig().backup;
@@ -212,11 +236,13 @@ async function hostFacts(profile: Profile | null): Promise<HostFacts> {
     postizUp: await portOpen(4200),
     postizInstalled: hasPath("~/postiz-app"),
     connections: readConnections(),
+    scorecard: profile ? scorecardFacts(profile.slug) : null,
     intel: { watcherUp: intel.up, rows: intel.rows, lastBriefAt: profile ? (latestPlan(profile.slug, "competitors")?.at ?? null) : null },
     backup: {
       repository: backup?.repository,
       lastSnapshotAt: backup?.lastSnapshot?.at,
       restoreTestOk: backup?.lastRestoreTest?.ok,
+      stagingFailed: backup?.lastStaging?.results.filter((r) => !r.ok).map((r) => `${r.label}: ${r.detail}`),
     },
   };
 }

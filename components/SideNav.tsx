@@ -10,7 +10,11 @@ import { DEPARTMENTS } from "@/lib/registry";
 // The HQ shell's side navigation: collapsible rail, brand block,
 // mono eyebrow, glyph + label rows. The CEO leads; the departments follow in
 // the order a business usually stands them up.
-const LEAD = [{ href: "/ceo", label: "CEO", glyph: "✦" }];
+const LEAD = [
+  { href: "/ceo", label: "CEO", glyph: "✦" },
+  { href: "/workflows", label: "Workflows", glyph: "⇄" },
+  { href: "/guides", label: "Guides", glyph: "?" },
+];
 
 const STORAGE_KEY = "hq.sidenav.collapsed";
 
@@ -55,7 +59,7 @@ export function SideNav({ active }: { active: string[] }) {
 
   useEffect(() => {
     try {
-      setCollapsed(window.localStorage.getItem(STORAGE_KEY) === "1");
+      setCollapsed(window.innerWidth < 640 || window.localStorage.getItem(STORAGE_KEY) === "1");
     } catch {
       // Storage unavailable: stay expanded.
     }

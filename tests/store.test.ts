@@ -151,3 +151,11 @@ test("every new business gets a ledger in its own currency, and it's never overw
   initLedger(profile({ currency: "NZD" }));
   assert.match(fs.readFileSync(file, "utf8"), /my own entry/);
 });
+
+test("the starter ledger opens both accounts the scorecard reads for acquisition spend", async () => {
+  tempData();
+  const { initLedger: init } = await import("../lib/store");
+  const text = fs.readFileSync(init(profile({ slug: "acme-co" })), "utf8");
+  assert.match(text, /open Expenses:Advertising\b/);
+  assert.match(text, /open Expenses:Commissions\b/);
+});

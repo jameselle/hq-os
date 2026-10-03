@@ -60,7 +60,7 @@ Add it to the right department in `lib/registry.ts`, matching the existing entri
 
 ```ts
 { name: "Umami", what: "One-line job description.", repo: "umami-software/umami",
-  licence: oss("MIT"), check: { port: 3001, paths: ["~/.local/opt/umami"] }, url: "http://localhost:3001" },
+  licence: oss("MIT"), check: { port: 3061, paths: ["~/.local/opt/umami"] }, url: "http://localhost:3061" },  // pick a port no other service uses (npm run hq -- services status lists them)
 ```
 
 `check` fields: `port` (running), `paths` / `bins` / `apps` (installed), `npx`

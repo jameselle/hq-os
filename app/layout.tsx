@@ -13,8 +13,8 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const business = resolveCurrent(preferredBusiness());
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const business = resolveCurrent(await preferredBusiness());
   return (
     <html lang="en">
       <body className="min-h-screen text-bb-fg font-sans flex">

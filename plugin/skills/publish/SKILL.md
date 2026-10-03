@@ -11,6 +11,11 @@ description: >
 
 # Publish
 
+> **Hard rule: no em dashes (—) or en dashes (–) in any caption, title or description.** Before a caption
+> is shown to the owner or posted, run `printf '%s' "<caption>" | npm run hq -- caption-check -` (or pass a
+> file). It exits 1 and names the problem when one is found: rewrite with a comma, colon or full stop and
+> check again. Never post a caption that hasn't passed.
+
 Posting is **public and hard to undo**. This skill never posts without the owner's explicit
 yes for *this* post, and never calls a post "done" until it has read it back from the platform.
 
@@ -27,6 +32,9 @@ Run commands from `$HQ_ROOT` (default `~/business-os`).
 - **Media:** through the Composio connector, media must be a **public URL** the platform can
   fetch. Proven: a GitHub release asset in a public repo; prove the URL with the platform's dry
   run, not just curl. If the file is local and there's no public host, say so and ask how to host it.
+- **Cover:** if `<video>.cover.jpg` sits beside the video (made by `npm run studio -- cover`), use it:
+  Instagram Reels take `cover_url` (host it like the video), TikTok via WoopSocial takes `cover`
+  (upload it to the media library too). YouTube Shorts can't take one by API. Show it in the ask.
 - **Caption:** per platform limits (X weighted 280, LinkedIn ~3,000). Run `/ig-human` on text
   headed for social. Respect the profile's brand voice and the Content department's notes
   (regulated industries!). Label AI-generated video where the platform supports it.
@@ -37,7 +45,10 @@ Run commands from `$HQ_ROOT` (default `~/business-os`).
   fetch the media. Don't publish yet; containers expire in ~24 h.
 - **TikTok via WoopSocial:** `WOOP_SOCIAL_UPLOAD_MEDIA`, then `WOOP_SOCIAL_VALIDATE_POST` (must return `is_valid`).
 - **YouTube:** check the file's format and size, and prepare the resumable upload (see the traps).
-  There's no platform dry run.
+  There's no platform dry run. From a Claude session the Composio workbench's `proxy_execute`
+  returns no response headers (no resumable session URI): `YOUTUBE_MULTIPART_UPLOAD_VIDEO` with an
+  `upload_local_file` s3key works (proved 2026-10-01: processed, fileSize byte-exact). Read
+  `processingDetails` + `fileDetails.fileSize` back a minute later; `YOUTUBE_UPLOAD_VIDEO` loses the media.
 - **Others:** validate length and media type locally.
 
 ## 3. Ask

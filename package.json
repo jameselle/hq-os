@@ -2,29 +2,34 @@
   "name": "business-os",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "description": "Local HQ: one tab per business function, each staffed only with open-source tools and installed Claude skills, plus a CEO view that ranks what needs doing.",
   "scripts": {
     "dev": "next dev -H 127.0.0.1 -p 3150",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start -H 127.0.0.1 -p 3150",
     "hq": "tsx scripts/hq.ts",
     "test": "node --import tsx --test \"tests/**/*.test.ts\"",
+    "test:e2e": "npm run build && playwright test",
     "typecheck": "tsc --noEmit",
     "studio": "tsx scripts/studio.ts",
     "release": "tsx scripts/release.ts"
   },
   "dependencies": {
     "lucide-react": "^1.24.0",
-    "next": "^14.2.5",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "next": "^16.3.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "react-markdown": "^9.0.1",
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^20.16.0",
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.14",
