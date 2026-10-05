@@ -36,3 +36,10 @@ test("unknown metrics, empty hypotheses and missing experiments are refused", ()
   assert.throws(() => closeExperiment("acme-co", 9, { verdict: "lost" }), /no experiment 9/);
   assert.throws(() => listExperiments("../acme-co"));
 });
+
+test("a media business can run an experiment on an analytics number, not only a scorecard one", () => {
+  setup();
+  const e = addExperiment("acme-co", { hypothesis: "Posting at 1.1x instead of 1.25x keeps more viewers", metric: "views_per_post", baseline: 442 });
+  assert.equal(e.lever, "get");
+  assert.match(experimentsMarkdown(listExperiments("acme-co")), /\| Views per post \|/);
+});

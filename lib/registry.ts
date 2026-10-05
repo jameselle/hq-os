@@ -202,6 +202,7 @@ export const DEPARTMENTS: Department[] = [
       { name: "SerpBear", what: "Self-hosted keyword rank tracker.", repo: "towfiqi/serpbear", licence: oss("MIT"), check: { paths: ["~/.local/opt/serpbear"] } },
     ],
     skills: [
+      { id: "hq:blog", what: "Research and write today's post (HQ's daily blog runs it on its own)" },
       { id: "seo-analysis", what: "Full audit from Search Console data" },
       { id: "seo-drift", what: "Baseline and catch SEO regressions" },
       { id: "programmatic-seo", what: "League/market pages at scale, safely" },

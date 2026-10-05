@@ -115,7 +115,7 @@ Some workflows send nothing (search pages, measurement), so they prove themselve
 {"version":1,"observedAt":"<ISO>","workflows":[{"title":"<workflow title>","checks":[{"label":"…","ok":true,"detail":"…"}]}]}
 ```
 
-Start from `templates/lifecycle/workflow-checks-template.mjs` (page contains, or a pattern counted at least N times, from a `checks.json`). Connect it with `$HQ_DATA/businesses/<slug>/workflow-checks-connection.json` (`readOnly: true`); `npm run hq -- workflows check <slug>` runs it, and the daily scorecard refresh runs it after the scorecard. A workflow is live only when every check passed in the last 8 days; a check that never ran is not a pass.
+Start from `templates/lifecycle/workflow-checks-template.mjs` (page contains, a pattern counted at least N times, or a number HQ already measured, from a `checks.json`). [Set up a workflow end to end](/guides/workflow-setup) lists a check for each workflow that usually already runs. Connect it with `$HQ_DATA/businesses/<slug>/workflow-checks-connection.json` (`readOnly: true`); `npm run hq -- workflows check <slug>` runs it, and the daily scorecard refresh runs it after the scorecard. A workflow is live only when every check passed in the last 8 days; a check that never ran is not a pass.
 
 ## Rules that keep this safe
 

@@ -40,6 +40,21 @@ export const FLOWS = [
     messages: [{ id: 'checkout', label: 'Abandoned checkout', subject: 'Did something stop your checkout?', delayHours: 3, expiresHours: 72 }],
     outcomes: [{ label: 'Bought a plan', window: '1 day' }, { label: 'Bought a plan', window: '7 days' }],
   },
+  {
+    id: 'trial', label: 'Trial invite', serves: "Trial that didn't convert", channel: 'email', holdoutPct: 20,
+    trigger: 'A free signup 4 to 10 days in who never started a trial, and a trial that ended unpaid (one email each)',
+    messages: [
+      { id: 'trial-invite', label: 'Invite to the free trial', subject: 'Try the full plan free for 7 days', delayHours: 96, expiresHours: 72 },
+      { id: 'trial-ended', label: 'Trial ended unpaid', subject: 'Your trial ended. Here is what you keep', delayHours: 24, expiresHours: 72 },
+    ],
+    outcomes: [{ label: 'Started a trial', window: '7 days' }, { label: 'Paid', window: '14 days' }],
+  },
+  {
+    id: 'annual', label: 'Yearly offer', serves: 'Monthly to annual', channel: 'email', holdoutPct: 20,
+    trigger: 'An active monthly payer in month two or three who used the product in the last 14 days (one email ever)',
+    messages: [{ id: 'annual', label: 'Switch to yearly', subject: 'Pay yearly and save on every month', delayHours: 0, expiresHours: 72 }],
+    outcomes: [{ label: 'Switched to yearly', window: '14 days' }],
+  },
 ];
 
 // ---------------------------------------------------------------- replace these three
@@ -83,7 +98,20 @@ function seed(now) {
       if (row.status !== 'sent') break;
     }
   }
-  return { owner: 'owner', modes: { onboarding: 'draft', checkout: 'draft' }, startsOn: new Date(start).toISOString().slice(0, 10), rows, unsubscribes: { onboarding: 1, checkout: 0 } };
+  // The trial and yearly flows are seeded after the first two, so the people above stay exactly the same.
+  for (let i = 0; i < 16; i++) {
+    const flow = FLOWS[i % 2 ? 3 : 2];
+    const m = flow.messages[0];
+    const due = start + rand() * 9 * DAY;
+    const holdout = rand() < flow.holdoutPct / 100;
+    const row = { person: `q${i}`, flow: flow.id, message: m.id, enteredAt: new Date(due).toISOString(), dueAt: new Date(due).toISOString(), holdout, test: false };
+    if (holdout) row.status = 'held-out';
+    else if (now - due < 20 * HOUR) row.status = 'draft';
+    else { row.status = 'sent'; row.sentAt = new Date(due + 2 * HOUR).toISOString(); row.delivery = rand() < 0.2 ? 'clicked' : 'delivered'; }
+    row.outcome = rand() < (holdout ? 0.1 : 0.22);
+    rows.push(row);
+  }
+  return { owner: 'owner', modes: { onboarding: 'draft', checkout: 'draft', trial: 'draft', annual: 'draft' }, startsOn: new Date(start).toISOString().slice(0, 10), rows, unsubscribes: { onboarding: 1, checkout: 0, trial: 0, annual: 0 } };
 }
 
 // ---------------------------------------------------------------- the contract

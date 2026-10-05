@@ -53,6 +53,8 @@ export const ANALYTICS = {
   // ---------------------------------------------------------------- measured by HQ from its own records
   posts_published: { label: "Posts published", unit: "count", lever: "get", chart: "bars", better: "up", source: "hq",
     question: "How many posts went live each week, and where?", needs: "Posts logged with /hq:publish (read back from the platform)." },
+  blog_posts: { label: "Blog posts published", unit: "count", lever: "get", chart: "bars", better: "up", source: "hq",
+    question: "How many researched posts went live?", needs: "The daily blog set up (npm run hq -- blog setup) with a publisher that reads posts back." },
   keyword_posts: { label: "Posts with a comment keyword", unit: "count", lever: "get", chart: "bars", better: "up", source: "hq",
     question: "How many posts asked viewers to comment a keyword?", needs: "Posts logged with /hq:publish whose caption asks for a keyword." },
   videos_edited: { label: "Videos edited in Studio", unit: "count", lever: "get", chart: "bars", better: "up", source: "hq",
@@ -231,6 +233,7 @@ export const WORKFLOW_ANALYTICS: Record<string, AnalyticsId[]> = {
   "Self post": ["posts_published", "follows_per_post", "views_per_post", "followers"],
   "Clip engine": ["videos_edited", "views_per_post", "follows_per_post"],
   "Walkthrough videos in the owner's voice": ["walkthrough_coverage", "walkthrough_plays"],
+  "Daily blog from search demand": ["blog_posts", "search_clicks", "organic_signups"],
   "Comment-keyword funnel": ["keyword_posts", "keyword_dms", "keyword_dm_delivery_rate", "keyword_dm_misses", "keyword_dms_waiting", "dm_to_email_rate", "email_to_trial_rate", "link_clicks"],
   "Partner program": ["partner_customers", "partner_d90_retention"],
   "Customer proof": ["landing_conversion_rate", "new_signups"],

@@ -6,6 +6,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { listDrafts as listBlogDrafts } from "./blog-store";
+
 import { lifecycleState } from "./lifecycle";
 import { workflowChecksState, type WorkflowCheck } from "./workflow-checks";
 import { scorecardState } from "./scorecard";
@@ -32,6 +34,8 @@ export type EvidenceFacts = {
     /** Per automated message: which workflow it serves and what it actually delivered. */
     workflows?: { label: string; enabled: boolean; serves?: string; sent30d?: number; lastSentAt?: string | null; drafts?: number }[];
   } | null;
+  /** The daily blog (lib/blog-store.ts): posts read back live, and drafts written. */
+  blog?: { published: number; lastPublished?: string; drafts: number; lastDraft?: string } | null;
   /** Pass/fail checks from the business's workflow-checks adapter (lib/workflow-checks.ts). */
   checks?: { observedAt: string; stale: boolean; workflows: { title: string; checks: WorkflowCheck[] }[] } | null;
 };
@@ -116,6 +120,13 @@ export function evidenceFrom(f: EvidenceFacts): Record<string, Evidence> {
     for (const title of ["Onboarding to first value", "Churn early warning"]) out[title] ??= watchOnly;
   }
 
+  const b = f.blog;
+  if (b?.published) {
+    out["Daily blog from search demand"] = { state: "live", proof: [`${plural(b.published, "post")} researched, checked and read back live`], last: b.lastPublished };
+  } else if (b?.drafts) {
+    out["Daily blog from search demand"] = { state: "partial", proof: [`${plural(b.drafts, "draft")} researched and written`, "None has gone live yet"], last: b.lastDraft };
+  }
+
   // Checks prove workflows that send nothing (pages, measurement). Live only when every check passed recently.
   const ck = f.checks;
   if (ck) {
@@ -139,6 +150,15 @@ function readPosts(slug: string): PublishedPost[] {
       try { return [JSON.parse(l) as PublishedPost]; } catch { return []; }
     });
   } catch { return []; }
+}
+
+function blogFacts(slug: string): EvidenceFacts["blog"] {
+  try {
+    const all = listBlogDrafts(slug);
+    if (!all.length) return null;
+    const pub = all.filter((d) => d.meta.status === "published");
+    return { published: pub.length, lastPublished: pub.map((d) => d.meta.publishedAt).filter(Boolean).sort().at(-1), drafts: all.length, lastDraft: all.map((d) => d.meta.date).sort().at(-1) };
+  } catch { return null; }
 }
 
 /** Studio jobs with at least one finished render (any mp4 other than the joined master). */
@@ -204,6 +224,7 @@ export function workflowEvidence(slug: string): { demo: boolean; evidence: Recor
     scorecardWeeks,
     lifecycle,
     checks,
+    blog: blogFacts(slug),
   };
   return { demo: facts.demo, evidence: evidenceFrom(facts) };
 }

@@ -13,6 +13,7 @@
 // Tools        support refresh <slug|--all> · support show|digest <slug> · finance init <slug> · finance sync <slug|--all> · finance show <slug> · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug> · analytics refresh <slug|--all> · analytics show <slug> [--missing] [--dept <dept>] · workflows check <slug|--all>
 // Lifecycle    lifecycle show <slug> [flow] [--cached] · lifecycle explain <slug> <flow> · lifecycle approve|reject <slug> <message> [--yes --before <ISO>] · lifecycle notes <slug> [--all]
 //              lifecycle test <slug> <message> · lifecycle mode <slug> <flow> off|draft|auto [--yes]
+// Blog         blog setup <slug> --site <url> [--hour 6] [--sc-account A --sc-site S] · blog inputs|write|check|show|publish <slug> [--dry-run] · blog approve|reject|reopen <slug> <draft> · blog note <slug> <draft> "…" · blog mode <slug> off|draft|auto · blog tick <slug|--all>
 // Experiments  experiment add <slug> "<hypothesis>" --metric <id> [--baseline N] · experiment close <slug> <id> won|lost|inconclusive [--result N] [--note "…"] · experiment list <slug>
 // Health       doctor
 //
@@ -37,6 +38,9 @@ import { financeConnected, moneyByMonth, syncFinance } from "../lib/finance-sync
 import { digestWritten, runSupport, supportConnected, supportDigest, supportState, writeSupportDigest } from "../lib/support";
 import { loadLedger } from "../lib/ledger-spend";
 import { listNotes as listLifecycleNotes } from "../lib/lifecycle-notes";
+import { decide, decisionText, type BlogConfig } from "../lib/blog";
+import { addNote as addBlogNote, checkDrafts, draftToday, listDrafts, log as blogLog, publishReady, readBlogConfig, setStatus as setBlogStatus, writeBlogConfig, blogDir } from "../lib/blog-store";
+import { gatherInputs, writeDraft } from "../lib/blog-writer";
 import { fetchCompetitorChanges, fetchOpenFindings } from "../lib/analytics-findings";
 import { WORKFLOW_ANALYTICS, formatAnalytics } from "../lib/analytics-metrics";
 import { runWorkflowChecks, workflowChecksState } from "../lib/workflow-checks";
@@ -373,6 +377,14 @@ function defaultServices(): Service[] {
       cwd: hqRoot(),
       keepAlive: false,
       schedule: { Hour: 6, Minute: 0 },
+    },
+    {
+      label: "com.hq.blog",
+      description: "Hourly: each business's daily blog post (research, write, check), then publish what the owner or the rules allow",
+      program: [node, "run", "hq", "--", "blog", "tick", "--all"],
+      cwd: hqRoot(),
+      keepAlive: false,
+      schedule: { Minute: 20 },
     },
   ];
   const postiz = path.join(HOME, "postiz-app");
@@ -959,6 +971,97 @@ async function cmdLifecycle(args: string[]) {
   return console.log(`${f.label} is now ${after.snapshot?.flows?.find((x) => x.id === f.id)?.mode ?? modeArg}.`);
 }
 
+
+// ---------------------------------------------------------------- blog
+
+const sydneyLike = (tz: string, d = new Date()) => d.toLocaleDateString("en-CA", { timeZone: tz });
+const hourIn = (tz: string, d = new Date()) => Number(new Intl.DateTimeFormat("en-AU", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(d));
+
+async function blogTick(slug: string) {
+  const p = getProfile(slug), c = readBlogConfig(slug);
+  if (!p || !c || c.mode === "off") return;
+  const lock = path.join(blogDir(slug), "run.lock");
+  if (fs.existsSync(lock) && Date.now() - fs.statSync(lock).mtimeMs < 45 * 60e3) return console.log(`${slug}: a run is already going`);
+  fs.writeFileSync(lock, String(process.pid));
+  try {
+    const day = sydneyLike(p.timezone);
+    if (hourIn(p.timezone) >= (c.hour ?? 6) && !draftToday(slug, p.timezone)) {
+      const r = await writeDraft(slug, day);
+      console.log(`${slug}: ${r.ok ? `wrote ${r.draft}` : `no draft: ${r.why}`}${r.costUsd !== undefined ? ` (US$${r.costUsd.toFixed(2)})` : ""}`);
+    }
+    const checked = await checkDrafts(slug);
+    for (const d of checked) console.log(`${slug}: checked ${d.file}: ${(d.meta.checks ?? []).filter((x) => !x.ok).length} failing`);
+    const res = await publishReady(slug);
+    if (res.published.length || res.failed.length) console.log(`${slug}: published ${res.published.length}, failed ${res.failed.length}, waiting ${res.waiting.length}`);
+  } catch (e) {
+    blogLog(slug, { event: "tick-failed", why: String((e as Error).message).slice(0, 200) });
+    console.error(`${slug}: ${(e as Error).message}`);
+  } finally { fs.rmSync(lock, { force: true }); }
+}
+
+async function cmdBlog(pos: string[], args: string[], flag: (f: string) => boolean) {
+  const sub = pos[0];
+  const valueOf = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
+  if (sub === "tick") {
+    const slugs = flag("--all") ? listBusinesses().profiles.map((p) => p.slug).filter((s) => readBlogConfig(s)) : [pos[1] ?? die("blog tick <slug|--all>")];
+    for (const s of slugs) await blogTick(s);
+    return;
+  }
+  const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+  const c = readBlogConfig(p.slug);
+  switch (sub) {
+    case "setup": {
+      const site = valueOf("--site") ?? c?.site ?? p.sites[0] ?? die("blog setup <slug> --site https://…");
+      const start = new Date();
+      const cfg: BlogConfig = { ...(c ?? {}), mode: c?.mode ?? "auto", site, hour: Number(valueOf("--hour") ?? c?.hour ?? 6),
+        approveUntil: c?.approveUntil ?? new Date(start.getTime() + 7 * 864e5).toISOString() };
+      if (valueOf("--sc-account") && valueOf("--sc-site")) cfg.searchConsole = { account: valueOf("--sc-account")!, site: valueOf("--sc-site")! };
+      writeBlogConfig(p.slug, cfg);
+      return console.log(`blog set up for ${p.name}: ${cfg.site}, mode ${cfg.mode}, every post waits for you until ${cfg.approveUntil!.slice(0, 10)}, daily from ${cfg.hour}:00 ${p.timezone}`);
+    }
+    case "inputs":
+      return console.log(JSON.stringify(await gatherInputs(p.slug, sydneyLike(p.timezone)), null, 2));
+    case "write": {
+      const r = await writeDraft(p.slug, sydneyLike(p.timezone));
+      if (!r.ok) return die(`no draft: ${r.why}`);
+      await checkDrafts(p.slug, r.draft);
+      return console.log(`wrote ${r.draft}`);
+    }
+    case "check": {
+      const done = await checkDrafts(p.slug, pos[2]);
+      for (const d of done) console.log(`${d.file}\n${(d.meta.checks ?? []).map((x) => `  ${x.ok ? "ok " : "NO "} ${x.label}: ${x.detail}`).join("\n")}`);
+      return;
+    }
+    case "show": {
+      if (!c) return console.log(`${p.name} has no blog yet: npm run hq -- blog setup ${p.slug} --site https://…`);
+      console.log(`${p.name} · ${c.site} · mode ${c.mode}${c.approveUntil ? ` · week one until ${c.approveUntil.slice(0, 10)}` : ""}`);
+      for (const d of listDrafts(p.slug).slice(0, 20)) console.log(`${d.file.padEnd(48)} ${d.meta.status.padEnd(9)} ${decisionText(c, d.meta, new Date())}`);
+      return;
+    }
+    case "approve": case "reject": case "reopen": {
+      const d = setBlogStatus(p.slug, pos[2] ?? die(`blog ${sub} <slug> <draft>`), sub === "approve" ? "approved" : sub === "reject" ? "rejected" : "draft");
+      return console.log(`${d.file}: ${d.meta.status}${c ? `. ${decisionText(c, d.meta, new Date())}` : ""}`);
+    }
+    case "note": {
+      const d = addBlogNote(p.slug, pos[2] ?? die("blog note <slug> <draft> \"…\""), pos[3] ?? die("missing note text"));
+      return console.log(`noted on ${d.file}`);
+    }
+    case "publish": {
+      const r = await publishReady(p.slug, new Date(), { dryRun: flag("--dry-run") });
+      return console.log(`published ${r.published.length}, waiting ${r.waiting.length}, failed ${r.failed.length}${flag("--dry-run") ? " (dry run: nothing left the Mac)" : ""}`);
+    }
+    case "mode": {
+      if (!c) return die("set it up first: blog setup");
+      const mode = pos[2] as BlogConfig["mode"];
+      if (!["off", "draft", "auto"].includes(mode)) return die("blog mode <slug> off|draft|auto");
+      writeBlogConfig(p.slug, { ...c, mode });
+      return console.log(`${p.name}'s blog is now ${mode}`);
+    }
+    default:
+      return die("blog: setup | inputs | write | check | show | approve | reject | reopen | note | publish | mode | tick");
+  }
+}
+
 // ---------------------------------------------------------------- main
 
 async function main() {
@@ -1314,6 +1417,8 @@ async function main() {
       fs.writeFileSync(path.join(vdir, "Experiments.md"), experimentsMarkdown(listExperiments(p.slug)));
       return;
     }
+    case "blog":
+      return cmdBlog(pos, args, flag);
     case "doctor":
       return cmdDoctor();
     default: {

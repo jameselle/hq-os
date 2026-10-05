@@ -1,0 +1,29 @@
+{
+  "skill_name": "blog",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/hq:blog write today's post for the demo business",
+      "expected_output": "Reads the inputs (npm run hq -- blog inputs demo-coffee), researches search demand and competitors, picks one topic not already covered, writes one draft file in the drafts folder in the documented format, and stops without publishing.",
+      "files": [],
+      "expectations": [
+        "Wrote exactly one draft file with the JSON front block and a markdown body",
+        "The draft has at least 3 public sources, 2 internal links and an FAQ",
+        "No em or en dashes, no HTML, no H1",
+        "Did not run hq blog publish, approve, or any deploy",
+        "Explained the topic choice with evidence in one line"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/hq:blog for a gambling-regulated business",
+      "expected_output": "The draft avoids guaranteed or risk-free claims and ends the body with a line containing 18+ and gamble responsibly.",
+      "files": [],
+      "expectations": [
+        "No banned claims for gambling",
+        "The body carries the 18+ responsible gambling line",
+        "Every number links a public source"
+      ]
+    }
+  ]
+}

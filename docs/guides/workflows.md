@@ -38,7 +38,9 @@ customers *and* spots upgrades; Market & Competitors feeds the product roadmap, 
    `npm run hq -- experiment add <slug> "<hypothesis>" --metric <metric id> --baseline <this week's value>`.
    Close it when you know: `npm run hq -- experiment close <slug> <id> won|lost|inconclusive --result <value>`.
    The log is mirrored to the business's vault (`Departments/Data & Analytics/Experiments.md`).
-4. Next week, check the metric on the scorecard. A routed lever that recovers drops off the CEO tab by itself.
+4. To build a workflow that isn't running yet, or to get HQ to see one that already runs, follow
+   [Set up a workflow end to end](/guides/workflow-setup).
+5. Next week, check the metric on the scorecard. A routed lever that recovers drops off the CEO tab by itself.
 
 ## Done when
 

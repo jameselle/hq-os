@@ -15,7 +15,7 @@ import { lifecycleState, supports } from "@/lib/lifecycle";
 import { HINTS, flowStatus, timeLabel } from "@/lib/lifecycle-status";
 import { DEPARTMENTS } from "@/lib/registry";
 import { analyticsBoard, type BoardMetric } from "@/lib/analytics";
-import { WORKFLOW_ANALYTICS } from "@/lib/analytics-metrics";
+import { ANALYTICS, WORKFLOW_ANALYTICS, formatAnalytics } from "@/lib/analytics-metrics";
 import { METRICS, formatValue } from "@/lib/scorecard-metrics";
 import { skillIndex } from "@/lib/status";
 import { resolveCurrent } from "@/lib/store";
@@ -108,7 +108,8 @@ export default async function WorkflowDetailPage({ params }: { params: Promise<{
   // Who does what.
   const ready = skillIndex();
   const seen = new Set<string>();
-  const experiments = business && w.metricId ? listExperiments(business.slug).filter((x) => x.metric === w.metricId) : [];
+  const judgedBy = new Set<string>([...(w.metricId ? [w.metricId] : []), ...(WORKFLOW_ANALYTICS[w.title] ?? [])]);
+  const experiments = business && judgedBy.size ? listExperiments(business.slug).filter((x) => judgedBy.has(x.metric)) : [];
 
   return (
     <div className="space-y-7 min-w-0">
@@ -239,11 +240,11 @@ export default async function WorkflowDetailPage({ params }: { params: Promise<{
       )}
 
       <Section id="exp-h" kicker="Experiments" title="What has been tried">
-        {!w.metricId ? <p className="card px-4 py-3 text-[12.5px] text-bb-muted">Experiments link to a scorecard number, and this workflow has none yet.</p>
+        {!judgedBy.size ? <p className="card px-4 py-3 text-[12.5px] text-bb-muted">Experiments link to a number this workflow is judged by, and it has none yet.</p>
           : experiments.length ? (
             <ul className="card divide-y divide-bb-border/60 px-4 py-1">
               {experiments.map((x) => {
-                const unit = METRICS[x.metric]?.unit ?? "count", cur = business?.currency ?? "AUD";
+                const unit = ANALYTICS[x.metric]?.unit ?? "count", cur = business?.currency ?? "AUD";
                 return (
                   <li key={x.id} className="flex gap-3 py-3">
                     <span className="font-mono text-[11px] text-bb-dim tabular-nums pt-0.5">{x.id}</span>
@@ -252,8 +253,8 @@ export default async function WorkflowDetailPage({ params }: { params: Promise<{
                       {x.note && <p className="text-[11.5px] text-bb-muted">{x.note}</p>}
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-bb-muted">
                         <span className={`${PILL} ${STATUS_TONE[x.status]}`}>{x.status}</span>
-                        <span>Baseline <span className="text-bb-fg tabular-nums">{x.baseline === null ? "not set" : formatValue(unit, x.baseline, cur)}</span></span>
-                        <span>Result <span className="text-bb-fg tabular-nums">{x.result === null ? "pending" : formatValue(unit, x.result, cur)}</span></span>
+                        <span>Baseline <span className="text-bb-fg tabular-nums">{x.baseline === null ? "not set" : formatAnalytics(unit, x.baseline, cur)}</span></span>
+                        <span>Result <span className="text-bb-fg tabular-nums">{x.result === null ? "pending" : formatAnalytics(unit, x.result, cur)}</span></span>
                         <span className="font-mono text-[10.5px] text-bb-dim">started {x.startedAt.slice(0, 10)}{x.endedAt ? `, ended ${x.endedAt.slice(0, 10)}` : ""}</span>
                       </div>
                     </div>
@@ -261,7 +262,7 @@ export default async function WorkflowDetailPage({ params }: { params: Promise<{
                 );
               })}
             </ul>
-          ) : <p className="card px-4 py-3 text-[12.5px] text-bb-muted">No experiments on {METRICS[w.metricId as keyof typeof METRICS]?.label.toLowerCase() ?? "this number"} yet. Log one with <span className="font-mono">npm run hq -- experiment add</span>.</p>}
+          ) : <p className="card px-4 py-3 text-[12.5px] text-bb-muted">No experiments on {w.metricId ? METRICS[w.metricId as keyof typeof METRICS]?.label.toLowerCase() ?? "this number" : "its numbers"} yet. Log one with <span className="font-mono">npm run hq -- experiment add</span>.</p>}
       </Section>
     </div>
   );

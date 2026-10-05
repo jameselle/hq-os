@@ -38,6 +38,20 @@ const OTHER: Guide[] = [
     file: "docs/guides/workflows.md",
   },
   {
+    slug: "blog",
+    kind: "page",
+    title: "Daily blog: researched posts every day",
+    blurb: "One post a day from real search demand and competitor gaps, checked (sources, claims, repeats) and published when you allow, then read back live.",
+    file: "docs/guides/blog.md",
+  },
+  {
+    slug: "workflow-setup",
+    kind: "page",
+    title: "Set up a workflow end to end",
+    blurb: "Build a workflow, prove it runs (messages delivered or checks passed), measure it, and recipes for trials, cancel saves, annual offers, pricing tiers, comparison pages and free tools.",
+    file: "docs/guides/workflow-setup.md",
+  },
+  {
     slug: "brain",
     kind: "page",
     title: "The brain: what every department knows",

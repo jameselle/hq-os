@@ -9,6 +9,7 @@ import path from "node:path";
 
 import { ANALYTICS, ANALYTICS_IDS, RECURRING_ONLY, WORKFLOW_ANALYTICS, isRecurring, type AnalyticsDef, type AnalyticsId } from "./analytics-metrics";
 import { brainStats } from "./brain-store";
+import { listDrafts as listBlogDrafts, readBlogConfig } from "./blog-store";
 import { listExperiments } from "./experiments";
 import { lifecycleState } from "./lifecycle";
 import { execAdapter, readConnection, writePrivateJson } from "./private-adapter";
@@ -244,6 +245,11 @@ export function hqMetrics(slug: string, now = Date.now(), extras: Extras = {}): 
 
   if (openFindings) out.push(m("open_findings", openFindings.total, "The CEO's open findings for this business and this Mac", { breakdown: openFindings.bySeverity, period: "now" }));
   else out.push(m("open_findings", null, "Counted at each refresh (npm run hq -- analytics refresh)"));
+
+  const blogPosts = listBlogDrafts(slug).filter((d) => d.meta.status === "published" && d.meta.publishedAt).map((d) => d.meta.publishedAt!);
+  out.push(blogPosts.length
+    ? m("blog_posts", last7(blogPosts, now), `Last 7 days; ${blogPosts.length} posts read back live in all`, { weeks: weeklyCounts(blogPosts, 12, now, tz) })
+    : m("blog_posts", null, readBlogConfig(slug) ? "No post has gone live yet" : "No daily blog yet (npm run hq -- blog setup)"));
 
   const brand = brandCoverage(slug);
   out.push(brand ? m("brand_kit_coverage", Math.round(brand.share * 1000) / 1000, brand.missing.length ? `Missing ${brand.missing.join(", ")}` : "Guide, palette, mark, social templates, emails and a video style")

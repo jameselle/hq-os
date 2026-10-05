@@ -1,16 +1,17 @@
 // The experiment log: every change made to move a lever, with its hypothesis, the metric it should move, the
-// baseline when it started and the result. Kept per business in $HQ_DATA (0600) and mirrored to the business's
+// baseline when it started and the result. Any analytics number can be the metric (the scorecard's are among them),
+// so a media business can test against views or follows, not only signups and revenue. Kept per business in $HQ_DATA (0600) and mirrored to the business's
 // vault, so the weekly review can see what was tried and avoid repeating it. Server-only.
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { METRICS, type MetricId } from "./scorecard-metrics";
+import { ANALYTICS, type AnalyticsId } from "./analytics-metrics";
 import { businessDir, getProfile } from "./store";
 
 export type Verdict = "won" | "lost" | "inconclusive";
 export type Experiment = {
-  id: number; hypothesis: string; metric: MetricId; lever: string; baseline: number | null;
+  id: number; hypothesis: string; metric: AnalyticsId; lever: string; baseline: number | null;
   startedAt: string; status: "running" | Verdict; result: number | null; endedAt: string | null; note: string;
 };
 
@@ -27,12 +28,12 @@ function save(slug: string, xs: Experiment[]) {
   fs.renameSync(tmp, f);
 }
 
-export function addExperiment(slug: string, x: { hypothesis: string; metric: MetricId; baseline?: number | null }, now = new Date()): Experiment {
-  if (!Object.hasOwn(METRICS, x.metric)) throw Error(`unknown metric ${x.metric}: use one of ${Object.keys(METRICS).join(", ")}`);
+export function addExperiment(slug: string, x: { hypothesis: string; metric: AnalyticsId; baseline?: number | null }, now = new Date()): Experiment {
+  if (!Object.hasOwn(ANALYTICS, x.metric)) throw Error(`unknown metric ${x.metric}: use one of ${Object.keys(ANALYTICS).join(", ")}`);
   if (!x.hypothesis?.trim()) throw Error("a hypothesis is required");
   const xs = listExperiments(slug);
   const e: Experiment = {
-    id: (xs.at(-1)?.id ?? 0) + 1, hypothesis: x.hypothesis.trim().slice(0, 300), metric: x.metric, lever: METRICS[x.metric].lever,
+    id: (xs.at(-1)?.id ?? 0) + 1, hypothesis: x.hypothesis.trim().slice(0, 300), metric: x.metric, lever: ANALYTICS[x.metric].lever,
     baseline: x.baseline ?? null, startedAt: now.toISOString(), status: "running", result: null, endedAt: null, note: "",
   };
   save(slug, [...xs, e]);
@@ -49,7 +50,7 @@ export function closeExperiment(slug: string, id: number, r: { result?: number |
 }
 
 export function experimentsMarkdown(xs: Experiment[]): string {
-  const row = (e: Experiment) => `| ${e.id} | ${e.startedAt.slice(0, 10)} | ${e.lever} | ${METRICS[e.metric].label} | ${e.hypothesis.replace(/\|/g, "/")} | ${e.baseline ?? "—"} | ${e.result ?? "—"} | ${e.status} | ${e.note.replace(/\|/g, "/")} |`;
+  const row = (e: Experiment) => `| ${e.id} | ${e.startedAt.slice(0, 10)} | ${e.lever} | ${ANALYTICS[e.metric]?.label ?? e.metric} | ${e.hypothesis.replace(/\|/g, "/")} | ${e.baseline ?? "—"} | ${e.result ?? "—"} | ${e.status} | ${e.note.replace(/\|/g, "/")} |`;
   return ["# Experiments", "", "Every change made to move a lever. Written by `npm run hq -- experiment`.", "",
     "| # | Started | Lever | Metric | Hypothesis | Baseline | Result | Status | Note |", "|---|---|---|---|---|---|---|---|---|",
     ...xs.map(row), ""].join("\n");

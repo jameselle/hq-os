@@ -127,3 +127,19 @@ test("the workflow-checks template answers pass or fail per check, in HQ's shape
     assert.equal(out.workflows[0].checks[2].detail, "/gone/ did not load");
   } finally { server.close(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("workflow checks can prove a workflow from a number HQ measured, not only from a page", async () => {
+  const { runChecks } = await import(CHECKS);
+  const metrics: Record<string, { value: number | null; note?: string }> = { uptime_rate: { value: 0.995 }, stale_minutes: { value: 90 }, tool_users: { value: null, note: "No adapter yet" } };
+  const out = await runChecks({ site: "https://example.com", workflows: [{ title: "Data freshness and uptime", checks: [
+    { label: "Uptime", metric: "uptime_rate", atLeast: 0.99 },
+    { label: "Down under an hour", metric: "stale_minutes", below: 60 },
+    { label: "Tool users counted", metric: "tool_users" },
+  ] }] }, async () => null, (id: string) => metrics[id] ?? null);
+  const [uptime, down, tool] = out.workflows[0].checks;
+  assert.equal(uptime.ok, true);
+  assert.equal(down.ok, false);
+  assert.match(down.detail, /90, need below 60/);
+  assert.equal(tool.ok, false);
+  assert.match(tool.detail, /No adapter yet/);
+});

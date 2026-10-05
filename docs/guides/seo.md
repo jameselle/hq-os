@@ -114,7 +114,12 @@ their behalf.
 - `/searchfit-seo:ai-visibility`: show up in AI answers (GEO).
 - `/small-business:seo-ai-visibility`: a GEO check sized for a small business.
 
-This department has no `/hq:` skill of its own; `/hq:dept seo` plans its week.
+- `/hq:blog`: research and write one post: Search Console gaps, what competitors publish, the posts the site
+  already has. HQ's daily blog runs it on its own every day; run it by hand to try a topic. Set the daily blog up
+  with [Daily blog](/guides/blog).
+
+`/hq:dept seo` plans the department's week. The SEO & GEO tab leads with the blog drafts waiting for you, then the
+published posts, the search numbers and whether search and AI engines can read each site.
 
 ## 4. Check it's working
 
