@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { formatValue, scorecardRows } from "../lib/scorecard-metrics";
+import { METRICS, formatValue, scorecardRows } from "../lib/scorecard-metrics";
 import type { ScorecardSnapshot } from "../lib/scorecard";
 
 test("formats each unit, and missing as a dash", () => {
@@ -49,7 +49,7 @@ test("week series merges kept history with the snapshot's own weeks, snapshot wi
 test("catalogue metrics the adapter left out show as missing", async () => {
   const s: ScorecardSnapshot = { version: 1, observedAt: "2026-10-02T00:00:00Z", currency: "AUD", weeks: [{ week: "2026-W40", metrics: [{ id: "mrr", value: 1, quality: "exact", note: "" }] }] };
   const rows = scorecardRows(s);
-  assert.equal(rows.length, 17);
+  assert.equal(rows.length, Object.keys(METRICS).length);
   const absent = rows.find((r) => r.id === "new_signups")!;
   assert.equal(absent.quality, "missing");
   assert.equal(absent.note, "Not reported by the adapter");

@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { lifecycleState } from "./lifecycle";
+import { workflowChecksState, type WorkflowCheck } from "./workflow-checks";
 import { scorecardState } from "./scorecard";
 import { businessDir, getProfile, listReviews, type PublishedPost } from "./store";
 
@@ -26,7 +27,13 @@ export type EvidenceFacts = {
   reviews: { count: number; last?: string };
   plans: number;
   scorecardWeeks: string[];
-  lifecycle: { connected: boolean; readOnly: boolean; observedAt: string | null; enabled: number; stages: number } | null;
+  lifecycle: {
+    connected: boolean; readOnly: boolean; observedAt: string | null; enabled: number; stages: number;
+    /** Per automated message: which workflow it serves and what it actually delivered. */
+    workflows?: { label: string; enabled: boolean; serves?: string; sent30d?: number; lastSentAt?: string | null; drafts?: number }[];
+  } | null;
+  /** Pass/fail checks from the business's workflow-checks adapter (lib/workflow-checks.ts). */
+  checks?: { observedAt: string; stale: boolean; workflows: { title: string; checks: WorkflowCheck[] }[] } | null;
 };
 
 /** "Comment REVIEW", "comment REVIEW": the keyword itself is in capitals, so "comment below" isn't one. */
@@ -86,11 +93,42 @@ export function evidenceFrom(f: EvidenceFacts): Record<string, Evidence> {
   const lc = f.lifecycle;
   if (lc?.connected && lc.observedAt) {
     const watched = `${plural(lc.stages, "lifecycle stage")} tracked, last checked ${lc.observedAt.slice(0, 10)}`;
-    const ev: Evidence = lc.readOnly || !lc.enabled
-      ? { state: "partial", proof: [watched, "Read-only: HQ watches, nothing is sent from here"], last: lc.observedAt }
-      : { state: "live", proof: [watched, `${plural(lc.enabled, "lifecycle message")} switched on`], last: lc.observedAt };
-    out["Onboarding to first value"] = ev;
-    out["Churn early warning"] = ev;
+    const declared = (lc.workflows ?? []).filter((w) => w.serves);
+    // A message is proof only once it has really been delivered: switched on, drafted or tested isn't running.
+    for (const title of new Set(declared.map((w) => w.serves!))) {
+      const mine = declared.filter((w) => w.serves === title);
+      const sent = mine.reduce((n, w) => n + (w.sent30d ?? 0), 0);
+      const drafts = mine.reduce((n, w) => n + (w.drafts ?? 0), 0);
+      const names = list(mine.map((w) => w.label));
+      if (sent) {
+        const proof = [`${plural(sent, "message")} delivered in the last 30 days by ${list(mine.filter((w) => (w.sent30d ?? 0) > 0).map((w) => w.label))}`, watched];
+        if (drafts) proof.push(`${plural(drafts, "draft")} waiting for the owner's yes`);
+        out[title] = { state: "live", proof, last: latest(mine.map((w) => w.lastSentAt ?? undefined)) ?? lc.observedAt };
+      } else {
+        const proof = [`Built: ${names}`, drafts ? `${plural(drafts, "draft")} waiting for the owner's yes; nothing delivered yet` : mine.some((w) => w.enabled) ? "Switched on; nothing delivered in the last 30 days" : "Not switched on yet"];
+        out[title] = { state: "partial", proof, last: lc.observedAt };
+      }
+    }
+    // Lifecycle data with no per-message delivery record is watching, not running.
+    const why = lc.readOnly ? "Read-only: HQ watches, nothing is sent from here"
+      : declared.length ? "Watched only: no message serves this workflow yet" : "No delivery record per workflow yet";
+    const watchOnly: Evidence = { state: "partial", proof: [watched, why], last: lc.observedAt };
+    for (const title of ["Onboarding to first value", "Churn early warning"]) out[title] ??= watchOnly;
+  }
+
+  // Checks prove workflows that send nothing (pages, measurement). Live only when every check passed recently.
+  const ck = f.checks;
+  if (ck) {
+    for (const w of ck.workflows) {
+      if (out[w.title]?.state === "live") continue;
+      const failed = w.checks.filter((c) => !c.ok);
+      const line = (c: WorkflowCheck) => (c.detail ? `${c.label}: ${c.detail}` : c.label);
+      out[w.title] = ck.stale
+        ? { state: "partial", proof: [...w.checks.filter((c) => c.ok).map(line), `Checks last ran ${ck.observedAt.slice(0, 10)}, over 8 days ago`], last: ck.observedAt }
+        : failed.length
+          ? { state: "partial", proof: [...w.checks.filter((c) => c.ok).map(line), ...failed.map((c) => `Not yet: ${line(c)}`)], last: ck.observedAt }
+          : { state: "live", proof: w.checks.map(line), last: ck.observedAt };
+    }
   }
   return out;
 }
@@ -147,9 +185,15 @@ export function workflowEvidence(slug: string): { demo: boolean; evidence: Recor
       lifecycle = {
         connected: true, readOnly: l.readOnly, observedAt: l.snapshot.observedAt,
         enabled: l.snapshot.workflows.filter((w) => w.enabled).length, stages: l.snapshot.stages.length,
+        workflows: l.snapshot.workflows.map(({ label, enabled, serves, sent30d, lastSentAt, drafts }) => ({ label, enabled, serves, sent30d, lastSentAt, drafts })),
       };
     }
   } catch { /* no lifecycle */ }
+  let checks: EvidenceFacts["checks"] = null;
+  try {
+    const c = workflowChecksState(slug);
+    if (c.snapshot) checks = { observedAt: c.snapshot.observedAt, stale: c.stale, workflows: c.snapshot.workflows };
+  } catch { /* no checks */ }
   const facts: EvidenceFacts = {
     demo: Boolean(profile.demo),
     sites: profile.sites ?? [],
@@ -159,6 +203,7 @@ export function workflowEvidence(slug: string): { demo: boolean; evidence: Recor
     plans: plansCount(slug),
     scorecardWeeks,
     lifecycle,
+    checks,
   };
   return { demo: facts.demo, evidence: evidenceFrom(facts) };
 }

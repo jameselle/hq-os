@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { mergeBrand } from "../lib/studio/brand";
-import { SFX_SOURCE, VOICE_CHAIN, emphatic, longCaptions, pacing, punchFilter, punchWindows, sfxEvents } from "../lib/studio/polish";
+import { SFX_SOURCE, VOICE_CHAIN, emphatic, firstTextAt, longCaptions, pacing, punchFilter, punchWindows, sfxEvents } from "../lib/studio/polish";
 import { validateSpec } from "../lib/studio/spec";
 
 const line = (text: string, start: number, end: number) => ({ text, start, end });
@@ -70,4 +70,16 @@ test("voice chain, punch and sfx are validated settings", () => {
   assert.ok(validateSpec({ ...base, punch: { zoom: 1.2 }, sfx: true, voice: "clean" }).ok);
   const bad = validateSpec({ ...base, punch: { zoom: 2 }, sfx: "on", voice: "x" });
   assert.ok(!bad.ok && bad.errors.length === 3);
+});
+
+test("firstTextAt reads the earliest hook or caption start from ASS dialogue", () => {
+  const lines = [
+    "Dialogue: 0,0:00:00.62,0:00:00.90,Caption,,0,0,0,,HELLO",
+    "Dialogue: 1,0:00:00.24,0:00:02.50,Hook,,0,0,0,,THIS RUNS MY BUSINESS",
+    "Dialogue: 0,0:01:02.50,0:01:03.00,Caption,,0,0,0,,LATER",
+    "Comment: 0,0:00:00.00,0:00:01.00,Caption,,0,0,0,,not shown",
+  ];
+  assert.equal(firstTextAt(lines), 0.24);
+  assert.equal(firstTextAt(["Dialogue: 0,0:01:02.50,0:01:03.00,Caption,,0,0,0,,X"]), 62.5);
+  assert.equal(firstTextAt([]), null);
 });

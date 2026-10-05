@@ -14,6 +14,7 @@ export const METRICS = {
   failed_payments: {lever: 'keep', label: 'Failed payments', unit: 'count'},
   payment_recovery_rate: {lever: 'keep', label: 'Payments recovered', unit: 'rate'},
   set_to_cancel: {lever: 'keep', label: 'Set to cancel', unit: 'count'},
+  weekly_active_rate: {lever: 'keep', label: 'Weekly active customers', unit: 'rate'},
   upgrades: {lever: 'expand', label: 'Upgrades', unit: 'count'},
   downgrades: {lever: 'expand', label: 'Downgrades', unit: 'count'},
   nrr: {lever: 'expand', label: 'Net revenue retention', unit: 'rate'},

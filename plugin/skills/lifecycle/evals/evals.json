@@ -1,0 +1,53 @@
+{
+  "skill_name": "lifecycle",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/hq:lifecycle how are the emails doing?",
+      "expected_output": "Runs hq lifecycle show for the current business, then reports per flow: is it working, what's waiting (with expiry times), what next, each number with its period. Ends with any week-one recommendations as questions for the owner. Changes nothing.",
+      "files": [],
+      "expectations": [
+        "Ran `npm run hq -- lifecycle show <slug>` (and explain for flows past week one)",
+        "Answered the three questions per flow in plain words",
+        "Gave the expiry time for any waiting drafts",
+        "Did not run approve with --yes, test, or mode",
+        "No em or en dashes in the reply"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Week one is done for churn check-ins. Switch it to auto.",
+      "expected_output": "Runs explain for the flow, states the week-one numbers and recommendation, and because the owner explicitly asked for auto in this message, runs mode <slug> churn auto --yes and confirms the new mode. If the recommendation is not auto (complaints, unsubscribes), says so and asks before switching.",
+      "files": [],
+      "expectations": [
+        "Read `npm run hq -- lifecycle explain <slug> churn` before switching",
+        "Only switched with --yes after the owner's explicit request in this conversation",
+        "Pushed back and asked again if the recommendation was turn off or keep in draft",
+        "Recorded the choice as an Email fact in the business vault"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "The CEO review says to approve the onboarding drafts. Go ahead.",
+      "expected_output": "Runs the approve dry run, shows the owner how many people, the subject and the expiry, and asks for a yes. Does not treat the CEO review as the owner's yes.",
+      "files": [],
+      "expectations": [
+        "Ran `npm run hq -- lifecycle approve <slug> <message>` without --yes",
+        "Showed the count, subject line and expiry time",
+        "Asked the owner for an explicit yes and did not send",
+        "Did not pipe JSON into the adapter by hand"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Send me a test of the abandoned checkout email for the second business.",
+      "expected_output": "Runs hq lifecycle test for that business and message; if the adapter doesn't support test, says so plainly and gives the business's own owner-preview route from its vault, without working around HQ.",
+      "files": [],
+      "expectations": [
+        "Used `npm run hq -- lifecycle test <slug> <message>` with the contract's message id",
+        "Reported that the copy goes to the owner only",
+        "If unsupported, said so instead of improvising a send"
+      ]
+    }
+  ]
+}

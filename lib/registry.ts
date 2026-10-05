@@ -140,6 +140,15 @@ export const DEPARTMENTS: Department[] = [
         check: { port: 8794, paths: ["~/.cache/hyperframes/whisper/models/ggml-small.en.bin"], bins: [] },
         freeNote: "Built on FFmpeg + whisper.cpp (+ HyperFrames for motion graphics). No hand editing: the owner only approves publishing. The same engine and review page ship on their own as the public jameselle/clipper.",
       },
+      {
+        name: "YouTube CTR Arena",
+        what: "Tests cover options before posting: `studio cover-pool` gathers the niche's own covers, `studio cover-test` drops each option into a simulated feed of them for 100 synthetic viewers and ranks the options, with the traits that help or hurt each.",
+        repo: "https://store.fluxgrowthagency.com/p/youtube-ctr-arena",
+        licence: oss("MIT"),
+        check: { paths: ["~/.local/opt/youtube-ctr-arena/bin/youtube-arena.cjs"] },
+        optional: true,
+        warn: "A simulated feed, not a CTR forecast: it ranks options, and it can't see text the 3:4 grid crops off. Installed from the free download with HQ's local patches (setup/ctr-arena): covers scored at their real shape, calibration on each channel's own outliers. The pool is other creators' covers, kept for local analysis only.",
+      },
       { name: "DaVinci Resolve", what: "Pro-grade editing, colour and audio (free edition).", repo: "https://www.blackmagicdesign.com/products/davinciresolve", licence: free("Proprietary"), check: { apps: ["DaVinci Resolve"] }, freeNote: "Free edition covers social video; Studio is paid." },
       { name: "Meta Business Suite", what: "Native scheduling and inbox for Instagram and Facebook.", repo: "https://business.facebook.com", licence: free("Proprietary"), check: { web: true } },
       { name: "OBS Studio", what: "Screen and camera recording.", repo: "obsproject/obs-studio", licence: oss("GPL-2.0"), check: { apps: ["OBS"] } },
@@ -265,6 +274,7 @@ export const DEPARTMENTS: Department[] = [
       { name: "Mautic", what: "Marketing automation: journeys, segments, scoring.", repo: "mautic/mautic", licence: oss("GPL-3.0"), check: { paths: ["~/.local/opt/mautic"] } },
     ],
     skills: [
+      { id: "hq:lifecycle", what: "Read the automated emails, report week one and recommend auto, draft or off; never approves without the owner" },
       { id: "marketing:email-sequence", what: "Write an email sequence" },
       { id: "small-business:reactivate", what: "Win back lapsed customers" },
       { id: "small-business:inbox-manager", what: "Triage the inbox" },

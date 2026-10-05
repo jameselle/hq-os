@@ -79,6 +79,8 @@ A page script is JSON: `slug`, `path`, `title`, `subtitle`, `ready` (a locator t
   `"readOnly": true`, which refuses the page's server actions so nothing is saved to the shared test
   account. Afterwards, load the page normally and confirm the account's own arrangement is untouched.
 - Dry-run (`--dry`) and READ every screenshot. Positional cells shift when a table's columns change.
+- ⚠️ Hard rule: nothing public carries any company's data. Walk through the product's public pages as a
+  customer sees them, signed in as a test account; never an admin page, another member's data or internal numbers.
 
 ## 5. Render
 

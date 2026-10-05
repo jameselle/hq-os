@@ -47,6 +47,7 @@ for (let i = 0; i < count; i++) {
     age < 3 ? {id: 'payment_recovery_rate', value: null, quality: 'missing', note: 'Demo: needs three weeks of payment history'}
       : {id: 'payment_recovery_rate', value: round(0.55 + n('r') * 0.2, 3), quality: 'exact', note: DEMO},
     {id: 'set_to_cancel', value: round(3 + n('sc') * 6), quality: 'exact', note: DEMO, breakdown: [{label: 'Top tier', value: round(1 + n('sc1') * 2)}, {label: 'Base tier', value: round(2 + n('sc2') * 3)}]},
+    {id: 'weekly_active_rate', value: Math.round((0.55 + n('wa') * 0.2) * 1e4) / 1e4, quality: 'exact', note: DEMO},
     {id: 'upgrades', value: round(1 + n('u') * 4), quality: 'exact', note: DEMO, breakdown: [{label: 'Base to top', value: round(1 + n('u') * 3)}]},
     {id: 'downgrades', value: round(n('d') * 2), quality: 'exact', note: DEMO},
     age < 4 ? {id: 'nrr', value: null, quality: 'missing', note: 'Demo: needs four weeks of history'}

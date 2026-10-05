@@ -31,7 +31,7 @@ contacts a month and 3 keyword triggers. Nothing here needs a paid plan.
 
 Content has the most tools of any department. They fall into five jobs: **posting** (Composio, WoopSocial,
 Postiz), **making video** (HyperFrames, HQ Studio, FFmpeg, whisper.cpp, Teleprompter), **voice and music**
-(VoiceStudio, VoxCPM2, Kokoro TTS, MusicGen), **auto-replies** (ManyChat or comment-dm), and **optional
+(VoiceStudio, VoxCPM2, Kokoro TTS, MusicGen), **cover testing** (YouTube CTR Arena), **auto-replies** (ManyChat or comment-dm), and **optional
 editors and recorders**. Set them up in the order below.
 
 Every install goes through `/hq:add-tool`: free tools only, from a checksum-verified or notarised release or
@@ -104,6 +104,20 @@ then check with `npm run hq -- services status`.
   "whisper-cli isn't built" or "whisper model missing", run `/hq:add-tool whisper.cpp for content`.
 - **How HQ checks it:** HQ Studio: port 8794 (**running**) or the whisper model file (**installed**). FFmpeg:
   `ffmpeg` on the PATH. whisper.cpp: the whisper-cli binary above.
+
+### YouTube CTR Arena
+
+- **What it's for:** choosing between cover options before a post goes out. `npm run studio -- cover-pool <slug>`
+  gathers the niche's own covers (the accounts `/hq:style` found, plus the profile's competitors, or `--from <url>`)
+  and calibrates them on each channel's outliers. `npm run studio -- cover-test <slug> <cover…> --title "…"` drops
+  each option into a simulated feed of that pool, lets 100 synthetic viewers scan it, and ranks the options with the
+  traits (contrast, colour, brightness, clutter, face, focal point) that help or hurt each.
+- **Needed or optional:** optional. It's advice for the owner's pick, never a gate, and a simulated feed, not a CTR
+  forecast. It measures pixels, so it can't see text the 3:4 profile grid crops off: check that by eye.
+- **Licence or plan:** MIT, free download, no account or API key. Runs locally; nothing is uploaded.
+- **Set it up:** follow `setup/ctr-arena/README.md` (unzip to `~/.local/opt/youtube-ctr-arena`, apply HQ's patch,
+  `npm ci`), then run `cover-pool` once per business and again every month or so.
+- **How HQ checks it:** `~/.local/opt/youtube-ctr-arena/bin/youtube-arena.cjs` (**installed**).
 
 ### Teleprompter
 

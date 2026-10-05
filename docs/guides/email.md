@@ -76,6 +76,7 @@ The department needs **one** email tool: Listmonk or Mautic. Start with Listmonk
 - `/small-business:reactivate`: win back lapsed customers.
 - `/small-business:inbox-manager`: triage the inbox.
 - `/small-business:crm-autopilot`: keep contacts and follow-ups moving.
+- `/hq:lifecycle`: read every automated email flow, report week one and recommend switch to auto, keep in draft or turn off. It never approves a send or switches to auto without your yes. The flows themselves live on the lifecycle centre, `/lifecycle` ([Customer lifecycle](/guides/lifecycle)).
 - `/hq:dept email`: plan this department's week from the CEO's latest review.
 
 ## 4. Check it's working

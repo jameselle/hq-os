@@ -32,6 +32,9 @@ Run commands from `$HQ_ROOT` (default `~/business-os`).
 - **Media:** through the Composio connector, media must be a **public URL** the platform can
   fetch. Proven: a GitHub release asset in a public repo; prove the URL with the platform's dry
   run, not just curl. If the file is local and there's no public host, say so and ask how to host it.
+  ⚠️ **Hard rule: nothing public carries any company's data.** A public host keeps a file only until
+  its posts are live (step 6 deletes it). Before uploading, look at the video: any screen of HQ, an admin
+  page or another internal tool must show the demo business only, never real numbers, customers or ids.
 - **Cover:** if `<video>.cover.jpg` sits beside the video (made by `npm run studio -- cover`), use it:
   Instagram Reels take `cover_url` (host it like the video), TikTok via WoopSocial takes `cover`
   (upload it to the media library too). YouTube Shorts can't take one by API. Show it in the ask.
@@ -80,6 +83,15 @@ echo '{"platform":"instagram","via":"composio","account":"instagram_abc-def","st
 
 `status` is `published`, `scheduled` or `failed`. A `published` entry is refused without a
 url or id read back from the platform. It appears on the Content tab and as a note in the vault.
+
+## 6. Take the public copy down
+
+Once every channel that uses a file is `published` with a read-back url or id (or `failed` for good),
+delete that file from the public host: for a GitHub release asset,
+`gh api -X DELETE repos/<owner>/<repo>/releases/assets/<asset id>` (ids from
+`gh api repos/<owner>/<repo>/releases --jq '.[].assets[] | "\(.id) \(.name)"'`), then check the old URL
+returns 404. Platforms keep their own copy; the public one is only for fetching. Keep the original on the
+Mac (the Studio job folder). For a scheduled cloud task, include this as its last step.
 
 ## Scheduling for later
 

@@ -14,7 +14,8 @@ export async function POST(req:NextRequest){
   const p=resolveCurrent(req.cookies.get(BUSINESS_COOKIE)?.value);
   if(!p)return reply({error:'Choose a business'},400);
   const body=await req.json().catch(()=>null);
-  if(!['report','pause','resume'].includes(body?.action))return reply({error:'Invalid action'},400);
-  try{return reply({business:p.name,...await runLifecycle(p.slug,body.action)});}
+  if(!['report','pause','resume','approve','test','mode'].includes(body?.action))return reply({error:'Invalid action'},400);
+  const opts={workflow:typeof body.workflow==='string'?body.workflow:undefined,before:typeof body.before==='string'?body.before:undefined,mode:typeof body.mode==='string'?body.mode:undefined};
+  try{return reply({business:p.name,...await runLifecycle(p.slug,body.action,opts)});}
   catch{return reply({error:'Connection unavailable. Previous snapshot is not current.'},503);}
 }

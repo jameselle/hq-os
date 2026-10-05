@@ -20,7 +20,7 @@ const snap = (over: object = {}): ScorecardSnapshot =>
 
 test("accepts a well-formed snapshot", () => {
   assert.equal(validScorecard(snap(), "AUD"), true);
-  assert.equal(Object.keys(METRICS).length, 17);
+  assert.equal(Object.keys(METRICS).length, 18);
 });
 
 test("rejects personal-data shapes", () => {

@@ -120,7 +120,8 @@ export const LOOPS: Loop[] = [
     closes: "Closes in the weekly CEO review, where a broken guard rail outranks any growth task." },
 ];
 
-export type Workflow = { title: string; levers: Lever[]; owner: Node; trigger: string; steps: Step[]; metric: string; example: string };
+/** metricId: the scorecard number that measures it, when the catalogue has one (lib/scorecard-metrics.ts). */
+export type Workflow = { title: string; levers: Lever[]; owner: Node; trigger: string; steps: Step[]; metric: string; example: string; metricId?: string };
 
 export const WORKFLOWS: Workflow[] = [
   // ---------------- Get customers
@@ -128,7 +129,7 @@ export const WORKFLOWS: Workflow[] = [
     trigger: "Market & Competitors finds a rival weakness, outage or price rise.",
     steps: [["competitors", "Flags the gap with evidence links"], ["seo", "Picks the comparison searches (\"X vs Y\", \"X alternative\")"], ["content", "Makes a comparison video and article"], ["legal", "Checks every claim can be proved"], ["design", "Builds a comparison landing page"], ["ads", "Targets the rival's audience"], ["data", "Tracks sign-ups from the page"]],
     metric: "Sign-ups from comparison pages", example: "Subscription app: a rival raises its price, and a \"cheaper alternative\" page and video are live within a week." },
-  { title: "Search demand becomes pages at scale", levers: ["get"], owner: "seo",
+  { title: "Search demand becomes pages at scale", metricId: "new_signups", levers: ["get"], owner: "seo",
     trigger: "SEO finds a search pattern that repeats across many items.",
     steps: [["seo", "Finds the pattern and its volume"], ["engineering", "Generates one page per item from live data"], ["design", "Makes one strong template"], ["content", "Writes the intro per category"], ["legal", "Adds required notices for regulated industries"], ["data", "Tracks indexing and sign-ups per page type"]],
     metric: "Organic sign-ups", example: "Sports data: a best-odds page for every game. Children's books: a page per reading age and theme." },
@@ -176,10 +177,14 @@ export const WORKFLOWS: Workflow[] = [
     trigger: "Monthly: there is data nobody else has.",
     steps: [["data", "Pulls an original statistic"], ["content", "Turns it into a report and charts"], ["legal", "Checks the data claims"], ["seo", "Adds structured data so AI answers cite it"], ["sales", "Pitches journalists and podcasts"]],
     metric: "Citations, backlinks and referral sign-ups", example: "Sports data: bookmaker margin by sport, every month." },
-  { title: "Trial that didn't convert", levers: ["get"], owner: "email",
+  { title: "Trial that didn't convert", metricId: "new_paying", levers: ["get"], owner: "email",
     trigger: "A trial ends without the customer reaching first value.",
     steps: [["data", "Flags trials that never activated"], ["email", "Sends a help sequence aimed at the missing step"], ["sales", "Reaches out personally to high-intent leads"], ["engineering", "Fixes the step most people drop at"], ["support", "Offers a short walkthrough"]],
     metric: "Trial-to-paid rate", example: "Sports data: signed up but never tracked a bet." },
+  { title: "Abandoned checkout recovery", metricId: "new_paying", levers: ["get"], owner: "email",
+    trigger: "Someone starts a checkout and hasn't paid a few hours later.",
+    steps: [["data", "Lists unfinished checkouts, leaving out the owner's and test accounts"], ["legal", "Confirms the consent basis for a follow-up"], ["email", "Sends one note asking what stopped them, with a link to finish"], ["support", "Answers the replies personally"], ["finance", "Fixes payment errors the replies reveal"], ["data", "Counts checkouts recovered after the email"]],
+    metric: "Checkouts recovered; new paying customers", example: "Software subscription: someone stopped at the payment step or couldn't find the plan they needed." },
   { title: "Pricing page experiment", levers: ["get", "expand"], owner: "finance",
     trigger: "Visitor-to-paid conversion is flat or falling.",
     steps: [["data", "Sets the baseline"], ["competitors", "Collects rivals' pricing pages"], ["finance", "Proposes options (free tier or trial, annual discount)"], ["design", "Builds the variants"], ["legal", "Checks price display rules"], ["engineering", "Ships the test"], ["data", "Measures"], ["ceo", "Decides"]],
@@ -197,11 +202,11 @@ export const WORKFLOWS: Workflow[] = [
     steps: [["finance", "Sets the reward (credit or a free month)"], ["legal", "Writes the terms"], ["engineering", "Builds referral links and rewards"], ["design", "Designs the share screen"], ["email", "Announces it to active customers"], ["data", "Attributes referrals and checks for fraud"]],
     metric: "Customers from referrals", example: "Subscription: a free month for each friend who subscribes." },
   // ---------------- Keep customers
-  { title: "Onboarding to first value", levers: ["keep"], owner: "engineering",
+  { title: "Onboarding to first value", metricId: "activation_rate", levers: ["keep"], owner: "engineering",
     trigger: "A new customer signs up.",
     steps: [["data", "Defines the activation moment"], ["design", "Makes a first screen with one goal"], ["email", "Sends day 0, 1, 3 and 7 onboarding emails"], ["content", "Makes 60-second \"first week\" videos"], ["support", "Messages anyone stuck at day 3"], ["data", "Reports time to activation by cohort"]],
     metric: "Share of new customers activated within 7 days", example: "Sports data: first bet tracked or first alert set. Children's books: first story read." },
-  { title: "Churn early warning", levers: ["keep"], owner: "email",
+  { title: "Churn early warning", metricId: "paying_churn_rate", levers: ["keep"], owner: "email",
     trigger: "A customer's risk score crosses the threshold.",
     steps: [["data", "Scores risk daily (no login for 7 days, less activity, a failed payment, a complaint)"], ["email", "Sends a nudge showing what's new for them"], ["support", "Writes personally to high-value customers"], ["engineering", "Checks whether a bug or missing data caused it"], ["ceo", "Reviews the risk list weekly"]],
     metric: "Churn of flagged customers who were helped vs not", example: "A top-tier member stops opening alerts after a bad week." },
@@ -217,11 +222,11 @@ export const WORKFLOWS: Workflow[] = [
     trigger: "A monitor fires: a site is down or a data feed is stale.",
     steps: [["security", "Detects it (uptime monitor, data health checks)"], ["support", "Is told before customers notice"], ["engineering", "Finds and fixes the root cause"], ["email", "Sends a status note if customers saw it"], ["finance", "Credits customers if a paid feature was down a long time"], ["data", "Logs minutes stale and tickets per incident"]],
     metric: "Incidents, minutes of stale data, tickets per incident", example: "A data feed stalls and customers see stale numbers, which they read as a broken product." },
-  { title: "Failed payment recovery", levers: ["keep"], owner: "finance",
+  { title: "Failed payment recovery", metricId: "payment_recovery_rate", levers: ["keep"], owner: "finance",
     trigger: "A card or store payment fails.",
     steps: [["finance", "Detects the failed payment"], ["email", "Sends reminders on day 0, 3 and 7"], ["engineering", "Shows an in-app banner to update the card"], ["support", "Contacts high-value customers personally"], ["data", "Reports the recovery rate"]],
     metric: "Share of failed payments recovered", example: "Often a large share of churn is a failed card, not a decision to leave." },
-  { title: "Cancel flow with saves", levers: ["keep"], owner: "engineering",
+  { title: "Cancel flow with saves", metricId: "paying_churn_rate", levers: ["keep"], owner: "engineering",
     trigger: "A customer starts to cancel.",
     steps: [["engineering", "Asks for the reason in one tap"], ["finance", "Offers a save within margin (pause, downgrade, discount)"], ["legal", "Keeps cancelling easy and lawful"], ["data", "Ranks the reasons"], ["support", "Follows up on \"missing feature\" reasons"], ["email", "Queues a win-back"]],
     metric: "Save rate; top cancel reasons", example: "Seasonal product: offer a pause instead of a cancel." },
@@ -229,7 +234,7 @@ export const WORKFLOWS: Workflow[] = [
     trigger: "A fix ships for a common cancel reason.",
     steps: [["data", "Lists churned customers by reason"], ["engineering", "Ships the fix"], ["finance", "Approves a comeback offer"], ["legal", "Checks consent to email them"], ["email", "Sends \"you left because of X; X is fixed\""], ["ads", "Retargets churned customers"]],
     metric: "Reactivated customers", example: "Former customers who left over a missing feature." },
-  { title: "Daily habit", levers: ["keep"], owner: "content",
+  { title: "Daily habit", metricId: "weekly_active_rate", levers: ["keep"], owner: "content",
     trigger: "Every day.",
     steps: [["engineering", "Sends alerts for the customer's interests"], ["content", "Posts a daily recap or tip"], ["support", "Runs daily community threads"], ["email", "Sends a weekly digest"], ["data", "Reports the weekly active share"]],
     metric: "Weekly active customers", example: "Sports data: daily free tips and a results recap. Children's books: a story of the week." },
@@ -299,7 +304,7 @@ export const WORKFLOWS: Workflow[] = [
     steps: [["data", "Finds the topics customers return to"], ["content", "Makes a course or guide"], ["finance", "Prices it"], ["legal", "Checks claims"], ["email", "Launches it to existing customers"]],
     metric: "Sales to existing customers", example: "Children's books: a reading-routine guide for parents." },
   // ---------------- Foundation
-  { title: "Weekly growth review", levers: ["base", "get", "keep", "expand"], owner: "ceo",
+  { title: "Weekly growth review", metricId: "mrr", levers: ["base", "get", "keep", "expand"], owner: "ceo",
     trigger: "Every week.",
     steps: [["data", "Publishes the scorecard"], ["ceo", "Picks the weakest lever"], ["ceo", "Names one owner and contributors for each action"], ["operations", "Tracks the actions in the vault"], ["data", "Measures the result next week"]],
     metric: "The weakest lever's number, week on week", example: "HQ: the CEO tab and /hq:ceo." },
@@ -345,3 +350,10 @@ export function busiest(limit = 4): { node: Node; count: number }[] {
   for (const x of EDGES) { n[x.from] = (n[x.from] ?? 0) + 1; n[x.to] = (n[x.to] ?? 0) + 1; }
   return Object.entries(n).sort((a, b) => b[1] - a[1]).slice(0, limit).map(([node, count]) => ({ node, count }));
 }
+
+/** The URL slug of a workflow: its title in kebab case ("Daily habit" → "daily-habit"). */
+export const workflowSlug = (title: string) =>
+  title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+/** The workflow a slug names, or null. */
+export const workflowBySlug = (slug: string): Workflow | null => WORKFLOWS.find((w) => workflowSlug(w.title) === slug) ?? null;

@@ -85,7 +85,9 @@ Add `"square"` or `"landscape"` to `formats` if the owner wants them.
 the default) or `box`. Captions pop word by word unless the brand sets `"captions": "none"`.
 
 **Screen footage over the voice (cutaways).** When the speaker talks about something that can be
-shown (a dashboard, a tool, a repo, a result), show it. Each cutaway covers the caption lines from
+shown (a dashboard, a tool, a repo, a result), show it. ⚠️ Hard rule: nothing public carries any
+company's data, so an internal tool (HQ, an admin page) is recorded on a demo instance with the demo
+business, never the live one. Each cutaway covers the caption lines from
 the words in `from` to the words in `to`, matched against what the finished cut says, so write them
 the way the transcript spells them. On a vertical video the footage fills the top half, the face
 moves to the bottom half (`faceY`: 0..1, where the face sits), and the captions move to the seam.

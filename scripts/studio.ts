@@ -11,6 +11,10 @@
 //   npm run studio -- apply-edits <video>                        apply the cuts and export speed marked on the review page
 //   npm run studio -- cover <video> --day "Day 2" --title "My own ManyChat" [--at <s>] [--face 0.5]   the post's cover: a clean
 //                          source frame (the planner's cover, --at, or a third of the way in) with the day and title
+//   npm run studio -- cover-pool <slug> [--per 40] [--shape 9x16] [--from <account url>]   the niche's own covers
+//                          (style.json winners' accounts + competitors) for cover tests, calibrated on their outliers
+//   npm run studio -- cover-test <slug> <cover…> --title "…" [--shape 9x16]   rank cover options in a simulated
+//                          feed of that pool (YouTube CTR Arena): which one draws the clicks and which traits cost it
 //   npm run studio -- measure <video|url> [--outlier 4.2] [--dir <folder>]   a clip's style in numbers: cuts per 10 s,
 //                          first cut, shot length, words per minute, first word, the hook line, loudness (a URL is fetched with yt-dlp)
 //   npm run studio -- style <slug> <measure.json…> [--niche "…"]   the business's style targets (medians of the
@@ -31,7 +35,8 @@ import { buildAss, buildCoverAss, buildSeriesCoverAss, captionLines, gridCrop as
 import { applyEdits, formatNotes, listVideos, readEdits, readMap, readNotes, readPlans, serveReview, updateNote } from "../lib/studio/review";
 import { businessDir, getProfile, hqData, stamp, vaultRoot } from "../lib/store";
 import { compareToStyle, paceStats, parseCuts, styleFrom, validStyle, type Measure, type Style } from "../lib/studio/style";
-import { SFX_SOURCE, VOICE_CHAIN, longCaptions, pacing, punchFilter, punchWindows, sfxEvents, type Punch, type Sfx } from "../lib/studio/polish";
+import { SFX_SOURCE, VOICE_CHAIN, firstTextAt, longCaptions, pacing, punchFilter, punchWindows, sfxEvents, type Punch, type Sfx } from "../lib/studio/polish";
+import { SHAPES, candidateIds, formatRanking, indexRows, poolEntries, sourceOf, titlesJsonl, type ArenaResult, type PoolEntry, type PoolSource } from "../lib/studio/arena";
 
 const HOME = os.homedir();
 const WHISPER = path.join(HOME, ".cache", "hyperframes", "whisper", "whisper.cpp", "build", "bin", "whisper-cli");
@@ -469,6 +474,136 @@ function cmdStyle(slug: string | undefined, files: string[], niche?: string) {
   console.log(`  cuts ${t.cutsPer10s}/10 s · first cut ${t.firstCut} s · median shot ${t.medianShot} s · ${t.wpm} wpm · first word ${t.firstWord} s · ${t.duration} s long`);
 }
 
+const ARENA = process.env.HQ_ARENA || path.join(HOME, ".local", "opt", "youtube-ctr-arena");
+
+function arena(script: string, args: string[], env: Record<string, string>) {
+  if (!fs.existsSync(path.join(ARENA, "bin", script))) die(`YouTube CTR Arena isn't installed at ${ARENA}: see setup/ctr-arena/README.md`);
+  const r = spawnSync("node", [path.join(ARENA, "bin", script), ...args], { encoding: "utf8", env: { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024 });
+  if (r.status !== 0) die(`${script} failed:\n${(r.stderr || r.stdout).trim().split("\n").slice(-12).join("\n")}`);
+  return r.stdout;
+}
+
+/** The niche's own covers, so a cover test compares against what this audience actually scrolls past: the
+ *  accounts from style.json (the winners /hq:style found), the profile's competitors, and any --from URL. */
+function cmdCoverPool(slug: string | undefined, per: number, shape: string, from: string[]) {
+  if (!slug) die("usage: cover-pool <slug> [--per 40] [--shape 9x16] [--from <account url>]…");
+  if (!fs.existsSync(businessDir(slug))) die(`no business "${slug}" under ${path.dirname(businessDir(slug))}`);
+  const size = SHAPES[shape] ?? die(`--shape must be one of ${Object.keys(SHAPES).join(", ")}`);
+  const root = path.join(businessDir(slug), "covers");
+  const ars = path.join(root, "reference-arsenal");
+  const lib = path.join(ars, "lib");
+  fs.mkdirSync(lib, { recursive: true });
+  const cacheFile = path.join(root, "sources.json");
+  const cache = (fs.existsSync(cacheFile) ? JSON.parse(fs.readFileSync(cacheFile, "utf8")) : {}) as { channelOf?: Record<string, string> };
+  const channelOf = cache.channelOf ?? {};
+
+  const wanted: { url: string; account?: string }[] = from.map((url) => ({ url }));
+  try {
+    const style = JSON.parse(fs.readFileSync(path.join(businessDir(slug), "style.json"), "utf8")) as { sources?: { source: string; account?: string }[] };
+    for (const s of style.sources ?? []) wanted.push({ url: s.source, account: s.account });
+  } catch {
+    console.log("no style.json: run /hq:style first for the niche's winners, or pass --from <account url>");
+  }
+  for (const c of getProfile(slug)?.competitors ?? []) {
+    for (const [platform, v] of Object.entries(c.channels ?? {})) {
+      if (/^https?:/.test(v)) wanted.push({ url: v, account: c.name });
+      else if (platform === "tiktok") wanted.push({ url: `https://www.tiktok.com/@${v.replace(/^@/, "")}`, account: c.name });
+      else if (platform === "youtube") wanted.push({ url: `https://www.youtube.com/@${v.replace(/^@/, "")}`, account: c.name });
+    }
+  }
+  if (run("yt-dlp", ["--version"], { quiet: true }).status !== 0) die("yt-dlp isn't on the PATH: /hq:add-tool yt-dlp");
+  const sources = new Map<string, PoolSource>();
+  const unresolved: string[] = [];
+  for (const w of wanted) {
+    let src = sourceOf(w.url, w.account);
+    if (!src && /youtube\.com|youtu\.be/.test(w.url)) {
+      channelOf[w.url] ||= run("yt-dlp", ["--skip-download", "--no-warnings", "--print", "channel_url", w.url], { quiet: true }).stdout.trim();
+      src = channelOf[w.url] ? sourceOf(channelOf[w.url], w.account) : null;
+    }
+    if (src) sources.set(`${src.platform}:${src.url}`, src);
+    else unresolved.push(w.url);
+  }
+  if (unresolved.length) console.log(`couldn't find the account behind ${unresolved.length} URL(s): ${unresolved.join(", ")}`);
+  if (!sources.size) die("no accounts to build a pool from");
+
+  const pool: PoolEntry[] = [];
+  const failed: string[] = [];
+  for (const src of sources.values()) {
+    const r = run("yt-dlp", ["--flat-playlist", "--playlist-end", String(per), "--no-warnings", "-J", src.url], { quiet: true });
+    let got: PoolEntry[] = [];
+    try {
+      got = poolEntries(JSON.parse(r.stdout), src);
+    } catch {
+      /* counted below */
+    }
+    if (!got.length) failed.push(`${src.account} (${src.platform}): ${(r.stderr || "no entries with views and a cover").trim().split("\n").pop()}`);
+    console.log(`  ${src.account.padEnd(24)} ${src.platform.padEnd(8)} ${got.length} covers`);
+    pool.push(...got);
+  }
+  if (failed.length) console.log(`listing failed for ${failed.length} account(s):\n  ${failed.join("\n  ")}`);
+
+  const kept: PoolEntry[] = [];
+  let fetched = 0;
+  const bad: string[] = [];
+  for (const p of pool) {
+    const file = path.join(lib, `${p.id}.jpg`);
+    if (!(fs.existsSync(file) && fs.statSync(file).size > 6000)) {
+      const r = run("curl", ["-fsSL", "--max-time", "30", "-o", file, p.thumb], { quiet: true });
+      if (r.status !== 0 || !fs.existsSync(file) || fs.statSync(file).size <= 6000) {
+        bad.push(p.id);
+        fs.rmSync(file, { force: true });
+        continue;
+      }
+      fetched++;
+    }
+    kept.push(p);
+  }
+  if (bad.length) console.log(`${bad.length} cover(s) failed to download and were left out`);
+  if (kept.length < 30) die(`only ${kept.length} covers in the pool: too few to compare against (add accounts with --from)`);
+
+  fs.writeFileSync(path.join(ars, "_index.json"), JSON.stringify(indexRows(kept), null, 2));
+  fs.writeFileSync(path.join(lib, "_titles.jsonl"), titlesJsonl(kept.map((p) => ({ id: p.id, title: p.title, niche: p.platform }))));
+  const link = path.join(root, "decoys-real");
+  if (!fs.existsSync(link)) fs.symlinkSync(path.join("reference-arsenal", "lib"), link);
+  fs.writeFileSync(cacheFile, JSON.stringify({ updatedAt: new Date().toISOString(), shape, sources: [...sources.values()], covers: kept.length, channelOf }, null, 2));
+
+  const env = { STUDIO_ROOT: root, ARENA_SIZE: size };
+  arena("arena-calibrate.cjs", [`--sample=${kept.length}`], env);
+  arena("build-real-decoy-manifest.cjs", [`--camp=${root}`], env);
+  const cal = JSON.parse(fs.readFileSync(path.join(ars, "_calibration.json"), "utf8")) as { n: number; split: string; channels: number; attrs: Record<string, { lift: number; corrOutlier?: number }> };
+  console.log(`\n${slug}: ${kept.length} niche covers from ${sources.size} accounts (${fetched} new) → ${root}`);
+  console.log(`calibrated on ${cal.n} (${cal.split}, ${cal.channels} channels). What this niche's outliers have more (+) or less (−) of:`);
+  for (const [k, v] of Object.entries(cal.attrs).sort((a, b) => b[1].lift - a[1].lift)) console.log(`  ${k.padEnd(18)} ${v.lift >= 0 ? "+" : "−"}${Math.abs(v.lift).toFixed(3)}`);
+}
+
+/** Rank a post's cover options against the niche pool. Advice for the owner's pick, never a gate. */
+function cmdCoverTest(slug: string | undefined, images: string[], title: string, shape: string, seed: string) {
+  if (!slug || images.length < 1) die('usage: cover-test <slug> <cover.jpg…> --title "the post\'s title or cover text" [--shape 9x16] [--seed 7]');
+  const profile = getProfile(slug) ?? die(`no business "${slug}"`);
+  const root = path.join(businessDir(slug), "covers");
+  const decoys = path.join(root, "decoy-manifest-real.json");
+  if (!fs.existsSync(decoys)) die(`no cover pool for ${slug} yet: run cover-pool ${slug} first`);
+  for (const f of images) if (!fs.existsSync(f)) die(`no such file: ${f}`);
+  const { date, time } = stamp(profile);
+  let dir = path.join(root, "tests", `${date}-${time}-${shape}`);
+  for (let n = 2; fs.existsSync(dir); n++) dir = path.join(root, "tests", `${date}-${time}-${shape}-${n}`);
+  const cands = path.join(dir, "decoys-real");
+  fs.mkdirSync(cands, { recursive: true });
+  const ids = candidateIds(images);
+  images.forEach((f, i) => fs.copyFileSync(f, path.join(cands, `${ids[i]}.jpg`)));
+  // Candidates get the same title tagging as the pool, so the comparison is like for like.
+  fs.writeFileSync(path.join(cands, "_titles.jsonl"), titlesJsonl(ids.map((id) => ({ id, title }))));
+  fs.writeFileSync(path.join(dir, "sources.json"), JSON.stringify({ title, shape, seed, images: images.map((f) => path.resolve(f)) }, null, 2));
+  const env = { STUDIO_ROOT: root, ARENA_SIZE: SHAPES[shape] ?? die(`--shape must be one of ${Object.keys(SHAPES).join(", ")}`) };
+  arena("build-real-decoy-manifest.cjs", [`--camp=${dir}`, "--min=0"], env);
+  const out = path.join(dir, "arena-results.json");
+  arena("youtube-arena.cjs", [`--candidates=${path.join(dir, "decoy-manifest-real.json")}`, `--decoys=${decoys}`, `--calibrated=${path.join(root, "reference-arsenal", "_calibration.json")}`, `--seed=${seed}`, `--out=${out}`], env);
+  const res = JSON.parse(fs.readFileSync(out, "utf8")) as ArenaResult;
+  console.log(`${images.length} cover option(s) vs ${slug}'s niche pool (${shape}, seed ${seed}):`);
+  for (const line of formatRanking(res)) console.log(line);
+  console.log(`\n${out}\nA simulated feed, not a CTR forecast: use it to choose between options, and check the winner still reads in the 3:4 grid.`);
+}
+
 /** The business a render belongs to, from its path ($HQ_DATA/businesses/<slug>/…). */
 function styleFor(video: string): Style | null {
   const m = /[\\/]businesses[\\/]([^\\/]+)[\\/]/.exec(path.resolve(video));
@@ -598,6 +733,8 @@ function cmdCheck(video: string | undefined, hook?: string) {
       const dialogue = fs.readFileSync(path.join(path.dirname(video), `${shape}.ass`), "utf8").split("\n").filter((l) => l.startsWith("Dialogue:"));
       const texts = [...new Set(dialogue.map((l) => l.split(",").slice(9).join(",").replace(/\{[^}]*\}/g, "").replace(/\\N/g, " ").trim()))];
       const long = longCaptions(texts.map((text) => ({ text })));
+      const first = firstTextAt(dialogue);
+      if (first !== null) checks.push({ name: "text by 0.5 s", ok: true, detail: first <= 0.5 ? `first text at ${first.toFixed(2)} s` : `⚠ first text only at ${first.toFixed(2)} s: put the hook or a caption on screen by 0.5 s` });
       checks.push({ name: "caption length", ok: true, detail: long.length ? `⚠ over 30 characters: ${long.slice(0, 3).map((t) => `"${t}"`).join(", ")}` : "every line 30 characters or fewer" });
     } catch { /* no captions file */ }
   }
@@ -844,6 +981,12 @@ switch (cmd) {
     cmdCover(v, { day, title }, at === undefined ? undefined : Number(at), face === undefined ? undefined : Number(face));
     break;
   }
+  case "cover-pool":
+    cmdCoverPool(pos[0], Number(opt("--per") ?? 40), opt("--shape") ?? "9x16", args.flatMap((a, i) => (a === "--from" && args[i + 1] ? [args[i + 1]] : [])));
+    break;
+  case "cover-test":
+    cmdCoverTest(pos[0], pos.slice(1), opt("--title") ?? die("cover-test: --title is required (the post's title or cover text)"), opt("--shape") ?? "9x16", opt("--seed") ?? "7");
+    break;
   case "measure":
     cmdMeasure(pos[0], opt("--outlier"), opt("--dir"));
     break;

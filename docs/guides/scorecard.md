@@ -57,11 +57,11 @@ A demo business with no connection runs `templates/scorecard/demo-adapter.mjs`, 
 | Lever | Ids |
 |---|---|
 | Get customers | `new_signups`, `new_paying`, `new_mrr` |
-| Keep customers | `activation_rate`, `paying_churn_rate`, `failed_payments`, `payment_recovery_rate`, `set_to_cancel` |
+| Keep customers | `activation_rate`, `paying_churn_rate`, `failed_payments`, `payment_recovery_rate`, `set_to_cancel`, `weekly_active_rate` |
 | Expand revenue | `upgrades`, `downgrades`, `nrr` |
 | Foundation | `mrr`, `paying_customers`, `cost_to_win`, `payback_months`, `known_source_share`, `records_mismatch` |
 
-`set_to_cancel` counts paying members who have scheduled a cancellation. `records_mismatch` counts paying members on
+`set_to_cancel` counts paying members who have scheduled a cancellation. `weekly_active_rate` is the share of paying customers who used the product during the week (the Daily habit workflow's number). `records_mismatch` counts paying members on
 whom the payment provider or app store and the business's own membership records disagree. Any value above 0
 raises a CEO finding, because a mismatched member may have lost access they paid for. The exact meaning of the rest
 is in the design doc. Report only what you measure. Anything you leave out shows as `missing`

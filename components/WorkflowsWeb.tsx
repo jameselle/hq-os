@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { DEPARTMENTS } from "@/lib/registry";
 import { PILL } from "@/lib/tone";
 import type { Evidence } from "@/lib/workflow-evidence";
-import { EDGES, LEVERS, LOOPS, NODES, WORKFLOWS, busiest, type Edge, type Lever, type Node } from "@/lib/workflows";
+import { EDGES, LEVERS, LOOPS, NODES, WORKFLOWS, busiest, workflowSlug, type Edge, type Lever, type Node } from "@/lib/workflows";
 
 const LEVER_KEYS = Object.keys(LEVERS) as Lever[];
 const LEVER_HEX: Record<Lever, string> = { get: "#2DD4BF", keep: "#5AB0F0", expand: "#A78BFA", base: "#8b94ab" };
@@ -29,7 +29,7 @@ const href = (n: Node) => (n === "ceo" ? "/ceo" : `/${n}`);
 
 const LeverPill = ({ l }: { l: Lever }) => <span className={`${PILL} ${LEVER_TONE[l]}`}>{LEVERS[l].short}</span>;
 const EVIDENCE_TONE = { live: "border-bb-accent/40 bg-bb-accent/10 text-bb-accent", partial: "border-bb-warn/40 bg-bb-warn/10 text-bb-warn" };
-const EvidencePill = ({ e }: { e: Evidence }) => <span className={`${PILL} ${EVIDENCE_TONE[e.state]}`}>{e.state === "live" ? "live" : "in part"}</span>;
+const EvidencePill = ({ e }: { e: Evidence }) => <span title={e.state === "live" ? "Proven running end to end" : "Some steps run and are proven; the rest are still to build"} className={`${PILL} ${EVIDENCE_TONE[e.state]}`}>{e.state === "live" ? "live" : "in part"}</span>;
 const day = (iso?: string) => (iso ? iso.slice(0, 10) : null);
 
 /** What runs for this business and the record behind it: the proof lines, then when it last ran. */
@@ -326,7 +326,7 @@ export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false
             {running.map((w) => (
               <article key={w.title} className="card space-y-2 p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-[14px] font-semibold">{w.title}</h3>
+                  <h3 className="text-[14px] font-semibold"><Link href={`/workflows/${workflowSlug(w.title)}`} className="hover:text-bb-blue">{w.title}</Link></h3>
                   <span className="flex items-center gap-1.5"><EvidencePill e={w.e!} /><span className="font-mono text-[10.5px] text-bb-dim">W{String(w.n).padStart(2, "0")}</span></span>
                 </div>
                 <div className="text-[12px] text-bb-muted">Owner <Link href={href(w.owner)} className="font-semibold text-bb-fg hover:text-bb-blue">{label(w.owner)}</Link> · moves {w.metric.toLowerCase()}</div>
@@ -430,7 +430,7 @@ export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false
               return (
                 <article key={w.title} className="card space-y-2.5 p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-[14px] font-semibold">{w.title}</h3>
+                    <h3 className="text-[14px] font-semibold"><Link href={`/workflows/${workflowSlug(w.title)}`} className="hover:text-bb-blue">{w.title}</Link></h3>
                     <span className="flex items-center gap-1.5">{evidence[w.title] && <EvidencePill e={evidence[w.title]} />}<span className="font-mono text-[10.5px] text-bb-dim">W{String(w.n).padStart(2, "0")}</span></span>
                   </div>
                   <div className="flex flex-wrap gap-1">{w.levers.map((l) => <LeverPill key={l} l={l} />)}</div>

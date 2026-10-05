@@ -38,11 +38,37 @@ test("a lowercase 'comment' in passing is not a keyword ask", () => {
   assert.equal(e["Comment-keyword funnel"], undefined);
 });
 
-test("lifecycle: read-only is partial, sending is live, both stages share it", () => {
+test("lifecycle: watching is partial; a switch that's on is not proof without deliveries", () => {
   const ro = evidenceFrom({ ...none, lifecycle: { ...everything.lifecycle!, readOnly: true } });
   assert.equal(ro["Onboarding to first value"].state, "partial");
   assert.equal(ro["Churn early warning"].state, "partial");
-  assert.equal(evidenceFrom(everything)["Onboarding to first value"].state, "live");
+  // Enabled messages with no per-workflow delivery record used to read as live. They aren't.
+  const on = evidenceFrom(everything);
+  assert.equal(on["Onboarding to first value"].state, "partial");
+  assert.match(on["Onboarding to first value"].proof[1], /No delivery record per workflow yet/);
+});
+
+test("lifecycle: a workflow is live only when its own messages were delivered", () => {
+  const lifecycle = (workflows: NonNullable<EvidenceFacts["lifecycle"]>["workflows"]) => ({ ...everything.lifecycle!, workflows });
+  const drafted = evidenceFrom({ ...none, lifecycle: lifecycle([
+    { label: "Day 0", enabled: true, serves: "Onboarding to first value", sent30d: 0, drafts: 4 },
+  ]) });
+  assert.equal(drafted["Onboarding to first value"].state, "partial");
+  assert.match(drafted["Onboarding to first value"].proof[1], /4 drafts waiting for the owner's yes; nothing delivered yet/);
+  assert.equal(drafted["Churn early warning"].state, "partial", "churn has no messages of its own, so it stays watch-only");
+
+  const sent = evidenceFrom({ ...none, lifecycle: lifecycle([
+    { label: "Day 0", enabled: true, serves: "Onboarding to first value", sent30d: 3, lastSentAt: "2026-10-05T01:00:00.000Z", drafts: 1 },
+    { label: "Day 1", enabled: true, serves: "Onboarding to first value", sent30d: 2, lastSentAt: "2026-10-06T01:00:00.000Z" },
+    { label: "Check-in", enabled: true, serves: "Churn early warning", sent30d: 0 },
+  ]) });
+  const o = sent["Onboarding to first value"];
+  assert.equal(o.state, "live");
+  assert.equal(o.proof[0], "5 messages delivered in the last 30 days by Day 0 and Day 1");
+  assert.match(o.proof[2], /1 draft waiting/);
+  assert.equal(o.last, "2026-10-06T01:00:00.000Z");
+  assert.equal(sent["Churn early warning"].state, "partial");
+  assert.equal(sent["Churn early warning"].proof[1], "Switched on; nothing delivered in the last 30 days");
 });
 
 test("a scorecard nobody reviewed is only partly a weekly review", () => {
@@ -70,4 +96,15 @@ test("workflowEvidence reads the business's own records from HQ_DATA", () => {
   assert.equal(evidence["Free tool as a lead magnet"].state, "partial");
   assert.equal(evidence["Free tool as a lead magnet"].proof[0], "A free tool behind the keyword, listed on acme.example");
   assert.deepEqual(workflowEvidence("no-such-business"), { demo: false, evidence: {} });
+});
+
+test("every workflow metricId is a scorecard metric", async () => {
+  const { METRICS } = await import("../lib/scorecard-metrics");
+  for (const w of WORKFLOWS) if (w.metricId) assert.ok(w.metricId in METRICS, `${w.title}: ${w.metricId}`);
+});
+
+test("lifecycle: a workflow no message serves says so, instead of claiming missing delivery records", () => {
+  const e = evidenceFrom({ ...none, lifecycle: { ...everything.lifecycle!, workflows: [{ label: "Day 0", enabled: true, serves: "Onboarding to first value", sent30d: 2 }] } });
+  assert.equal(e["Churn early warning"].state, "partial");
+  assert.equal(e["Churn early warning"].proof[1], "Watched only: no message serves this workflow yet");
 });

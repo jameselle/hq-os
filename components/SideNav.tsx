@@ -16,6 +16,8 @@ const LEAD = [
   { href: "/guides", label: "Guides", glyph: "?" },
 ];
 
+const LIFECYCLE = { href: "/lifecycle", label: "Lifecycle", glyph: "↻" };
+
 const STORAGE_KEY = "hq.sidenav.collapsed";
 
 function NavLink({
@@ -48,11 +50,12 @@ function NavLink({
 /** `active`: department slugs the current business runs (skipped ones are hidden). */
 export function SideNav({ active }: { active: string[] }) {
   const path = usePathname();
-  const NAV = DEPARTMENTS.filter((d) => active.includes(d.slug)).map((d) => ({
-    href: `/${d.slug}`,
-    label: d.label,
-    glyph: d.glyph,
-  }));
+  // The lifecycle centre sits right under Email (or under Workflows when Email is skipped).
+  const NAV = DEPARTMENTS.filter((d) => active.includes(d.slug)).flatMap((d) => [
+    { href: `/${d.slug}`, label: d.label, glyph: d.glyph },
+    ...(d.slug === "email" ? [LIFECYCLE] : []),
+  ]);
+  const lead = NAV.includes(LIFECYCLE) ? LEAD : [...LEAD.slice(0, 2), LIFECYCLE, ...LEAD.slice(2)];
   // Starts expanded on server and client alike (no hydration mismatch); the
   // stored preference is applied after mount.
   const [collapsed, setCollapsed] = useState(false);
@@ -122,7 +125,7 @@ export function SideNav({ active }: { active: string[] }) {
       </Link>
 
       <div className="mt-2 mb-2 px-2.5">{!collapsed && <span className="eyebrow text-bb-dim">Lead</span>}</div>
-      {LEAD.map((item) => (
+      {lead.map((item) => (
         <NavLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} />
       ))}
 

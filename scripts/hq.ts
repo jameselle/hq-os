@@ -9,7 +9,9 @@
 // Publishing   connections save <file.json|-> · connections show · publishing <slug> · log-post <slug> <post.json|->
 // Competitors  competitors sync <slug> · competitors changes <slug> [--days N] [--json] · competitors log <slug> <name> <file|-> · competitors recheck <slug>
 // Brain        brain init · brain read <slug> <dept> [--chars N] · brain write <slug|hq> <note.json|-> · brain promote <slug> <note> [--title T] [--body file] · brain show <slug>
-// Tools        finance init <slug> · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug>
+// Tools        finance init <slug> · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug> · workflows check <slug|--all>
+// Lifecycle    lifecycle show <slug> [flow] [--cached] · lifecycle explain <slug> <flow> · lifecycle approve <slug> <message> [--yes --before <ISO>]
+//              lifecycle test <slug> <message> · lifecycle mode <slug> <flow> off|draft|auto [--yes]
 // Experiments  experiment add <slug> "<hypothesis>" --metric <id> [--baseline N] · experiment close <slug> <id> won|lost|inconclusive [--result N] [--note "…"] · experiment list <slug>
 // Health       doctor
 //
@@ -29,6 +31,11 @@ import { backupIsExternal } from "../lib/ceo";
 import { brainStats, candidates, hqBrainRoot, initBrain, promote, readBundle, writeNote, type NoteInput } from "../lib/brain-store";
 import { NOTE_TYPES, TYPE_INFO } from "../lib/brain";
 import { runScorecard, scorecardState } from "../lib/scorecard";
+import { runWorkflowChecks, workflowChecksState } from "../lib/workflow-checks";
+import { lifecycleState, runLifecycle, supports, type LifecycleFlow, type LifecycleSnapshot, type WriteAction } from "../lib/lifecycle";
+import { flowOfMessage, flowPage, namingProblems } from "../lib/lifecycle-names";
+import { explainFlow, flowStatus, lifecycleStatus, timeLabel } from "../lib/lifecycle-status";
+import { workflowSlug } from "../lib/workflows";
 import { addExperiment, closeExperiment, experimentsMarkdown, listExperiments, type Verdict } from "../lib/experiments";
 import { formatValue, scorecardRows } from "../lib/scorecard-metrics";
 import { validateProfile } from "../lib/profile";
@@ -805,6 +812,116 @@ async function cmdDoctor() {
   }
 }
 
+// ---------------------------------------------------------------- lifecycle
+
+/** Flows named by a flow id, a message id, or the slug of the workflow they serve. */
+function pickFlows(snap: LifecycleSnapshot, name: string): LifecycleFlow[] {
+  const flows = snap.flows ?? [];
+  const byId = flows.filter((f) => f.id === name);
+  if (byId.length) return byId;
+  const owner = flowOfMessage(name, flows.map((f) => f.id)) ?? flows.find((f) => f.messages.some((m) => m.id === name))?.id;
+  if (owner) return flows.filter((f) => f.id === owner);
+  return flows.filter((f) => f.serves && workflowSlug(f.serves) === name);
+}
+
+async function cmdLifecycle(args: string[]) {
+  const opt = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
+  const pos = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--before");
+  const [sub, slugArg, name, modeArg] = pos;
+  const usage = "lifecycle: show <slug> [flow] [--cached] | explain <slug> <flow> | approve <slug> <message> [--yes --before <ISO>] | test <slug> <message> | mode <slug> <flow> off|draft|auto [--yes]";
+  if (!sub || !["show", "explain", "approve", "test", "mode"].includes(sub)) return die(usage);
+  const p = getProfile(slugArg ?? "") ?? die(`no such business: ${slugArg ?? "(none)"}\n${usage}`);
+  const tz = p.timezone;
+  const hq = (rest: string) => `npm run hq -- lifecycle ${rest}`;
+
+  // Read it fresh unless asked not to: a report never changes anything.
+  let state = lifecycleState(p.slug);
+  if (!state.connected) return die(`${p.name}: no lifecycle connection (${path.join(businessDir(p.slug), "lifecycle-connection.json")}); see docs/guides/lifecycle.md`);
+  let note = "";
+  if (!args.includes("--cached")) {
+    try { state = await runLifecycle(p.slug, "report"); }
+    catch (e) { note = `Could not refresh (${e instanceof Error ? e.message : e}); showing the copy from ${state.snapshot?.observedAt ? timeLabel(state.snapshot.observedAt, tz) : "never"}.`; }
+  }
+  const snap = state.snapshot ?? die(`${p.name}: no lifecycle snapshot yet${note ? ". " + note : ""}`);
+  const opts = { now: Date.now(), tz, stale: state.stale, failed: snap.collectionFailed, observedAt: snap.observedAt, canApprove: supports(snap, "approve") };
+  const need = (action: WriteAction) => {
+    if (state.readOnly) die(`${p.name}: the lifecycle connection is read-only; HQ can only watch.`);
+    if (!supports(snap, action)) die(`${p.name}: its lifecycle adapter does not support ${action}. It accepts: ${(snap.supports ?? []).join(", ") || "nothing"}.`);
+  };
+  const flowsNamed = (n?: string) => {
+    if (!n) return die(`name a flow: ${(snap.flows ?? []).map((f) => f.id).join(", ") || "none reported"}`);
+    const fs2 = pickFlows(snap, n);
+    return fs2.length ? fs2 : die(`${p.name} has no flow, message or workflow called "${n}". Flows: ${(snap.flows ?? []).map((f) => f.id).join(", ")}`);
+  };
+  const message = (n?: string) => {
+    if (!n) return die(`name a message: ${snap.workflows.map((w) => w.id).join(", ")}`);
+    const w = snap.workflows.find((x) => x.id === n);
+    if (w) return w;
+    const f = pickFlows(snap, n);
+    return die(f.length ? `"${n}" is a flow; name one of its messages: ${snap.workflows.filter((x) => f.some((y) => flowOfMessage(x.id, [y.id]) || y.messages.some((m) => m.id === x.id))).map((x) => x.id).join(", ")}` : `${p.name} has no message called "${n}". Messages: ${snap.workflows.map((x) => x.id).join(", ")}`);
+  };
+
+  if (sub === "show") {
+    const st = lifecycleStatus(snap, opts);
+    console.log(`${p.name} lifecycle · read ${snap.observedAt ? timeLabel(snap.observedAt, tz) : "never"}${state.stale ? " (STALE)" : ""}${snap.paused ? " · PAUSED" : ""}${snap.collectionFailed ? " · COLLECTION FAILED" : ""}`);
+    console.log(`Writes it accepts: ${state.readOnly ? "none (read-only)" : (snap.supports ?? ["pause", "resume", "approve", "test", "mode"]).join(", ")}`);
+    if (note) console.log(note);
+    const problems = namingProblems(snap);
+    if (problems.length) console.log(`Naming problems (docs/guides/lifecycle.md):\n${problems.map((x) => "  " + x).join("\n")}`);
+    console.log(st.needs.length ? `\nNeeds you:\n${st.needs.map((x) => "  " + x.text).join("\n")}` : "\nNeeds you: nothing.");
+    const chosen = name ? flowsNamed(name).map((f) => f.id) : null;
+    for (const s of st.flows.filter((x) => !chosen || chosen.includes(x.id))) {
+      console.log(`\n${s.label} [${s.id}] · ${s.modeWords}${s.serves ? ` · ${flowPage(s.serves) ?? s.serves}` : ""}`);
+      console.log(`  Working? ${s.working.headline}. ${s.working.detail ?? ""}`.trimEnd());
+      console.log(`  Waiting? ${s.waiting.headline}. ${s.waiting.detail ?? ""}`.trimEnd());
+      console.log(`  Next?    ${s.next.headline}. ${s.next.detail ?? ""}`.trimEnd());
+      if (chosen) for (const w of snap.workflows.filter((x) => flowOfMessage(x.id, [s.id]) || (snap.flows ?? []).find((f) => f.id === s.id)?.messages.some((m) => m.id === x.id)))
+        console.log(`  message ${w.id}: "${w.preview?.subject ?? w.label}" · ${w.sent30d ?? 0} sent in 30 days · ${w.drafts ?? 0} waiting${w.expiresAt ? `, first expiry ${timeLabel(w.expiresAt, tz)}` : ""}`);
+    }
+    if (!st.flows.length) console.log("\nNo flows reported. The adapter's snapshot has no `flows` list.");
+    return;
+  }
+  if (sub === "explain") {
+    for (const f of flowsNamed(name)) console.log(explainFlow(f, snap.workflows, { ...opts, business: p.name }) + "\n");
+    return;
+  }
+  if (sub === "approve") {
+    need("approve");
+    const w = message(name);
+    const subject = w.preview?.subject ?? w.label;
+    if (!w.drafts) return console.log(`Nothing waiting for ${w.id} ("${subject}").`);
+    const before = opt("--before");
+    if (!args.includes("--yes")) {
+      console.log(`${w.drafts} ${w.drafts === 1 ? "person is" : "people are"} waiting for "${subject}" (${w.id}).${w.expiresAt ? ` Unapproved, the first expires ${timeLabel(w.expiresAt, tz)}.` : ""}`);
+      console.log(`Read it first: the email is on ${flowPage(w.serves) ? `http://127.0.0.1:3150${flowPage(w.serves)}` : "the lifecycle centre"}, or ${hq(`explain ${p.slug} ${w.id}`)}.`);
+      console.log(`Nothing was sent. To send exactly these ${w.drafts} after the owner's yes:\n  ${hq(`approve ${p.slug} ${w.id} --yes --before ${snap.observedAt}`)}`);
+      return;
+    }
+    if (!before || !Number.isFinite(Date.parse(before))) return die(`--yes needs --before <the snapshot time you approved from>, so drafts planned since then wait. This snapshot: --before ${snap.observedAt}`);
+    const after = await runLifecycle(p.slug, "approve", { workflow: w.id, before });
+    const left = after.snapshot?.workflows.find((x) => x.id === w.id)?.drafts ?? 0;
+    return console.log(`Approved "${subject}" (${w.id}) for drafts planned up to ${timeLabel(before, tz)}. Still waiting: ${left}. The business's sender sends approved messages on its next run.`);
+  }
+  if (sub === "test") {
+    need("test");
+    const w = message(name);
+    if (snap.flows?.length && !snap.flows.some((f) => f.messages.some((m) => m.id === w.id))) return die(`${w.id} has no single message to test (each one is built from the person's own settings).`);
+    await runLifecycle(p.slug, "test", { workflow: w.id });
+    return console.log(`Queued a [Test] copy of "${w.preview?.subject ?? w.label}" (${w.id}) for the owner only. No customer gets it.`);
+  }
+  // mode
+  need("mode");
+  const [f] = flowsNamed(name);
+  if (!["off", "draft", "auto"].includes(modeArg ?? "")) return die(`mode is off, draft or auto. ${f.label} is ${f.mode ?? "always on (no mode switch)"} now.`);
+  if (!f.mode) return die(`${f.label} has no mode switch: it sends on its own. Use pause on the lifecycle centre to stop it.`);
+  if (modeArg === "auto" && !args.includes("--yes")) {
+    const s = flowStatus(f, snap.workflows, opts);
+    return console.log(`Not changed. Switching "${f.label}" to auto means its messages go out without anyone's yes.\nWeek-one recommendation: ${s.week.recommendation.label}. ${s.week.recommendation.reason}\nWith the owner's yes:\n  ${hq(`mode ${p.slug} ${f.id} auto --yes`)}`);
+  }
+  const after = await runLifecycle(p.slug, "mode", { workflow: f.id, mode: modeArg });
+  return console.log(`${f.label} is now ${after.snapshot?.flows?.find((x) => x.id === f.id)?.mode ?? modeArg}.`);
+}
+
 // ---------------------------------------------------------------- main
 
 async function main() {
@@ -920,6 +1037,23 @@ async function main() {
       if (loaded("com.hq.fava")) spawnSync("/bin/launchctl", ["kickstart", "-k", `gui/${uid()}/com.hq.fava`], { stdio: "ignore" });
       return;
     }
+    case "lifecycle":
+      return cmdLifecycle(args);
+    case "workflows": {
+      if (pos[0] !== "check") return die("workflows check <slug> | --all");
+      const slugs = flag("--all")
+        ? listBusinesses().profiles.filter((p) => workflowChecksState(p.slug).connected).map((p) => p.slug)
+        : [pos[1] ?? die("workflows check <slug> | --all")];
+      let failed = 0;
+      for (const slug of slugs) {
+        try {
+          const c = await runWorkflowChecks(slug);
+          for (const w of c.snapshot?.workflows ?? []) for (const k of w.checks) console.log(`${slug} · ${w.title} · ${k.ok ? "pass" : "FAIL"} · ${k.label}${k.detail ? ": " + k.detail : ""}`);
+        } catch (e) { failed++; console.log(`failed ${slug}: ${e instanceof Error ? e.message : e}`); }
+      }
+      if (failed) process.exit(1);
+      return;
+    }
     case "scorecard": {
       if (pos[0] === "refresh") {
         const slugs = flag("--all")
@@ -930,6 +1064,11 @@ async function main() {
           try {
             const s = await runScorecard(slug);
             console.log(`ok ${slug} ${s.snapshot?.weeks[0].week}${s.demo ? " (demo)" : ""}`);
+            // Workflow checks may read the fresh scorecard, so they run right after it (the daily job covers both).
+            if (workflowChecksState(slug).connected) {
+              try { const c = await runWorkflowChecks(slug); console.log(`checks ${slug} ${c.snapshot?.workflows.length ?? 0} workflows`); }
+              catch (e) { console.log(`checks failed ${slug}: ${e instanceof Error ? e.message : e}`); }
+            }
           } catch (e) {
             failed++;
             console.log(`failed ${slug}: ${e instanceof Error ? e.message : e}`);

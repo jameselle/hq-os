@@ -30,7 +30,7 @@ channels. Pick up where the owner already is: if takes exist, skip to step 3; if
 | 4. Edit | `/hq:edit` (cut, order, captions, hook, speed, brand), `hyperframes:hyperframes` (animated cards), Playwright screen recordings, `/hq:clip` (short cuts and hook variants for trial reels) |
 | 5. Check | `studio check`, contact sheet |
 | 6. Review | HQ Studio review page http://127.0.0.1:8794 (owner's notes → "fix my review notes"), planner |
-| 7. Cover | `studio cover`, or the owner's own design made grid-safe |
+| 7. Cover | `studio cover`, or the owner's own design made grid-safe; `studio cover-test` ranks the options (YouTube CTR Arena) |
 | 8. Caption | `/ig-caption`, `/ig-human`, `npm run hq -- caption-check` |
 | 9. Post | `/hq:publish` (feed Reel, trial reels, TikTok, YouTube Shorts), comment-dm campaign per post |
 | 10. Learn | `/ig-audit` once posts have numbers; reuse the hooks that won |
@@ -87,6 +87,9 @@ render is far off. Without a style guide, aim for **something new on screen ever
 - A **full-frame chapter card** at the "Day N" line, or wherever two takes in different rooms or outfits join.
 - Speed comes from the business's `brand.json` (`speed`); a spec's own `speed` wins.
 - ⚠️ Check every screenshot and recording for other people's or other businesses' names before it goes in.
+- ⚠️ **Hard rule: nothing public carries any company's data.** Record HQ, admin pages and any internal tool on a
+  throwaway demo instance (`HQ_DATA=<empty dir>` with the demo business, e.g. `npx next start -p 3199`), never the
+  live console: no real revenue, members, sends, customers, account ids or private repos on screen.
 - **Trial-reel variants:** `/hq:clip` or a spec per hook: each hook opening joined to the same body.
 
 ## 5. Check
@@ -107,6 +110,14 @@ planner previews each channel's grid; trial reels sit apart.
 `npm run studio -- cover <video> --day "Day N" --title "2 to 4 words"` (the title sits inside the 3:4 grid crop,
 above the face; `--at <s>` and `--face <y>` to adjust). If the owner brings their own design, shrink it onto a
 blurred copy until nothing is lost in the 3:4 tile.
+
+**When there's more than one option** (the owner's design, its full-bleed 9:16 version, a `studio cover` frame or
+two), rank them: `npm run studio -- cover-test <slug> <option…> --title "<the cover's words>"`, adding `--shape 3x4` for
+the Instagram grid tile. Make extra frames with ffmpeg into a scratch folder, never as `<video>.cover.jpg`
+(/hq:publish uses that file). If the business has no `covers/` pool yet, run `npm run studio -- cover-pool <slug>` first
+(about 3 minutes). Show the owner the ranking beside the options, side by side. It's advice, not a gate: it's a
+simulated feed, it can't see text the 3:4 crop cuts off (check that by eye), and the owner picks. Save a **signal**
+when the arena's pick and the post's real numbers disagree.
 
 ## 8. Caption
 

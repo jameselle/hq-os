@@ -100,5 +100,15 @@ export function pacing(cuts: number[], duration: number, still = 3): { still: Wi
   return { still: longs, equalRuns };
 }
 
+/** When the first text appears (hook or caption), in seconds, from ASS `Dialogue:` lines; null if there are none.
+ *  Short-form viewers decide in about 1.7 s, so text belongs on screen by 0.5 s. */
+export function firstTextAt(dialogue: string[]): number | null {
+  const starts = dialogue
+    .map((l) => /^Dialogue:\s*\d+,(\d+):(\d+):(\d+(?:\.\d+)?),/.exec(l))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map((m) => Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]));
+  return starts.length ? Math.min(...starts) : null;
+}
+
 /** Caption lines over 30 characters (two lines of a phone screen at most). */
 export const longCaptions = (lines: { text: string }[], max = 30) => lines.filter((l) => l.text.length > max).map((l) => l.text);

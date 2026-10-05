@@ -83,6 +83,8 @@ say "fix my review notes on <video>":
 writes `<video>.cover.jpg` from the clean source frame (the planner's chosen cover, `--at`, or a third in), with
 the day and a 2 to 4 word title inside the 3:4 grid crop and above the face. Look at it before it's used.
 /hq:publish passes it as the cover (Instagram `cover_url`, WoopSocial TikTok `cover`); YouTube Shorts pick theirs in the app.
+With two or more options, `npm run studio -- cover-test <slug> <option…> --title "…"` ranks them against the niche's
+covers (YouTube CTR Arena; `cover-pool <slug>` builds the pool once). It's advice for the owner's pick, not a gate.
 
 **Cuts and speed.** On the same page the owner can mark parts to delete (the cuts lane, or I/O then X) and
 an export speed, then press **Apply edits**, which re-renders through Studio and checks it. When they ask you

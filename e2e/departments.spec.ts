@@ -21,9 +21,15 @@ test('department tabs, legacy links and sandboxed email preview',async({page})=>
  await page.getByLabel('Mobile preview',{exact:true}).click();
  await page.getByLabel('Plain text').check();
  await expect(page.getByText('Synthetic plain text',{exact:true})).toBeVisible();
- for(const tab of ['Overview','Workflows','Delivery','Accounts','Tools & Skills']){
+ for(const tab of ['Overview','Accounts','Tools & Skills']){
   await page.getByRole('navigation',{name:'Email and lifecycle views'}).getByRole('link',{name:tab,exact:true}).click();
   await expect(page.getByRole('heading',{name:'Email & Lifecycle',exact:true})).toBeVisible();
+ }
+ // Approving, testing, modes and delivery moved to the lifecycle centre: the old tabs go there.
+ for(const old of ['workflows','delivery']){
+  await page.goto('/email?tab='+old);
+  await expect(page).toHaveURL(/\/lifecycle$/);
+  await expect(page.getByRole('heading',{name:/Lifecycle centre/})).toBeVisible();
  }
  for(const tab of ['overview','guidelines','assets','reviews','tools']){
   await page.goto('/design?tab='+tab);
@@ -47,4 +53,22 @@ test('downloads respect business selection and cannot escape the asset folder',a
  await page.getByLabel('Business',{exact:true}).selectOption('sample-one');
  await expect(page.getByRole('heading',{name:'Asset library',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});
+
+test('lifecycle centre and a flow page answer the three questions, on desktop and phone',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/lifecycle');
+ await expect(page.getByRole('heading',{name:/^Needs you \(\d+\)$/})).toBeVisible();
+ await expect(page.getByText('Is it working?').first()).toBeVisible();
+ await expect(page.getByText('Waiting for you').first()).toBeVisible();
+ await expect(page.getByText(/^n\/a$/)).toHaveCount(0);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ await page.goto('/workflows/onboarding-to-first-value');
+ await expect(page.getByRole('heading',{name:/Is it working, what's waiting, what next/})).toBeVisible();
+ await expect(page.getByRole('article',{name:/Week one review/})).toBeVisible();
+ await expect(page.getByRole('group',{name:/Mode for/})).toBeVisible();
+ await expect(page.getByRole('button',{name:/^Approve \d+$/}).first()).toBeVisible();
+ await expect(page.locator('iframe').first()).toHaveAttribute('sandbox','');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ expect(errors).toEqual([]);
 });

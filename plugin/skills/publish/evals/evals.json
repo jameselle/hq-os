@@ -3,7 +3,7 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "Post this reel to Instagram: https://example.com/reel.mp4 caption 'First roast of spring'. Dry run only \u2014 don't publish.",
+      "prompt": "Post this reel to Instagram: https://example.com/reel.mp4 caption 'First roast of spring'. Dry run only — don't publish.",
       "expected_output": "With the channel not connected, stops before any Composio call and says how to connect it; never uses another business's account.",
       "files": [],
       "expectations": [
@@ -27,7 +27,7 @@
     },
     {
       "id": 3,
-      "prompt": "(channel connected) Post this reel to Instagram: <public URL> caption '\u2026'. Dry run only.",
+      "prompt": "(channel connected) Post this reel to Instagram: <public URL> caption '…'. Dry run only.",
       "expected_output": "Creates the container only, then shows an approval summary; does not publish.",
       "files": [],
       "expectations": [
@@ -46,6 +46,19 @@
         "Uploaded the cover to WoopSocial and set it as the TikTok cover in VALIDATE_POST",
         "Showed the cover in the approval summary",
         "Did not publish"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Post day-5-main.mp4 to Instagram and TikTok for the series. It is a release asset on the public media repo.",
+      "expected_output": "Looks at the video for internal screens with real data first, dry-runs both channels, asks for the owner's yes, posts, reads both posts back, logs them, then deletes the release asset and checks the old URL returns 404.",
+      "files": [],
+      "expectations": [
+        "Checked the video for HQ or admin screens showing real numbers before uploading or posting",
+        "Got an explicit yes before posting",
+        "Read back a permalink or post id for each channel before calling it published",
+        "Deleted the public release asset only after every channel was published and read back",
+        "Confirmed the old asset URL returns 404"
       ]
     }
   ]
