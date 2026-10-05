@@ -167,6 +167,7 @@ export const DEPARTMENTS: Department[] = [
       { id: "hq:clip", what: "Long video → short captioned clips, automatically, QA'd" },
       { id: "hq:style", what: "The niche's winning clips, measured and torn down → a style guide and pace targets for ours" },
       { id: "hq:self-post", what: "Your own post end to end: script, teleprompter, Claude edits with every skill, review, post" },
+      { id: "hq:script", what: "A talking-to-camera script a stranger understands: plain words, three angles, cold-reader test, script-check" },
       { id: "hq:edit", what: "Raw footage + brief → finished video, automatically, QA'd" },
       { id: "hq:walkthrough", what: "\"How it works\" videos of your own app, in your cloned voice, free and local" },
       { id: "hq:publish", what: "Post to any channel by its route, with approval and read-back" },

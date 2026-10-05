@@ -2,7 +2,7 @@
 name: lifecycle
 description: >
   Operate a business's automated emails and messages (onboarding, churn check-ins, abandoned checkout,
-  alerts) from HQ's lifecycle centre: read every flow, say whether each is working, what's waiting for
+  alerts) from HQ's Email & Lifecycle page: read every flow, say whether each is working, what's waiting for
   the owner and when it expires, run the week-one review and draft a "switch to auto / keep in draft /
   turn off" recommendation with its reason. Approves a send or switches a flow to auto only after the
   owner's explicit yes. Use when the user says "/hq:lifecycle", "how are the emails doing", "week one
@@ -76,6 +76,10 @@ npm run hq -- lifecycle approve <slug> <message>
 # After the owner's yes to that message and count:
 npm run hq -- lifecycle approve <slug> <message> --yes --before <ISO from the dry run>
 
+# Reject: the same dry run, then those drafts are never sent (the skip list says "owner said no").
+npm run hq -- lifecycle reject <slug> <message>
+npm run hq -- lifecycle reject <slug> <message> --yes --before <ISO from the dry run>
+
 npm run hq -- lifecycle test <slug> <message>              # owner only
 npm run hq -- lifecycle mode <slug> <flow> draft|off        # safe: stops or holds sends
 npm run hq -- lifecycle mode <slug> <flow> auto --yes       # only after the owner's yes to auto
@@ -87,6 +91,14 @@ the dry run's count differs from what the owner approved, stop and ask again.
 If the CLI says the adapter doesn't support an action (some businesses' engines only pause and resume),
 say so plainly and point to the owner's own way of doing it (the business vault's lifecycle note), rather
 than working around HQ.
+
+The owner usually decides on the Email & Lifecycle page (`/email`): each batch of drafts is a card with the
+email, Approve, Reject, Send me a test and Add a note. Point them there for anything they'd rather see.
+
+**The owner's notes are work.** `npm run hq -- lifecycle notes <slug>` lists the open ones ("make the subject
+shorter", "don't send to trial members"); the vault copy is `Departments/Email & Lifecycle/Owner notes.md`.
+For each: change the email or the flow in the business's own repo (a branch and a PR, never straight to
+production), say which note it answers, and tell the owner to mark the note done on the page once it ships.
 
 ## 5. Write down what happened
 

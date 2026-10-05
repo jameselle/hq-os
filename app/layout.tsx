@@ -5,6 +5,7 @@ import { TopBar } from "../components/TopBar";
 import { preferredBusiness } from "@/lib/current";
 import { activeDepartments } from "@/lib/profile";
 import { resolveCurrent } from "@/lib/store";
+import { builtDepartments } from "@/lib/built";
 
 export const metadata: Metadata = {
   title: "HQ",
@@ -18,7 +19,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body className="min-h-screen text-bb-fg font-sans flex">
-        <SideNav active={activeDepartments(business)} />
+        <SideNav active={activeDepartments(business)} built={business ? builtDepartments(business.slug) : {}} />
         <div className="flex-1 min-w-0 flex flex-col">
           <TopBar />
           <main className="flex-1 min-w-0 px-6 py-6">{children}</main>

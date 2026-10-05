@@ -59,6 +59,20 @@ const OTHER: Guide[] = [
     file: "docs/guides/analytics.md",
   },
   {
+    slug: "support-desk",
+    kind: "page",
+    title: "Support: who's waiting, what they ask, and where it goes next",
+    blurb: "Conversations waiting for a reply, themes and where new customers get stuck, with no message text in HQ; the weekly themes go to Email, Data and Product.",
+    file: "docs/guides/support-desk.md",
+  },
+  {
+    slug: "finance-sync",
+    kind: "connection",
+    title: "Finance sync: the ledger fills itself from billing",
+    blurb: "Daily totals from Stripe (or any billing) written into the ledger, checked, never doubled, feeding cost to win, margin and the CEO.",
+    file: "docs/guides/finance-sync.md",
+  },
+  {
     slug: "lifecycle",
     kind: "page",
     title: "Customer lifecycle",

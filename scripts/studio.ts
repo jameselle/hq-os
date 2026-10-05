@@ -325,7 +325,7 @@ function renderFormat(
     let aMap = "0:a";
     let aEnc = enc;
     if (spec.sfx ?? brand.sfx ?? false) {
-      sfx = sfxEvents(windows.map((w, i) => ({ ...w, full: vertical && cutaways[i].full })).filter((w) => w.end - w.start > 0.1));
+      sfx = sfxEvents(windows.map((w, i) => ({ ...w, full: vertical && cutaways[i].full, sfx: cutaways[i].sfx })).filter((w) => w.end - w.start > 0.1));
       const kinds = [...new Set(sfx.map((e) => e.kind))];
       const idx: Record<string, number> = {};
       for (const k of kinds) {

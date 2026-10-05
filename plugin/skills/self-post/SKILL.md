@@ -24,7 +24,7 @@ channels. Pick up where the owner already is: if takes exist, skip to step 3; if
 | Step | Skills and tools |
 |---|---|
 | 0. Know what wins | `/hq:style` (the niche's winning clips → style guide + `style.json` pace targets) |
-| 1. Script | `/ig-viral` (what's working now), `/ig-reel` (hook options scored, spoken script, beat sheet), `/ig-human` (strip AI tells and dashes) |
+| 1. Script | `/hq:script` (stranger brief, three angles, cold-reader test, `hq script-check`), with `/ig-viral` (what's working now), `/ig-reel` (hook options scored) and `/ig-human` (strip AI tells and dashes) |
 | 2. Record | Teleprompter (`~/teleprompter`, Studio http://localhost:8792) |
 | 3. Job | HQ Studio `from-teleprompter` |
 | 4. Edit | `/hq:edit` (cut, order, captions, hook, speed, brand), `hyperframes:hyperframes` (animated cards), Playwright screen recordings, `/hq:clip` (short cuts and hook variants for trial reels) |
@@ -47,8 +47,11 @@ animation style, and pace targets.
 - Pick the topic from the style guide's **topics that win here** (in the niche), and the hook from its **hook
   formulas**; follow its beat sheet's timings.
 - Find the angle: `/ig-viral` for what is working in the niche now, if the owner has no topic.
-- `/ig-reel` writes it: several hook options scored against the hook formulas, the spoken script in the owner's
-  voice, the on-screen text, a timed beat sheet. Facts only. **No em or en dashes anywhere.**
+- **`/hq:script` writes it, for a stranger:** a four-sentence stranger brief, a viewer-first structure (hook,
+  what it is, show it, proof, why you care, ask), plain words, three angles, then a cold-reader test by a fresh
+  agent that knows nothing, and `npm run -s hq -- script-check <file> --slug <slug> --keyword <WORD>` must PASS.
+  `/ig-reel` supplies scored hook options and the beat sheet. Facts only. **No em or en dashes anywhere.**
+- After saving a script, always open it in the teleprompter: `open "http://localhost:8792/#script=<file name>"`.
 - Run it through `/ig-human`, then save it to `~/teleprompter/scripts/<n>-<slug>.txt` (or the Studio's Scripts tab).
   Split it into sections with `## N · Heading` lines; each section is recorded as its own take. `{{like this}}`
   marks a blank the owner fills in, and the Studio flags any left.
@@ -82,10 +85,20 @@ render is far off. Without a style guide, aim for **something new on screen ever
 
 - **Animated cards** with HyperFrames (`hyperframes:hyperframes`): number countdowns, slams, keycaps. Split cards
   (1080x960 over the face) or full frame (1080x1920). The main beat lands by 1.2 s, then holds and drifts.
+  Motion polish on every card: moves overshoot and settle (back-out eases), blur in proportion to their speed
+  (about half the distance moved per frame, capped), groups enter staggered, and a card the face follows gets a
+  small exit shrink (ease in, about 0.2 s) timed to its real slot from the last render's `vertical.map.json`.
+  A card that runs short holds its last frame, so never end one on an empty frame unless it is cut to its slot.
+- **Editorial overlays:** a highlight sweep (a marker bar wiping behind the key word) on a card's payoff line,
+  and a dot-and-label callout over a screen recording (dim the rest, outline the target, dot, leader line,
+  label) wherever the line points at something on screen. Only on a part of the recording that holds still.
 - **Real screen recordings** of whatever the post is about (Playwright `recordVideo`), cropped to the panel shape
   and sped up 1.5x. Never a static panel of mostly empty UI: make a card instead.
 - A **full-frame chapter card** at the "Day N" line, or wherever two takes in different rooms or outfits join.
 - Speed comes from the business's `brand.json` (`speed`); a spec's own `speed` wins.
+- The finishing pass comes from `brand.json` too: `voice` (`"clean"` by default, `"plain"` to only level),
+  `punch` (punch-ins on face-only lines) and `sfx` (whoosh into each cutaway, impact on full-frame cards).
+  `/hq:edit` has the rules; report which of them ran.
 - ⚠️ Check every screenshot and recording for other people's or other businesses' names before it goes in.
 - ⚠️ **Hard rule: nothing public carries any company's data.** Record HQ, admin pages and any internal tool on a
   throwaway demo instance (`HQ_DATA=<empty dir>` with the demo business, e.g. `npx next start -p 3199`), never the

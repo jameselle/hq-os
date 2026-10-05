@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { analyticsBoard, analyticsProblem, isoWeek, lastWeeks, rebuildAnalytics, runAnalytics, weeklyCounts, type AnalyticsSnapshot } from "../lib/analytics";
+import { analyticsAlarms, analyticsBoard, analyticsProblem, isoWeek, lastWeeks, rebuildAnalytics, runAnalytics, weeklyCounts, type AnalyticsSnapshot, type BoardMetric } from "../lib/analytics";
 import { ANALYTICS, ANALYTICS_IDS, RECURRING_ONLY, WORKFLOW_ANALYTICS, formatAnalytics } from "../lib/analytics-metrics";
 import { countOpen } from "../lib/analytics-findings";
 import { METRICS } from "../lib/scorecard-metrics";
@@ -173,4 +173,15 @@ test("ad spend comes from the ledger when it has advertising entries, and stays 
   assert.equal(ad.status, "measured");
   assert.equal(ad.value, 50);
   assert.equal(ad.points.reduce((n, x) => n + (x.value ?? 0), 0), 50);
+});
+
+test("alarm numbers are counts where down is better, and only a measured reading above zero raises one", () => {
+  for (const id of ANALYTICS_IDS) {
+    const def = ANALYTICS[id] as { alarm?: string; unit: string; better: string };
+    if (def.alarm) { assert.equal(def.unit, "count", id); assert.equal(def.better, "down", id); }
+  }
+  const m = (value: number | null, status: BoardMetric["status"] = "measured"): BoardMetric => ({ id: "keyword_dm_misses", def: ANALYTICS.keyword_dm_misses, status, value, quality: "exact", note: "Replies left unanswered", points: [], breakdown: [], period: null, change: null, from: "adapter", workflows: ["Comment-keyword funnel"] });
+  const got = analyticsAlarms([m(2), { ...m(5), id: "keyword_dms", def: ANALYTICS.keyword_dms }]);
+  assert.deepEqual(got.map((a) => [a.id, a.value, a.workflow, a.owner]), [["keyword_dm_misses", 2, "Comment-keyword funnel", "email"]]);
+  assert.deepEqual(analyticsAlarms([m(0), m(null, "missing")]), []);
 });

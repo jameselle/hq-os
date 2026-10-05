@@ -7,6 +7,7 @@
 // stdin: one JSON object, at most 2 KB
 //   {"action":"report"}                                   aggregates only: no emails, names or ids
 //   {"action":"approve","workflow":"<message id>","before":"<ISO>"}   drafts of that message planned up to `before`
+//   {"action":"reject","workflow":"<message id>","before":"<ISO>"}    the same drafts, never sent (reason "owner said no")
 //   {"action":"test","workflow":"<message id>"}           one copy to the owner only, marked [Test]
 //   {"action":"mode","workflow":"<flow id>","mode":"off|draft|auto"}
 //   {"action":"pause"} / {"action":"resume"}              every flow off / back to draft (never straight to auto)
@@ -151,7 +152,7 @@ export function report(store, now, tz = 'UTC') {
     stages: [{ label: 'Signed up in the last 30 days', count: new Set(rows.filter((r) => r.flow === 'onboarding').map((r) => r.person)).size }],
     delivery: [], history: [], accounts: [],
     workflows, flows,
-    supports: ['pause', 'resume', 'approve', 'test', 'mode'],
+    supports: ['pause', 'resume', 'approve', 'reject', 'test', 'mode'],
   };
 }
 
@@ -164,6 +165,12 @@ export function apply(store, req, now) {
       if (!message || !Number.isFinite(Date.parse(req.before))) throw Error('bad approve');
       // Only what the owner saw: drafts planned before the snapshot they approved from.
       for (const r of store.rows) if (r.message === message.id && r.status === 'draft' && Date.parse(r.dueAt) <= Date.parse(req.before)) { r.status = 'approved'; r.approvedAt = new Date(now).toISOString(); }
+      return;
+    }
+    case 'reject': {
+      if (!message || !Number.isFinite(Date.parse(req.before))) throw Error('bad reject');
+      // The owner said no: those drafts are never sent, and the skip list says why.
+      for (const r of store.rows) if (r.message === message.id && r.status === 'draft' && Date.parse(r.dueAt) <= Date.parse(req.before)) { r.status = 'skipped'; r.reason = 'owner said no'; }
       return;
     }
     case 'test':

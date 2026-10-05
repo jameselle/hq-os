@@ -49,6 +49,8 @@ test("sound effects: a whoosh leads each cutaway, an impact lands on full-frame 
   const ev = sfxEvents([{ start: 4, end: 6 }, { start: 2, end: 3, full: true }, { start: 6.2, end: 8 }]);
   assert.deepEqual(ev, [{ at: 2, kind: "impact" }, { at: 3.85, kind: "whoosh" }, { at: 6.05, kind: "whoosh" }]);
   assert.deepEqual(sfxEvents([{ start: 4, end: 5 }, { start: 4.2, end: 6 }]).length, 1, "closer than 0.4 s become one");
+  assert.deepEqual(sfxEvents([{ start: 2, end: 3 }, { start: 5, end: 6, sfx: false }, { start: 7, end: 8, full: true, sfx: false }]),
+    [{ at: 1.85, kind: "whoosh" }], "sfx: false drops that cutaway's whoosh or impact");
   assert.match(SFX_SOURCE.whoosh, /^anoisesrc=/);
   assert.match(SFX_SOURCE.impact, /amix/);
 });

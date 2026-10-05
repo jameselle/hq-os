@@ -2,6 +2,8 @@
 // the right, a row of stat tiles, a check strip, then the sections.
 
 import { AnalyticsBoard } from "@/components/AnalyticsBoard";
+import { FinanceBoard } from "@/components/FinanceBoard";
+import { SupportBoard } from "@/components/SupportBoard";
 import { ScorecardCard } from "@/components/ScorecardCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -157,6 +159,10 @@ export default async function DepartmentPage({ params, embedded=false }: { param
       {d.slug === "data" && business && <ScorecardCard business={business} />}
 
       {d.slug === "data" && business && !embedded && <AnalyticsBoard business={business} />}
+
+      {d.slug === "finance" && business && !embedded && <FinanceBoard business={business} />}
+
+      {d.slug === "support" && business && !embedded && <SupportBoard business={business} />}
 
       {showPublishing && (
         <section className="card p-4 min-w-0">

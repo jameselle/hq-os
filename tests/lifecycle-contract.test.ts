@@ -46,7 +46,7 @@ test("the template adapter keeps the whole contract, through HQ's own runner", w
   const snap = first.snapshot!;
   assert.ok(validLifecycle(snap));
   assert.deepEqual(namingProblems(snap), [], "the template is the reference for the naming contract");
-  assert.deepEqual(snap.supports, ["pause", "resume", "approve", "test", "mode"]);
+  assert.deepEqual(snap.supports, ["pause", "resume", "approve", "reject", "test", "mode"]);
   assert.ok(snap.flows!.every((f) => f.since && f.messages.length && f.messages.every((m) => m.html.includes("Unsubscribe"))));
   assert.doesNotMatch(JSON.stringify(snap), /@|[–—]/, "no email addresses and no em or en dashes");
   const withDrafts = snap.workflows.find((w) => (w.drafts ?? 0) > 0)!;
@@ -69,6 +69,26 @@ test("the template adapter keeps the whole contract, through HQ's own runner", w
   const s = flowStatus(snap.flows![0], snap.workflows, { now: Date.now(), tz: "UTC" });
   assert.ok(s.working.headline && s.waiting.headline && s.next.headline);
 }));
+
+test("reject: the drafts the owner saw are never sent, and the skip list says why", withBusiness(async (dir, biz) => {
+  fs.writeFileSync(path.join(biz, "lifecycle-connection.json"), JSON.stringify({ command: [process.execPath, ADAPTER, path.join(dir, "state.json")] }));
+  const snap = (await runLifecycle("first", "report")).snapshot!;
+  const w = snap.workflows.find((x) => (x.drafts ?? 0) > 0)!;
+  const flow = snap.flows!.find((f) => f.messages.some((m) => m.id === w.id))!;
+  const sent = (s: typeof snap) => s.flows!.find((f) => f.id === flow.id)!.delivery.find((d) => d.label === "sent")!.count;
+  await assert.rejects(runLifecycle("first", "reject", { workflow: w.id }), /Reject what you saw/);
+  const after = (await runLifecycle("first", "reject", { workflow: w.id, before: snap.observedAt! })).snapshot!;
+  assert.equal(after.workflows.find((x) => x.id === w.id)!.drafts, 0);
+  assert.equal(sent(after), sent(snap), "rejecting sends nothing");
+  assert.ok(after.flows!.find((f) => f.id === flow.id)!.skips.some((r) => r.label === "owner said no" && r.count === w.drafts));
+}));
+
+test("supports: reject must be listed; older adapters that list nothing don't get it", () => {
+  assert.equal(supports(null, "reject"), false);
+  assert.equal(supports({ supports: undefined }, "reject"), false);
+  assert.equal(supports({ supports: ["approve", "reject"] }, "reject"), true);
+  assert.equal(supports(null, "approve"), true);
+});
 
 test("supports: HQ refuses a write the adapter doesn't accept, before running it", withBusiness(async (_dir, biz) => {
   const echo = `let i='';process.stdin.on('data',c=>i+=c);process.stdin.on('end',()=>console.log(JSON.stringify({version:1,observedAt:new Date().toISOString(),paused:false,collectionFailed:false,stages:[],delivery:[],history:[],accounts:[],workflows:[{id:'w',label:'W',delayHours:0,enabled:true,audience:i}],supports:['pause','resume']})))`;

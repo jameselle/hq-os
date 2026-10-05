@@ -20,6 +20,9 @@ export type AnalyticsDef = {
   needs: string;
   /** An average or a per-item figure: its split rows are not pieces of one total. */
   average?: boolean;
+  /** A fault count that should read zero: any reading above it becomes a CEO finding for the workflow's owner,
+   *  with this as the action. */
+  alarm?: string;
 };
 
 const sc = (id: MetricId, chart: Chart, better: "up" | "down", question: string, needs: string): AnalyticsDef =>
@@ -92,6 +95,13 @@ export const ANALYTICS = {
     question: "How often are walkthrough videos played?", needs: "A play event on the walkthrough player." },
   keyword_dms: { label: "Keyword DMs sent", unit: "count", lever: "get", chart: "bars", better: "up", source: "adapter",
     question: "How many people commented the keyword and got the link?", needs: "The auto-DM tool's send log." },
+  keyword_dm_delivery_rate: { label: "Keyword DMs delivered", unit: "rate", lever: "get", chart: "line", better: "up", source: "adapter",
+    question: "Of the people sent the keyword DM, what share went on to get the link?", needs: "The auto-DM tool's send log." },
+  keyword_dms_waiting: { label: "Waiting on a tap", unit: "count", lever: "get", chart: "split", better: "down", source: "adapter",
+    question: "How many people have the keyword DM but haven't tapped it, or haven't followed yet?", needs: "The auto-DM tool's state, per campaign." },
+  keyword_dm_misses: { label: "Keyword replies missed", unit: "count", lever: "get", chart: "bars", better: "down", source: "adapter",
+    question: "Did anyone comment the keyword or reply to the DM and get nothing back?", needs: "The auto-DM tool recording each reply before it answers.",
+    alarm: "Someone asked for the link and didn't get it. List them in the auto-DM tool, send each link by hand, mark them handled, and fix the cause." },
   dm_to_email_rate: { label: "DM to email", unit: "rate", lever: "get", chart: "line", better: "up", source: "adapter",
     question: "What share of keyword DMs turned into an email address?", needs: "Email capture behind the DM link." },
   email_to_trial_rate: { label: "Email to trial", unit: "rate", lever: "get", chart: "line", better: "up", source: "adapter",
@@ -221,7 +231,7 @@ export const WORKFLOW_ANALYTICS: Record<string, AnalyticsId[]> = {
   "Self post": ["posts_published", "follows_per_post", "views_per_post", "followers"],
   "Clip engine": ["videos_edited", "views_per_post", "follows_per_post"],
   "Walkthrough videos in the owner's voice": ["walkthrough_coverage", "walkthrough_plays"],
-  "Comment-keyword funnel": ["keyword_posts", "keyword_dms", "dm_to_email_rate", "email_to_trial_rate", "link_clicks"],
+  "Comment-keyword funnel": ["keyword_posts", "keyword_dms", "keyword_dm_delivery_rate", "keyword_dm_misses", "keyword_dms_waiting", "dm_to_email_rate", "email_to_trial_rate", "link_clicks"],
   "Partner program": ["partner_customers", "partner_d90_retention"],
   "Customer proof": ["landing_conversion_rate", "new_signups"],
   "Free tool as a lead magnet": ["tool_users", "tool_signup_rate"],

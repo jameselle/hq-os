@@ -1,16 +1,17 @@
 # Customer lifecycle
 
-The emails and messages a business sends on its own when a customer does something, or stops: getting started, a check-in when a member goes quiet, one email after an abandoned checkout. HQ never sends them itself. Each business keeps its own engine; HQ reads it through a private adapter, shows what it did, and passes the owner's decisions back (approve, test, mode, pause).
+The emails and messages a business sends on its own when a customer does something, or stops: getting started, a check-in when a member goes quiet, one email after an abandoned checkout. HQ never sends them itself. Each business keeps its own engine; HQ reads it through a private adapter, shows what it did, and passes the owner's decisions back (approve, reject, test, mode, pause).
 
 ## Where things are
 
 | You want to | Go to |
 |---|---|
-| See what needs you, across every flow | `/lifecycle`, the lifecycle centre. "Needs you" lists drafts (and when they expire), week-one decisions and problems. |
-| Read a flow's email, approve it, send yourself a test | The flow's workflow page, `/workflows/<slug>`, under "The message". The only place to approve and test. |
-| Switch a flow off, to draft or to auto | The same page, in the week-one review. The only place to change a mode. |
-| Stop everything at once | "Pause all" on the lifecycle centre. "Start again" brings every flow back in draft, never straight to auto. |
-| Customer stages, the brand's email templates, per-account rows | The Email & Lifecycle department, `/email`. |
+| See what needs you, and decide | **Email & Lifecycle**, `/email` (the old `/lifecycle` link lands there). "Needs you" has one card per batch of drafts, soonest expiry first: read the email, then **Approve**, **Reject** (that batch is never sent; the skip list says "owner said no"), **Send me a test** or **Add a note**. Flows with a problem or a finished week one follow, with HQ's suggestion and the mode switch. |
+| Switch a flow off, to "ask me" (draft) or to auto | "Your flows" on the same page, or the week-one review on the flow's workflow page. |
+| Leave an instruction for later ("make the subject shorter") | **Add a note** on a card. Notes stay in HQ and land in the vault as `Departments/Email & Lifecycle/Owner notes.md`, the Email department's to-do list; nothing is sent. Mark a note done when it's handled. |
+| A flow's full story: who qualifies, delivery, skips, outcome against the holdout | The flow's workflow page, `/workflows/<slug>` ("Details" on each flow). |
+| Stop everything at once | "Pause all" on Email & Lifecycle. "Start again" brings every flow back in draft, never straight to auto. |
+| Customer stages, the brand's email designs, per-account rows | The same page: the stages under the flows, and the Email designs and Accounts tabs. |
 | Do any of it from a terminal or a Claude session | `npm run hq -- lifecycle …` (below) or `/hq:lifecycle`. |
 
 Every flow page answers three questions at the top: **is it working**, **what's waiting for you** (drafts, and when the first expires), and **what next**. Under them sits the **week-one review**: what went out, how it landed, the outcome against the holdout, and a recommendation (switch to auto, keep in draft, or turn off) with its reason.
@@ -45,6 +46,8 @@ npm run hq -- lifecycle show <slug> [flow]          # reads fresh: needs you, th
 npm run hq -- lifecycle explain <slug> <flow>       # plain-text summary: who, mode, numbers with periods, week one, recommendation
 npm run hq -- lifecycle approve <slug> <message>    # dry run: who is waiting, when it expires, the exact command to send
 npm run hq -- lifecycle approve <slug> <message> --yes --before <ISO from the dry run>
+npm run hq -- lifecycle reject <slug> <message> [--yes --before <ISO>]   # the same, but those drafts are never sent
+npm run hq -- lifecycle notes <slug> [--all]                           # the owner's notes from the page
 npm run hq -- lifecycle test <slug> <message>       # one [Test] copy to the owner only
 npm run hq -- lifecycle mode <slug> <flow> off|draft|auto   # auto needs --yes
 ```
@@ -80,6 +83,7 @@ saved as `$HQ_DATA/businesses/<slug>/lifecycle-connection.json`. Add `"readOnly"
 |---|---|---|
 | `report` | | Nothing. Returns the snapshot. |
 | `approve` | `workflow` = message id, `before` = ISO time | Approves that message's drafts planned up to `before`. |
+| `reject` | `workflow` = message id, `before` = ISO time | The same drafts are never sent (record them as skipped, reason "owner said no"). List it in `supports` to get the Reject button. |
 | `test` | `workflow` = message id | Queues one copy for the owner only, marked [Test]. Never counted as a send. |
 | `mode` | `workflow` = flow id, `mode` = `off`, `draft` or `auto` | Switches the flow. |
 | `pause` / `resume` | | Every flow off / back to draft. Resume never jumps to auto. |
@@ -87,9 +91,9 @@ saved as `$HQ_DATA/businesses/<slug>/lifecycle-connection.json`. Add `"readOnly"
 **Output.** One version-1 snapshot (`LifecycleSnapshot` in `lib/lifecycle.ts`) on stdout, after any action. On failure, exit 1 with one line on stderr naming the step, never a credential or a provider's response body. The parts that matter most:
 
 - `observedAt`: when the source was read, not when the adapter ran.
-- `supports`: the write actions the adapter accepts, for example `["pause","resume"]`. HQ hides the others and refuses them before running the adapter. Leave it out only if the adapter accepts them all.
+- `supports`: the write actions the adapter accepts, for example `["pause","resume"]`. HQ hides the others and refuses them before running the adapter. Leaving it out means every action except `reject`, which an adapter must list to get the Reject button.
 - `workflows`: one entry per message (the controls): `id`, `label`, `serves`, `sent30d`, `lastSentAt`, `drafts`, and `expiresAt` (when the oldest waiting draft expires unsent; this is what "expires Tue 6 Oct, 4:12 pm" reads).
-- `flows`: one entry per flow, as the lifecycle centre shows it:
+- `flows`: one entry per flow, as Email & Lifecycle shows it:
   - `id`, `label`, `serves`, `channel`, `trigger` (who qualifies, in plain words), `mode` (leave out for always on), `holdoutPct`
   - `since`: the day (business time zone) its counts start. Without it HQ uses the first day anyone qualified.
   - `daily`: per day, `entered` (qualified), `sent`, `skipped` (or expired)

@@ -261,3 +261,17 @@ test("analytics: a failed or stale adapter is attention for Data; no adapter is 
   assert.deepEqual(find(analytics({ connected: false, demo: true })), []);
   assert.deepEqual(find(analytics()), []);
 });
+
+test("analytics: an alarm number above zero is attention for the workflow's owner; none says nothing", () => {
+  const alarm = { id: "keyword_dm_misses", label: "Keyword replies missed", value: 2, note: "Replies the auto-DM tool left unanswered", workflow: "Comment-keyword funnel", owner: "email", action: "Send the link by hand." };
+  const find = (alarms: unknown[]) => buildFindings(depts(), facts({ analytics: analytics({ alarms }) }), profile()).filter((x) => x.id.startsWith("analytics-alarm"));
+  const got = find([alarm]);
+  assert.equal(got.length, 1);
+  assert.equal(got[0].id, "analytics-alarm-keyword_dm_misses");
+  assert.equal(got[0].severity, "attention");
+  assert.equal(got[0].dept, "email");
+  assert.match(got[0].title, /Keyword replies missed: 2/);
+  assert.match(got[0].detail, /Comment-keyword funnel/);
+  assert.equal(got[0].action, "Send the link by hand.");
+  assert.deepEqual(find([]), []);
+});

@@ -64,10 +64,11 @@ export function punchFilter(punches: Punch[], dims: { w: number; h: number }, fa
 export type Sfx = { at: number; kind: "whoosh" | "impact" };
 
 /** A whoosh into every cutaway (starting 0.15 s early so it peaks on the cut), an impact on full-frame cards.
- *  Two sounds closer than 0.4 s become one. */
-export function sfxEvents(cutaways: (Window & { full?: boolean })[]): Sfx[] {
+ *  Two sounds closer than 0.4 s become one. A cutaway with `sfx: false` gets none. */
+export function sfxEvents(cutaways: (Window & { full?: boolean; sfx?: boolean })[]): Sfx[] {
   const ev: Sfx[] = [];
   for (const c of [...cutaways].sort((a, b) => a.start - b.start)) {
+    if (c.sfx === false) continue;
     const e: Sfx = c.full ? { at: c.start, kind: "impact" } : { at: Math.max(0, c.start - 0.15), kind: "whoosh" };
     if (ev.length && e.at - ev[ev.length - 1].at < 0.4) continue;
     ev.push(e);

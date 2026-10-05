@@ -33,7 +33,7 @@ export type LifecycleFlow = {
   /** Replies the adapter can see (an inbox it reads). Absent: HQ can't see replies, and says so. */
   replies?: number | null;
 };
-export type LifecycleAction = 'report'|'pause'|'resume'|'approve'|'test'|'mode';
+export type LifecycleAction = 'report'|'pause'|'resume'|'approve'|'reject'|'test'|'mode';
 export type LifecycleSnapshot = {
   version:number; observedAt:string|null; paused:boolean; collectionFailed:boolean;
   stages:{label:string;count:number}[]; delivery:{label:string;count:number}[];
@@ -45,10 +45,11 @@ export type LifecycleSnapshot = {
   /** The write actions this adapter accepts. Absent means all of them (older adapters); HQ hides the rest. */
   supports?:WriteAction[];
 };
-export const WRITE_ACTIONS=['pause','resume','approve','test','mode'] as const;
+export const WRITE_ACTIONS=['pause','resume','approve','reject','test','mode'] as const;
 export type WriteAction=typeof WRITE_ACTIONS[number];
 /** Whether the adapter behind this snapshot accepts a write action. */
-export const supports=(snapshot:Pick<LifecycleSnapshot,'supports'>|null|undefined,action:WriteAction)=>!snapshot?.supports||snapshot.supports.includes(action);
+// Adapters that list nothing predate `supports` and accept every action they had then; reject came later, so it must be listed.
+export const supports=(snapshot:Pick<LifecycleSnapshot,'supports'>|null|undefined,action:WriteAction)=>snapshot?.supports?snapshot.supports.includes(action):action!=='reject';
 const str=(s:unknown)=>typeof s==='string'&&s.length<=300;
 const count=(n:unknown)=>Number.isSafeInteger(n)&&Number(n)>=0;
 export function localLifecycleOrigin(origin:string|null,host:string|null){
@@ -109,12 +110,12 @@ export async function runLifecycle(slug:string,action:LifecycleAction,opts:{work
     if(!MODES.includes(opts.mode??''))throw Error('Mode must be off, draft or auto');
     input.workflow=opts.workflow;input.mode=opts.mode;
   }
-  if(action==='approve'||action==='test'){
+  if(action==='approve'||action==='reject'||action==='test'){
     if(!opts.workflow||!str(opts.workflow))throw Error('Choose a workflow');
     input.workflow=opts.workflow;
   }
-  if(action==='approve'){
-    if(!iso(opts.before))throw Error('Approve what you saw: snapshot time missing');
+  if(action==='approve'||action==='reject'){
+    if(!iso(opts.before))throw Error(`${action==='approve'?'Approve':'Reject'} what you saw: snapshot time missing`);
     input.before=opts.before;
   }
   const value=await execAdapter(config.command,input);

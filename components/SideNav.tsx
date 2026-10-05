@@ -16,46 +16,52 @@ const LEAD = [
   { href: "/guides", label: "Guides", glyph: "?" },
 ];
 
-const LIFECYCLE = { href: "/lifecycle", label: "Lifecycle", glyph: "↻" };
 
 const STORAGE_KEY = "hq.sidenav.collapsed";
 
+/** `built`: undefined for lead items; a reason string when the department is built out; null when it isn't yet. */
 function NavLink({
   item,
   active,
   collapsed,
+  built,
 }: {
   item: { href: string; label: string; glyph: string };
   active: boolean;
   collapsed: boolean;
+  built?: string | null;
 }) {
+  const dim = built === null && !active;
   return (
     <Link
       href={item.href}
-      title={item.label}
-      className={`flex items-center gap-2.5 rounded-lg text-[13px] transition-colors ${
+      title={built === undefined ? item.label : built ? `${item.label}: built out (${built})` : `${item.label}: not built out yet for this business`}
+      className={`relative flex items-center gap-2.5 rounded-lg text-[13px] transition-colors ${
         collapsed ? "justify-center px-0 py-1.5" : "px-2.5 py-1.5"
       } ${
         active
           ? "bg-bb-blue/10 text-bb-fg border border-bb-blue/25"
-          : "text-bb-muted hover:bg-bb-surface hover:text-bb-fg border border-transparent"
+          : dim
+            ? "text-bb-dim opacity-60 hover:opacity-100 hover:bg-bb-surface hover:text-bb-fg border border-transparent"
+            : `${built ? "text-bb-fg" : "text-bb-muted"} hover:bg-bb-surface hover:text-bb-fg border border-transparent`
       }`}
     >
-      <span className={`w-3.5 shrink-0 text-center ${active ? "text-bb-blue" : "text-bb-dim"}`}>{item.glyph}</span>
-      {!collapsed && item.label}
+      <span className={`w-3.5 shrink-0 text-center ${active ? "text-bb-blue" : built ? "text-bb-accent" : "text-bb-dim"}`}>{item.glyph}</span>
+      {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+      {built && (collapsed
+        ? <span aria-hidden className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-bb-accent" />
+        : <span aria-label="built out" className="h-1.5 w-1.5 shrink-0 rounded-full bg-bb-accent" />)}
     </Link>
   );
 }
 
-/** `active`: department slugs the current business runs (skipped ones are hidden). */
-export function SideNav({ active }: { active: string[] }) {
+/** `active`: department slugs the current business runs (skipped ones are hidden). `built`: the ones built out for it
+ *  (lib/built.ts), with why; the rest show dimmed. */
+export function SideNav({ active, built = {} }: { active: string[]; built?: Record<string, string> }) {
   const path = usePathname();
-  // The lifecycle centre sits right under Email (or under Workflows when Email is skipped).
-  const NAV = DEPARTMENTS.filter((d) => active.includes(d.slug)).flatMap((d) => [
-    { href: `/${d.slug}`, label: d.label, glyph: d.glyph },
-    ...(d.slug === "email" ? [LIFECYCLE] : []),
-  ]);
-  const lead = NAV.includes(LIFECYCLE) ? LEAD : [...LEAD.slice(0, 2), LIFECYCLE, ...LEAD.slice(2)];
+  // Lifecycle lives inside Email & Lifecycle, so the departments are the whole list.
+  const NAV = DEPARTMENTS.filter((d) => active.includes(d.slug)).map((d) => ({ href: `/${d.slug}`, label: d.label, glyph: d.glyph, slug: d.slug }));
+  const lead = LEAD;
   // Starts expanded on server and client alike (no hydration mismatch); the
   // stored preference is applied after mount.
   const [collapsed, setCollapsed] = useState(false);
@@ -131,8 +137,13 @@ export function SideNav({ active }: { active: string[] }) {
 
       <div className="mt-4 mb-2 px-2.5">{!collapsed && <span className="eyebrow text-bb-dim">Departments</span>}</div>
       {NAV.map((item) => (
-        <NavLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} />
+        <NavLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} built={built[item.slug] ?? null} />
       ))}
+      {!collapsed && Object.keys(built).length > 0 && (
+        <p className="mt-2 px-2.5 text-[10.5px] text-bb-dim">
+          <span aria-hidden className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-bb-accent align-middle" />built out for this business · dimmed: not yet
+        </p>
+      )}
 
       {!collapsed && (
         <div className="mt-auto px-2.5 pt-5 pb-1 text-[9.5px] leading-relaxed text-bb-dim font-mono">

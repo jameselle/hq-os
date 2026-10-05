@@ -259,6 +259,9 @@ snapshot. HQ never stores keys or tokens: they stay in Composio, WoopSocial, Pos
 - `/hq:style`: finds the short videos winning in the niche, measures them (cuts per 10 s, pace, first word, hook)
   and tears the best apart, then writes `style.json` pace targets and a style guide in the vault. Run it first,
   and monthly.
+- `/hq:script`: writes the talking-to-camera script for a stranger who has never seen the channel: a stranger
+  brief, plain words, three angles, a cold-reader test by a fresh agent, and `hq script-check` (length, sentence
+  length, insider words, dashes, business names). Opens the script in the teleprompter.
 - `/hq:self-post`: the owner's own talking-to-camera post, end to end: script, teleprompter, Claude edits with
   every skill, review, cover, caption, post.
 - `/hq:clip`: a long video (podcast, interview, talk) into 3 to 5 short vertical captioned clips, QA'd. Never posts.

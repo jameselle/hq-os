@@ -48,6 +48,18 @@
         "Reported that the copy goes to the owner only",
         "If unsupported, said so instead of improvising a send"
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "Work through my notes on the emails.",
+      "expected_output": "Lists the open owner notes, proposes a change for each in the business's own repo, and never sends or approves anything.",
+      "files": [],
+      "expectations": [
+        "Read the open notes with `npm run hq -- lifecycle notes <slug>`",
+        "Proposed each change on a branch/PR in the business's repo, naming the note it answers",
+        "Did not approve, reject or send anything without the owner's yes",
+        "Told the owner to mark each note done on the Email & Lifecycle page once it ships"
+      ]
     }
   ]
 }

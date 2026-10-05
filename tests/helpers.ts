@@ -108,7 +108,7 @@ export function privateScorecardLeaks(entries: { file: string; text: string }[])
   const NAME = [/(^|\/)(scorecard|analytics)-(connection|snapshot|state|hq)\.json$/, /(^|\/)(scorecard|analytics)\/\d{4}-W\d{2}\.json$/, /adapter[^/]*\.(m?[jt]s|cjs|sh|py)$/];
   const CONTENT = [/\/rest\/v1\/rpc\//, /[a-z0-9]{20}\.supabase\.co/, /\b(sk|rk)_(live|test)_[A-Za-z0-9]{8,}/, /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}/];
   return entries
-    .filter(({ file }) => !file.startsWith("templates/scorecard/") && !file.startsWith("templates/analytics/") && file !== "lib/private-adapter.ts")
+    .filter(({ file }) => !file.startsWith("templates/scorecard/") && !file.startsWith("templates/analytics/") && !file.startsWith("templates/finance/") && file !== "lib/private-adapter.ts")
     .filter(({ file, text }) => (!file.startsWith("tests/") && NAME.some((r) => r.test(file))) || CONTENT.some((r) => r.test(text)))
     .map(({ file }) => file);
 }

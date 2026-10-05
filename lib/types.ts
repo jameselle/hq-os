@@ -134,5 +134,9 @@ export type HostFacts = {
     /** The weakest growth lever this week and the workflow that moves it (lib/levers.ts), or null. */
     weakest?: import("./levers").Weakest | null; missing: { lever: string; label: string; note: string }[] } | null;
   /** The current business's analytics (lib/analytics.ts): whether an adapter reports, and how much is measured. */
-  analytics?: { connected: boolean; demo: boolean; stale: boolean; failed: boolean; measured: number; applicable: number; workflowsMeasured: number; workflows: number } | null;
+  analytics?: { connected: boolean; demo: boolean; stale: boolean; failed: boolean; measured: number; applicable: number; workflowsMeasured: number; workflows: number;
+    /** Fault numbers reading above zero (lib/analytics.ts analyticsAlarms). */
+    alarms?: import("./analytics").AnalyticsAlarm[] } | null;
+  /** The business's books: whether billing syncs into the ledger, and income vs recorded costs over 90 days. */
+  finance?: { synced: boolean; income90: number; costs90: number; currency: string } | null;
 };

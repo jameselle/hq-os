@@ -45,6 +45,16 @@ Write `$JOB/spec.json` (the format and all its fields are in the `/hq:clip` skil
 - The business's look comes from `$HQ_DATA/businesses/<slug>/brand.json`: font, colours,
   loudness and `speed` (how fast its videos post, e.g. `1.25`; a spec's own `speed` wins, so leave it
   out of the spec to inherit). Create it the first time if the business has brand colours or a speed.
+- **The finishing pass, also from `brand.json`:** `voice` (`"clean"`, the default: rumble cut, less boxiness,
+  presence, softer esses and gentle compression before levelling; `"plain"`: levelling only), `punch: true`
+  (punch-ins on face-only lines, numbers and keywords first, never under the hook or a cutaway, at least 2 s
+  apart) and `sfx: true` (a synthesised whoosh just before each cutaway, an impact on full-frame cards, about
+  5 dB under the voice). `punch` and `sfx` are off unless the business turns them on. Say in the hand-off which
+  of them ran: a render with cutaways over every face line gets no punch-ins, and that is correct.
+- **Cutaway traps:** one cutaway per sentence (a second one in the same sentence fails "couldn't find X after
+  the previous cutaway"); anchor `from`/`to` on single stored words, and a token in the job's `words.json`
+  must never contain a space; start each segment at speech onset (silencedetect) minus 0.08 s, because the
+  transcriber dates first words late and a later start clips them.
 
 `npm run -s studio -- render "$JOB/spec.json"`
 

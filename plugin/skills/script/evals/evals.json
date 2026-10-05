@@ -1,0 +1,33 @@
+{
+  "skill_name": "script",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Write me a script for today's video: the demo coffee shop's new page that shows which emails actually sell coffee. Keyword BEANS.",
+      "expected_output": "A stranger brief, three drafts, cold-reader results for each, a chosen script that passes script-check, saved to the teleprompter scripts folder and opened in the teleprompter.",
+      "files": [],
+      "expectations": [
+        "Wrote the four-sentence stranger brief before the script",
+        "Wrote three drafts with different openings",
+        "Ran a fresh subagent cold-reader test on each draft and showed its answers",
+        "The chosen script's hook is 14 words or fewer and not a 'Stop' command",
+        "hq script-check says PASS with --keyword BEANS",
+        "Saved under ~/teleprompter/scripts and opened http://localhost:8792/#script=<name>",
+        "Used no em or en dashes and named no real business"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "This script is confusing, people won't know what I'm talking about. Make it clearer: <script.txt>",
+      "expected_output": "The insider words found and swapped or explained, a cold reader who can now say what it's about, the file updated and reopened in the teleprompter.",
+      "files": [],
+      "expectations": [
+        "Ran hq script-check on the original and listed its insider words",
+        "Ran a cold-reader subagent on the original to show what a stranger misunderstood",
+        "Rewrote with a viewer-first hook and an everyday comparison",
+        "Cold reader on the rewrite gives a correct one-sentence summary with no confusing lines",
+        "Reopened the script in the teleprompter"
+      ]
+    }
+  ]
+}

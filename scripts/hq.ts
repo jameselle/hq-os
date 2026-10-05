@@ -7,10 +7,11 @@
 // Backups      backup init [repository] · backup run · backup restore-test · backup snapshots · backup restore <id|latest> <new-folder>
 // Services     services init · services add-defaults · services install · services status · services start · services stop · services uninstall
 // Publishing   connections save <file.json|-> · connections show · publishing <slug> · log-post <slug> <post.json|->
+// Scripts      script-check <script.txt|-> [--slug <business>] [--keyword WORD] [--target <posted seconds>] [--wpm N]
 // Competitors  competitors sync <slug> · competitors changes <slug> [--days N] [--json] · competitors log <slug> <name> <file|-> · competitors recheck <slug>
 // Brain        brain init · brain read <slug> <dept> [--chars N] · brain write <slug|hq> <note.json|-> · brain promote <slug> <note> [--title T] [--body file] · brain show <slug>
-// Tools        finance init <slug> · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug> · analytics refresh <slug|--all> · analytics show <slug> [--missing] [--dept <dept>] · workflows check <slug|--all>
-// Lifecycle    lifecycle show <slug> [flow] [--cached] · lifecycle explain <slug> <flow> · lifecycle approve <slug> <message> [--yes --before <ISO>]
+// Tools        support refresh <slug|--all> · support show|digest <slug> · finance init <slug> · finance sync <slug|--all> · finance show <slug> · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug> · analytics refresh <slug|--all> · analytics show <slug> [--missing] [--dept <dept>] · workflows check <slug|--all>
+// Lifecycle    lifecycle show <slug> [flow] [--cached] · lifecycle explain <slug> <flow> · lifecycle approve|reject <slug> <message> [--yes --before <ISO>] · lifecycle notes <slug> [--all]
 //              lifecycle test <slug> <message> · lifecycle mode <slug> <flow> off|draft|auto [--yes]
 // Experiments  experiment add <slug> "<hypothesis>" --metric <id> [--baseline N] · experiment close <slug> <id> won|lost|inconclusive [--result N] [--note "…"] · experiment list <slug>
 // Health       doctor
@@ -32,6 +33,10 @@ import { brainStats, candidates, hqBrainRoot, initBrain, promote, readBundle, wr
 import { NOTE_TYPES, TYPE_INFO } from "../lib/brain";
 import { runScorecard, scorecardState } from "../lib/scorecard";
 import { analyticsBoard, isoWeek, lastWeeks, runAnalytics } from "../lib/analytics";
+import { financeConnected, moneyByMonth, syncFinance } from "../lib/finance-sync";
+import { digestWritten, runSupport, supportConnected, supportDigest, supportState, writeSupportDigest } from "../lib/support";
+import { loadLedger } from "../lib/ledger-spend";
+import { listNotes as listLifecycleNotes } from "../lib/lifecycle-notes";
 import { fetchCompetitorChanges, fetchOpenFindings } from "../lib/analytics-findings";
 import { WORKFLOW_ANALYTICS, formatAnalytics } from "../lib/analytics-metrics";
 import { runWorkflowChecks, workflowChecksState } from "../lib/workflow-checks";
@@ -43,12 +48,16 @@ import { addExperiment, closeExperiment, experimentsMarkdown, listExperiments, t
 import { formatValue, scorecardRows } from "../lib/scorecard-metrics";
 import { validateProfile } from "../lib/profile";
 import { PLATFORMS, captionProblems, channelStatuses, resolveRoute } from "../lib/publishing";
+import { checkScript, formatReport } from "../lib/script-check";
+import { mergeBrand } from "../lib/studio/brand";
+import { privateNames } from "../lib/brain-store";
 import { WATCHER_KEYCHAIN, WATCHER_URL, competitorFromTitle, competitorNoteHead, recentChanges, shortUrl, watchTag, watchTargets, type WatchRow } from "../lib/competitors";
 import {
   businessDir,
   getProfile,
   hqData,
   initLedger,
+  ledgerPath,
   stamp,
   hqRoot,
   listBusinesses,
@@ -359,8 +368,8 @@ function defaultServices(): Service[] {
     },
     {
       label: "com.hq.scorecard",
-      description: "Daily growth scorecard and analytics refresh for every business",
-      program: ["/bin/sh", "-c", `${node} run hq -- scorecard refresh --all; ${node} run hq -- analytics refresh --all`],
+      description: "Daily finance sync, scorecard, analytics and support refresh for every business",
+      program: ["/bin/sh", "-c", `${node} run hq -- finance sync --all; ${node} run hq -- scorecard refresh --all; ${node} run hq -- analytics refresh --all; ${node} run hq -- support refresh --all`],
       cwd: hqRoot(),
       keepAlive: false,
       schedule: { Hour: 6, Minute: 0 },
@@ -831,11 +840,18 @@ async function cmdLifecycle(args: string[]) {
   const opt = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
   const pos = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--before");
   const [sub, slugArg, name, modeArg] = pos;
-  const usage = "lifecycle: show <slug> [flow] [--cached] | explain <slug> <flow> | approve <slug> <message> [--yes --before <ISO>] | test <slug> <message> | mode <slug> <flow> off|draft|auto [--yes]";
-  if (!sub || !["show", "explain", "approve", "test", "mode"].includes(sub)) return die(usage);
+  const usage = "lifecycle: show <slug> [flow] [--cached] | explain <slug> <flow> | approve <slug> <message> [--yes --before <ISO>] | reject <slug> <message> [--yes --before <ISO>] | test <slug> <message> | mode <slug> <flow> off|draft|auto [--yes] | notes <slug> [--all]";
+  if (!sub || !["show", "explain", "approve", "reject", "test", "mode", "notes"].includes(sub)) return die(usage);
   const p = getProfile(slugArg ?? "") ?? die(`no such business: ${slugArg ?? "(none)"}\n${usage}`);
   const tz = p.timezone;
   const hq = (rest: string) => `npm run hq -- lifecycle ${rest}`;
+  if (sub === "notes") {
+    // The owner's notes from Email & Lifecycle: open ones are work for the Email department.
+    const all = listLifecycleNotes(p.slug), show = args.includes("--all") ? all : all.filter((x) => !x.done);
+    if (!show.length) return console.log(`${p.name}: no ${args.includes("--all") ? "" : "open "}notes.`);
+    for (const x of show) console.log(`${x.done ? "done" : "open"}  ${x.at.slice(0, 10)}  ${x.flow}${x.message ? ` / ${x.message}` : ""}: ${x.text.replace(/\n+/g, " ")}`);
+    return;
+  }
 
   // Read it fresh unless asked not to: a report never changes anything.
   let state = lifecycleState(p.slug);
@@ -896,7 +912,7 @@ async function cmdLifecycle(args: string[]) {
     const before = opt("--before");
     if (!args.includes("--yes")) {
       console.log(`${w.drafts} ${w.drafts === 1 ? "person is" : "people are"} waiting for "${subject}" (${w.id}).${w.expiresAt ? ` Unapproved, the first expires ${timeLabel(w.expiresAt, tz)}.` : ""}`);
-      console.log(`Read it first: the email is on ${flowPage(w.serves) ? `http://127.0.0.1:3150${flowPage(w.serves)}` : "the lifecycle centre"}, or ${hq(`explain ${p.slug} ${w.id}`)}.`);
+      console.log(`Read it first: the email is on ${flowPage(w.serves) ? `http://127.0.0.1:3150${flowPage(w.serves)}` : "Email & Lifecycle (http://127.0.0.1:3150/email)"}, or ${hq(`explain ${p.slug} ${w.id}`)}.`);
       console.log(`Nothing was sent. To send exactly these ${w.drafts} after the owner's yes:\n  ${hq(`approve ${p.slug} ${w.id} --yes --before ${snap.observedAt}`)}`);
       return;
     }
@@ -904,6 +920,24 @@ async function cmdLifecycle(args: string[]) {
     const after = await runLifecycle(p.slug, "approve", { workflow: w.id, before });
     const left = after.snapshot?.workflows.find((x) => x.id === w.id)?.drafts ?? 0;
     return console.log(`Approved "${subject}" (${w.id}) for drafts planned up to ${timeLabel(before, tz)}. Still waiting: ${left}. The business's sender sends approved messages on its next run.`);
+  }
+  if (sub === "reject") {
+    need("reject");
+    const w = message(name);
+    const subject = w.preview?.subject ?? w.label;
+    if (!w.drafts) return console.log(`Nothing waiting for ${w.id} ("${subject}").`);
+    const before = opt("--before");
+    if (!args.includes("--yes")) {
+      console.log(`${w.drafts} ${w.drafts === 1 ? "person is" : "people are"} waiting for "${subject}" (${w.id}). Rejecting means none of them ever gets it.`);
+      console.log(`Nothing changed. To reject exactly these ${w.drafts} after the owner's no:\n  ${hq(`reject ${p.slug} ${w.id} --yes --before ${snap.observedAt}`)}`);
+      return;
+    }
+    if (!before || !Number.isFinite(Date.parse(before))) return die(`--yes needs --before <the snapshot time you rejected from>, so drafts planned since then wait. This snapshot: --before ${snap.observedAt}`);
+    const after = await runLifecycle(p.slug, "reject", { workflow: w.id, before });
+    const left = after.snapshot?.workflows.find((x) => x.id === w.id)?.drafts ?? 0;
+    const gone = Math.max(0, (w.drafts ?? 0) - left);
+    return console.log(gone ? `Rejected ${gone} of "${subject}" (${w.id}), planned up to ${timeLabel(before, tz)}: never sent ("owner said no"). Still waiting: ${left}.`
+      : `Nothing was planned up to ${timeLabel(before, tz)}, so nothing was rejected. Still waiting: ${left}.`);
   }
   if (sub === "test") {
     need("test");
@@ -1001,6 +1035,28 @@ async function main() {
       if (problems.length) return die(`caption refused: ${problems.join("; ")}`);
       return console.log("caption ok: no em or en dashes");
     }
+    case "script-check": {
+      // Does a teleprompter script make sense to a stranger, and does it fit? Exits 1 on a problem.
+      const flag = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
+      const slug = flag("--slug");
+      const p = slug ? getProfile(slug) ?? die(`no such business: ${slug}`) : null;
+      let speed = 1;
+      if (p) {
+        const f = path.join(businessDir(p.slug), "brand.json");
+        speed = mergeBrand(fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : null).speed;
+      }
+      const own = p ? [p.name, p.slug].map((x) => x.toLowerCase()) : [];
+      const report = checkScript(readInput(pos[0]), {
+        speed,
+        wpm: flag("--wpm") ? Number(flag("--wpm")) : undefined,
+        targetSeconds: flag("--target") ? Number(flag("--target")) : undefined,
+        keyword: flag("--keyword"),
+        names: privateNames().filter((n) => !own.includes(n.toLowerCase())),
+      });
+      console.log(formatReport(report));
+      if (report.problems.length) process.exit(1);
+      return;
+    }
     case "publishing":
       return cmdPublishing(pos[0]);
     case "log-post": {
@@ -1031,8 +1087,60 @@ async function main() {
           return die("competitors: sync <slug> | changes <slug> [--days N] [--json] | recheck <slug> | log <slug> <name> <file|->");
       }
     }
+    case "support": {
+      const usage = "support: refresh <slug|--all> | show <slug> | digest <slug>";
+      if (pos[0] === "refresh") {
+        const slugs = flag("--all") ? listBusinesses().profiles.filter((p) => supportConnected(p.slug)).map((p) => p.slug) : [pos[1] ?? die(usage)];
+        let failed = 0;
+        for (const slug of slugs) {
+          try {
+            const s = await runSupport(slug);
+            const week = isoWeek(Date.now(), getProfile(slug)?.timezone || "UTC");
+            const digest = digestWritten(slug, week) ? "digest already sent this week" : `digest sent: ${path.basename(writeSupportDigest(slug, s, week))}`;
+            console.log(`ok ${slug} ${s.waiting.length} waiting, ${Object.values(s.themes).reduce((a, b) => a + b, 0)} conversations in 90 days · ${digest}`);
+          } catch (e) { failed++; console.log(`failed ${slug}: ${e instanceof Error ? e.message : e}`); }
+        }
+        if (failed) process.exit(1);
+        return;
+      }
+      if (pos[0] === "show" || pos[0] === "digest") {
+        const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+        const st = supportState(p.slug);
+        if (!st.snapshot) return die(`${p.slug}: no support snapshot${st.connected ? `; run: support refresh ${p.slug}` : " (no support connection)"}`);
+        const s = st.snapshot, week = isoWeek(Date.now(), p.timezone || "UTC");
+        if (pos[0] === "digest") return console.log(digestWritten(p.slug, week) ? `Already sent this week (Support themes ${week}).` : `Sent: ${writeSupportDigest(p.slug, s, week)}`);
+        console.log(`${p.name} · support read ${s.observedAt}${st.stale ? " · STALE" : ""}`);
+        console.log(`Waiting for a reply: ${s.waiting.length}${s.answerAt ? ` (answer at ${s.answerAt})` : ""}`);
+        for (const w of s.waiting) console.log(`  ${w.ref}  ${w.theme} · ${w.channel}${w.openedFrom ? `, from ${w.openedFrom}` : ""} · last ${w.lastAt.slice(0, 10)}`);
+        console.log(supportDigest(p.slug, s, week).body);
+        return;
+      }
+      return die(usage);
+    }
     case "finance": {
-      if (pos[0] !== "init") return die("finance: init <slug>");
+      if (pos[0] === "sync") {
+        const slugs = flag("--all") ? listBusinesses().profiles.filter((p) => financeConnected(p.slug)).map((p) => p.slug) : [pos[1] ?? die("finance sync <slug> | --all")];
+        let failed = 0;
+        for (const slug of slugs) {
+          try {
+            const r = await syncFinance(slug);
+            console.log(`ok ${slug} ${r.entries} daily totals, ${r.from ?? "-"} to ${r.to ?? "-"} ${JSON.stringify(r.byKind)}`);
+          } catch (e) { failed++; console.log(`failed ${slug}: ${e instanceof Error ? e.message : e}`); }
+        }
+        if (failed) process.exit(1);
+        if (loaded("com.hq.fava")) spawnSync("/bin/launchctl", ["kickstart", "-k", `gui/${uid()}/com.hq.fava`], { stdio: "ignore" });
+        return;
+      }
+      if (pos[0] === "show") {
+        const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+        const months = moneyByMonth(loadLedger(ledgerPath(p.slug)), p.currency).slice(-6);
+        if (!months.length) return console.log(`${p.name}: the ledger has no income or costs yet${financeConnected(p.slug) ? "; run: finance sync " + p.slug : " (no finance connection)"}`);
+        const f = (n: number) => formatValue("money", n, p.currency);
+        console.log(`${p.name} · money in and out by month (${p.currency})`);
+        for (const m of months) console.log(`${m.month}  in ${f(m.income - m.refunds).padStart(10)}  out ${f(m.costs).padStart(10)}  margin ${f(m.income - m.refunds - m.costs).padStart(10)}${Object.keys(m.byCost).length ? "  " + Object.entries(m.byCost).map(([k, v]) => `${k} ${f(v)}`).join(", ") : ""}`);
+        return;
+      }
+      if (pos[0] !== "init") return die("finance: init <slug> | sync <slug|--all> | show <slug>");
       const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
       const file = initLedger(p);
       const check = which("bean-check") ? spawnSync("bean-check", [file], { encoding: "utf8" }) : null;

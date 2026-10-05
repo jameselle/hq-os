@@ -233,7 +233,7 @@ export default async function WorkflowDetailPage({ params }: { params: Promise<{
         <Section id="flows-h" kicker="Automation" title="Messages">
           <p className="card px-4 py-3 text-[12.5px] text-bb-muted">
             {business ? `${business.name} sends no automated messages for this workflow yet.` : "Choose a business to see its automated messages."}{" "}
-            <Link href="/lifecycle" className="text-bb-blue hover:underline">See every flow</Link>
+            <Link href="/email" className="text-bb-blue hover:underline">See every flow</Link>
           </p>
         </Section>
       )}

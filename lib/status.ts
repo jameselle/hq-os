@@ -20,7 +20,10 @@ import { WATCHER_KEYCHAIN, WATCHER_PORT, WATCHER_URL, competitorFromTitle, watch
 import type { Profile } from "./profile";
 import { channelStatuses, type ConnectionsSnapshot } from "./publishing";
 import { scorecardState } from "./scorecard";
-import { analyticsBoard, analyticsState } from "./analytics";
+import { analyticsAlarms, analyticsBoard, analyticsState } from "./analytics";
+import { financeConnected, moneyByMonth } from "./finance-sync";
+import { ledgerPath } from "./store";
+import { loadLedger } from "./ledger-spend";
 import { scorecardRows } from "./scorecard-metrics";
 import { weakestLever } from "./levers";
 import { doneFindings, latestPlan, listBusinesses, readConfig, readConnections, resolveCurrent } from "./store";
@@ -190,7 +193,7 @@ function zshrcHas(flag: string): boolean {
 }
 
 /** The business's competitor watches, read from changedetection.io with the Keychain token (kept in memory). */
-async function competitorRows(profile: Profile | null): Promise<{ up: boolean; rows: WatchRow[] | null }> {
+export async function competitorRows(profile: Profile | null): Promise<{ up: boolean; rows: WatchRow[] | null }> {
   if (!(await portOpen(WATCHER_PORT))) return { up: false, rows: null };
   if (!profile) return { up: true, rows: [] };
   try {
@@ -229,10 +232,18 @@ function scorecardFacts(slug: string): HostFacts["scorecard"] {
   }
 }
 
+function financeFacts(profile: Profile): HostFacts["finance"] {
+  try {
+    const cutoff = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 7);
+    const months = moneyByMonth(loadLedger(ledgerPath(profile.slug)), profile.currency).filter((m) => m.month >= cutoff);
+    return { synced: financeConnected(profile.slug), income90: months.reduce((n, m) => n + m.income - m.refunds, 0), costs90: months.reduce((n, m) => n + m.costs, 0), currency: profile.currency };
+  } catch { return null; }
+}
+
 function analyticsFacts(slug: string): HostFacts["analytics"] {
   try {
     const s = analyticsState(slug), b = analyticsBoard(slug);
-    return { connected: s.connected, demo: s.demo, stale: s.stale, failed: s.failed, ...b.coverage };
+    return { connected: s.connected, demo: s.demo, stale: s.stale, failed: s.failed, ...b.coverage, alarms: analyticsAlarms(b.metrics) };
   } catch {
     return null;
   }
@@ -250,6 +261,7 @@ async function hostFacts(profile: Profile | null): Promise<HostFacts> {
     connections: readConnections(),
     scorecard: profile ? scorecardFacts(profile.slug) : null,
     analytics: profile ? analyticsFacts(profile.slug) : null,
+    finance: profile ? financeFacts(profile) : null,
     intel: { watcherUp: intel.up, rows: intel.rows, lastBriefAt: profile ? (latestPlan(profile.slug, "competitors")?.at ?? null) : null },
     backup: {
       repository: backup?.repository,

@@ -305,6 +305,19 @@ export function buildFindings(
     });
   }
 
+  // ---- Finance: income syncs from billing; costs must be recorded too, or every margin reads too high ----
+  const fin = f.finance;
+  if (profile && fin && fin.income90 > 0 && fin.costs90 === 0) {
+    out.push({
+      id: "finance-costs-missing",
+      severity: "attention",
+      dept: "finance",
+      title: "The books have income but no costs",
+      detail: `${fin.synced ? "Income syncs from billing every day" : "The ledger has income"}, but no costs are recorded for the last 90 days, so margin, cost to win and payback all read better than they are.`,
+      action: `Add the business's running costs (hosting, software, ads, contractors) to its ledger, or ask \`/hq:dept finance\` to set them up as monthly entries. The Finance tab shows money in and out.`,
+    });
+  }
+
   // ---- Analytics: the numbers each workflow is judged by (lib/analytics.ts) ----
   const an = f.analytics;
   if (profile && an) {
@@ -326,6 +339,16 @@ export function buildFindings(
         title: "Most workflow numbers are invisible",
         detail: `There is no analytics adapter, so only the scorecard and HQ's own records are measured: ${share}.`,
         action: `Write a private read-only adapter and point analytics-connection.json at it (docs/guides/analytics.md), then \`npm run hq -- analytics refresh ${profile.slug}\`. \`npm run hq -- analytics show ${profile.slug} --missing\` lists what each number needs.`,
+      });
+    }
+    for (const a of an.alarms ?? []) {
+      out.push({
+        id: `analytics-alarm-${a.id}`,
+        severity: "attention",
+        dept: a.owner,
+        title: `${a.label}: ${a.value}`,
+        detail: `${a.note}. It should read zero; it's one of the numbers ${a.workflow ? `the ${a.workflow} workflow` : "a workflow"} is judged by.`,
+        action: a.action,
       });
     }
   }

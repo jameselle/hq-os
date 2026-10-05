@@ -454,6 +454,13 @@ export function analyticsBoard(slug: string, now: Date = new Date()): Board {
       points: [], breakdown: [], period: null, from: null });
   });
 
+  // Lifetime value to cost to win: worked out here when nothing reports it but both halves are measured.
+  const ratio = metrics.find((x) => x.id === "ltv_to_cac")!, ltvM = metrics.find((x) => x.id === "ltv")!, cac = metrics.find((x) => x.id === "cost_to_win")!;
+  if (ratio.status !== "measured" && ltvM.status === "measured" && cac.status === "measured" && (cac.value ?? 0) > 0) {
+    Object.assign(ratio, finish({ ...ratio, status: "measured", value: Math.round(((ltvM.value as number) / (cac.value as number)) * 100) / 100, quality: "approx",
+      note: `Lifetime value ${ltvM.value} over cost to win ${cac.value}; worked out by HQ from those two numbers`, points: [], breakdown: [], period: null, from: "hq" }));
+  }
+
   const applicable = metrics.filter((x) => x.status !== "na");
   const measuredIds = new Set(metrics.filter((x) => x.status === "measured").map((x) => x.id));
   const naIds = new Set(metrics.filter((x) => x.status === "na").map((x) => x.id));
@@ -468,6 +475,17 @@ export function analyticsBoard(slug: string, now: Date = new Date()): Board {
       workflowsMeasured: relevant.filter((t) => (WORKFLOW_ANALYTICS[t] ?? []).some((id) => measuredIds.has(id))).length, workflows: relevant.length,
     },
   };
+}
+
+export type AnalyticsAlarm = { id: AnalyticsId; label: string; value: number; note: string; workflow: string; owner: string; action: string };
+
+/** Measured alarm numbers (faults that should read zero) that read above zero, each with the workflow that owns it. */
+export function analyticsAlarms(metrics: BoardMetric[]): AnalyticsAlarm[] {
+  return metrics.filter((m) => m.def.alarm && m.status === "measured" && (m.value ?? 0) > 0).map((m) => {
+    const workflow = m.workflows[0] ?? "";
+    return { id: m.id, label: m.def.label, value: m.value as number, note: m.note, workflow,
+      owner: WORKFLOWS.find((w) => w.title === workflow)?.owner ?? "data", action: m.def.alarm as string };
+  });
 }
 
 function finish(x: Omit<BoardMetric, "change">): BoardMetric {

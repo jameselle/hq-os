@@ -27,6 +27,9 @@ export type Cutaway = {
   /** Vertical only: fill the whole frame instead of the top half, e.g. a title card covering a change of shot.
    *  Captions stay in their usual place. */
   full?: boolean;
+  /** false: no sound effect into this cutaway, e.g. when its first word is the keyword ask and a whoosh would
+   *  mask it ("Comment HQ" heard as "Come on HQ"). Default: follows the spec / brand `sfx`. */
+  sfx?: boolean;
 };
 
 export type EditSpec = {
@@ -109,6 +112,7 @@ export function validateSpec(raw: unknown): SpecResult {
         const box = (b: unknown) => Array.isArray(b) && b.length === 3 && b.every((n) => typeof n === "number" && n >= 0) && (b[2] as number) > 0;
         if (c?.pan !== undefined && !(box(c.pan.from) && box(c.pan.to))) errors.push(`cutaways[${i}].pan: { from: [x, y, width], to: [x, y, width] }`);
         if (c?.full !== undefined && typeof c.full !== "boolean") errors.push(`cutaways[${i}].full: true or false`);
+        if (c?.sfx !== undefined && typeof c.sfx !== "boolean") errors.push(`cutaways[${i}].sfx: true or false`);
       });
   }
   return errors.length ? { ok: false, errors } : { ok: true, spec: s };
