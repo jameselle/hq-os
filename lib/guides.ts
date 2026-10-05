@@ -52,6 +52,13 @@ const OTHER: Guide[] = [
     file: "docs/guides/scorecard.md",
   },
   {
+    slug: "analytics",
+    kind: "page",
+    title: "Analytics: every number, every workflow",
+    blurb: "The number each workflow is judged by, where each one comes from, the analytics adapter contract and how to measure what's still missing.",
+    file: "docs/guides/analytics.md",
+  },
+  {
     slug: "lifecycle",
     kind: "page",
     title: "Customer lifecycle",

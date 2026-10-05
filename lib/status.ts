@@ -20,6 +20,7 @@ import { WATCHER_KEYCHAIN, WATCHER_PORT, WATCHER_URL, competitorFromTitle, watch
 import type { Profile } from "./profile";
 import { channelStatuses, type ConnectionsSnapshot } from "./publishing";
 import { scorecardState } from "./scorecard";
+import { analyticsBoard, analyticsState } from "./analytics";
 import { scorecardRows } from "./scorecard-metrics";
 import { weakestLever } from "./levers";
 import { doneFindings, latestPlan, listBusinesses, readConfig, readConnections, resolveCurrent } from "./store";
@@ -228,6 +229,15 @@ function scorecardFacts(slug: string): HostFacts["scorecard"] {
   }
 }
 
+function analyticsFacts(slug: string): HostFacts["analytics"] {
+  try {
+    const s = analyticsState(slug), b = analyticsBoard(slug);
+    return { connected: s.connected, demo: s.demo, stale: s.stale, failed: s.failed, ...b.coverage };
+  } catch {
+    return null;
+  }
+}
+
 async function hostFacts(profile: Profile | null): Promise<HostFacts> {
   const intel = await competitorRows(profile);
   const backup = readConfig().backup;
@@ -239,6 +249,7 @@ async function hostFacts(profile: Profile | null): Promise<HostFacts> {
     postizInstalled: hasPath("~/postiz-app"),
     connections: readConnections(),
     scorecard: profile ? scorecardFacts(profile.slug) : null,
+    analytics: profile ? analyticsFacts(profile.slug) : null,
     intel: { watcherUp: intel.up, rows: intel.rows, lastBriefAt: profile ? (latestPlan(profile.slug, "competitors")?.at ?? null) : null },
     backup: {
       repository: backup?.repository,

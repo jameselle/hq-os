@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 
-import { Line } from "@/components/charts";
+import { Card } from "@/components/AnalyticsCard";
 import { FlowAfter, FlowBefore, FlowMessage } from "@/components/FlowDetail";
 import { LifecycleRefresh } from "@/components/LifecycleControls";
 import { Hint, StatusCard, WeekOneCard } from "@/components/LifecycleStatus";
@@ -14,12 +14,13 @@ import { listExperiments, type Experiment } from "@/lib/experiments";
 import { lifecycleState, supports } from "@/lib/lifecycle";
 import { HINTS, flowStatus, timeLabel } from "@/lib/lifecycle-status";
 import { DEPARTMENTS } from "@/lib/registry";
-import { scorecardState } from "@/lib/scorecard";
+import { analyticsBoard, type BoardMetric } from "@/lib/analytics";
+import { WORKFLOW_ANALYTICS } from "@/lib/analytics-metrics";
 import { METRICS, formatValue } from "@/lib/scorecard-metrics";
 import { skillIndex } from "@/lib/status";
 import { resolveCurrent } from "@/lib/store";
 import { PILL } from "@/lib/tone";
-import { flowsFor, metricHistory } from "@/lib/workflow-detail";
+import { flowsFor } from "@/lib/workflow-detail";
 import { workflowEvidence, type Evidence } from "@/lib/workflow-evidence";
 import { LEVERS, WORKFLOWS, workflowBySlug, type Node } from "@/lib/workflows";
 
@@ -89,26 +90,11 @@ export default async function WorkflowDetailPage({ params }: { params: Promise<{
   const business = resolveCurrent(await preferredBusiness());
   const evidence: Evidence | undefined = business ? workflowEvidence(business.slug).evidence[w.title] : undefined;
 
-  // The number it moves.
-  let metric: { label: string; value: string; quality: string; note: string; week: string; points: { label: string; value: number | null }[]; format: (v: number) => string } | null = null;
-  let metricWhy = w.metricId ? "" : "This workflow has no scorecard number yet. It is judged by: " + w.metric.toLowerCase() + ".";
-  if (w.metricId && business) {
-    try {
-      const s = scorecardState(business.slug), snap = s.snapshot;
-      const id = w.metricId as keyof typeof METRICS, def = METRICS[id];
-      if (!def) metricWhy = "The scorecard has no metric with this id.";
-      else if (!snap) metricWhy = `No scorecard snapshot for ${business.name} yet, so there is no ${def.label.toLowerCase()} to show.`;
-      else {
-        const m = snap.weeks[0].metrics.find((x) => x.id === id);
-        const format = (v: number) => formatValue(def.unit, v, snap.currency);
-        metric = {
-          label: def.label, week: snap.weeks[0].week, quality: m?.quality ?? "missing", note: m?.note ?? "Not reported by the adapter",
-          value: m && m.value !== null ? format(m.value) : "not reported",
-          points: metricHistory(s.history, snap.weeks, id).map((p) => ({ label: p.week, value: p.value })), format,
-        };
-      }
-    } catch { metricWhy = "The scorecard could not be read."; }
-  } else if (w.metricId) metricWhy = "Choose a business to see its number.";
+  // The numbers it moves (lib/analytics-metrics.ts), drawn from the business's analytics board.
+  const board = business ? (() => { try { return analyticsBoard(business.slug); } catch { return null; } })() : null;
+  const numbers = (WORKFLOW_ANALYTICS[w.title] ?? []).map((id) => board?.metrics.find((x) => x.id === id)).filter((x): x is BoardMetric => Boolean(x));
+  const measured = numbers.filter((x) => x.status === "measured");
+  const unmeasured = numbers.filter((x) => x.status !== "measured");
 
   // The flows that deliver it.
   const life = business ? (() => { try { return lifecycleState(business.slug); } catch { return null; } })() : null;
@@ -174,22 +160,27 @@ export default async function WorkflowDetailPage({ params }: { params: Promise<{
         </Section>
       )}
 
-      <Section id="metric-h" kicker="The number it moves" title={metric ? metric.label : w.metric}>
-        <div className="card p-4">
-          {metric ? (
-            <div className="grid gap-4 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
-              <div className="space-y-1">
-                <div className="text-[26px] font-semibold tabular-nums">{metric.value}</div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className={`${PILL} ${metric.quality === "approx" ? "border-bb-warn/40 bg-bb-warn/10 text-bb-warn" : "border-bb-border text-bb-dim"}`}>{metric.quality}</span>
-                  <span className="font-mono text-[10.5px] text-bb-dim">{metric.week}</span>
-                </div>
-                {metric.note && <p className="text-[11.5px] text-bb-muted">{metric.note}</p>}
+      <Section id="metric-h" kicker={numbers.length === 1 ? "The number it moves" : "The numbers it moves"} title={w.metric}
+        aside={<Link href="/data#analytics" className="text-[12px] text-bb-blue hover:underline">All analytics</Link>}>
+        {!business ? <p className="card px-4 py-3 text-[12.5px] text-bb-muted">Choose a business to see its numbers.</p> : (
+          <div className="space-y-3">
+            {measured.length > 0 && (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {measured.map((x) => <Card key={x.id} x={x} currency={business.currency} workflows={false} />)}
               </div>
-              <Line points={metric.points} title={`${metric.label} by week`} format={metric.format} />
-            </div>
-          ) : <p className="text-[12.5px] text-bb-muted">{metricWhy}</p>}
-        </div>
+            )}
+            {unmeasured.length > 0 && (
+              <ul className="card divide-y divide-bb-border/60 px-4 py-1">
+                {unmeasured.map((x) => (
+                  <li key={x.id} className="grid gap-1 py-2.5 md:grid-cols-[14rem_minmax(0,1fr)] md:gap-3">
+                    <span className="text-[12.5px] font-medium">{x.def.label} <span className={`${PILL} ml-1 ${x.status === "na" ? "border-bb-border text-bb-dim" : "border-bb-warn/40 bg-bb-warn/10 text-bb-warn"}`}>{x.status === "na" ? "doesn't apply" : "not measured"}</span></span>
+                    <span className="text-[11.5px] text-bb-muted">{x.note}{x.status === "missing" && <span className="text-bb-dim"> · Needs: {x.def.needs}</span>}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </Section>
 
       <Section id="who-h" kicker="Who does what" title={`${w.steps.length} steps, in order`}>

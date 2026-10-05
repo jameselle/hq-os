@@ -1,0 +1,478 @@
+// Analytics: every number the workflows are judged by, for one business, week by week. Three sources feed it:
+// the scorecard's weekly history (its headline numbers), HQ's own records (posts, Studio jobs, reviews,
+// experiments, lifecycle sends, the brain, the brand kit, workflow checks, CEO findings) and a private, read-only
+// analytics adapter per business for the rest. Like the scorecard, HQ accepts aggregates only, rebuilds every
+// snapshot field by field and keeps a value per metric per ISO week, so numbers a source can only report "now"
+// still build a trend. A number nobody measures stays missing, never zero. Contract: docs/guides/analytics.md.
+import fs from "node:fs";
+import path from "node:path";
+
+import { ANALYTICS, ANALYTICS_IDS, RECURRING_ONLY, WORKFLOW_ANALYTICS, isRecurring, type AnalyticsDef, type AnalyticsId } from "./analytics-metrics";
+import { brainStats } from "./brain-store";
+import { listExperiments } from "./experiments";
+import { lifecycleState } from "./lifecycle";
+import { execAdapter, readConnection, writePrivateJson } from "./private-adapter";
+import { looksPrivate, scorecardState } from "./scorecard";
+import { acquisitionSpend, loadLedger } from "./ledger-spend";
+import { businessDir, getProfile, hqRoot, ledgerPath, listReviews, type PublishedPost } from "./store";
+import { workflowChecksState } from "./workflow-checks";
+import { WORKFLOWS } from "./workflows";
+
+export type AQuality = "exact" | "approx" | "missing" | "na";
+export type ARow = { label: string; value: number };
+export type APoint = { week: string; value: number | null };
+/** One metric as an adapter reports it. `value` is the current reading (null exactly when missing or na);
+ *  `weeks` its weekly history (any order, unique weeks); `breakdown` a split of the current period. */
+export type AnalyticsMetric = { id: AnalyticsId; value: number | null; quality: AQuality; note: string; weeks?: APoint[]; breakdown?: ARow[]; period?: string };
+export type AnalyticsSnapshot = { version: 1; observedAt: string; currency: string; metrics: AnalyticsMetric[] };
+
+export const ALIMITS = { metrics: 150, weeks: 26, breakdown: 20, text: 200, staleHours: 36 };
+
+const WEEK = /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/;
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
+const text = (s: unknown): s is string => typeof s === "string" && s.length <= ALIMITS.text && !looksPrivate(s);
+const label = (s: unknown) => text(s) && (s as string).trim().length > 0;
+const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
+
+// ---------------------------------------------------------------- validation
+
+function metricProblem(m: any, at: string): string | null {
+  if (!m || !Object.hasOwn(ANALYTICS, m.id)) return `${at}.id`;
+  if (!["exact", "approx", "missing", "na"].includes(m.quality)) return `${at}.quality`;
+  if (!text(m.note)) return `${at}.note`;
+  const empty = m.quality === "missing" || m.quality === "na";
+  if (empty ? m.value !== null : !finite(m.value)) return `${at}.value`;
+  if (m.period !== undefined && !label(m.period)) return `${at}.period`;
+  if (m.weeks !== undefined) {
+    if (!Array.isArray(m.weeks) || m.weeks.length > ALIMITS.weeks) return `${at}.weeks`;
+    const seen = new Set<string>();
+    for (let i = 0; i < m.weeks.length; i++) {
+      const p = m.weeks[i];
+      if (!p || !WEEK.test(p.week) || seen.has(p.week)) return `${at}.weeks[${i}].week`;
+      seen.add(p.week);
+      if (p.value !== null && !finite(p.value)) return `${at}.weeks[${i}].value`;
+    }
+  }
+  if (m.breakdown !== undefined) {
+    if (!Array.isArray(m.breakdown) || m.breakdown.length > ALIMITS.breakdown) return `${at}.breakdown`;
+    for (let i = 0; i < m.breakdown.length; i++) {
+      if (!m.breakdown[i] || !label(m.breakdown[i].label)) return `${at}.breakdown[${i}].label`;
+      if (!finite(m.breakdown[i].value) || m.breakdown[i].value < 0) return `${at}.breakdown[${i}].value`;
+    }
+  }
+  return null;
+}
+
+/** The first field that keeps a snapshot out, as a path (never its value), or null if it's acceptable. */
+export function analyticsProblem(v: unknown, currency: string): string | null {
+  const x = v as AnalyticsSnapshot;
+  if (!x || x.version !== 1) return "version";
+  if (x.currency !== currency) return "currency";
+  if (typeof x.observedAt !== "string" || !ISO.test(x.observedAt) || !Number.isFinite(Date.parse(x.observedAt))) return "observedAt";
+  if (!Array.isArray(x.metrics) || x.metrics.length > ALIMITS.metrics) return "metrics";
+  for (let i = 0; i < x.metrics.length; i++) { const p = metricProblem(x.metrics[i], `metrics[${i}]`); if (p) return p; }
+  if (new Set(x.metrics.map((m) => m.id)).size !== x.metrics.length) return "metrics";
+  return null;
+}
+
+export function rebuildAnalytics(s: AnalyticsSnapshot): AnalyticsSnapshot {
+  return {
+    version: 1, observedAt: new Date(s.observedAt).toISOString(), currency: s.currency,
+    metrics: s.metrics.map((m) => ({
+      id: m.id, value: m.value, quality: m.quality, note: m.note,
+      ...(m.period !== undefined ? { period: m.period } : {}),
+      ...(m.weeks ? { weeks: m.weeks.map(({ week, value }) => ({ week, value })) } : {}),
+      ...(m.breakdown ? { breakdown: m.breakdown.map(({ label, value }) => ({ label, value })) } : {}),
+    })),
+  };
+}
+
+// ---------------------------------------------------------------- weeks
+
+/** The ISO week ("2026-W41") a moment falls in, in the given time zone. */
+export function isoWeek(t: number | Date, tz = "UTC"): string {
+  const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t)).split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + 4 - (dt.getUTCDay() || 7));
+  const week = Math.ceil(((dt.getTime() - Date.UTC(dt.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
+  return `${dt.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+/** The last `n` ISO weeks ending with the one `now` falls in, oldest first. */
+export function lastWeeks(n: number, now: number, tz = "UTC"): string[] {
+  const out: string[] = [];
+  for (let k = n - 1; k >= 0; k--) {
+    const w = isoWeek(now - k * 7 * 864e5, tz);
+    if (out.at(-1) !== w) out.push(w);
+  }
+  return out;
+}
+
+/** Count timestamps per ISO week over the last `n` weeks, oldest first (weeks with none read 0). */
+export function weeklyCounts(times: (string | number)[], n: number, now: number, tz = "UTC"): APoint[] {
+  const weeks = lastWeeks(n, now, tz), by = new Map(weeks.map((w) => [w, 0]));
+  for (const t of times) { const w = isoWeek(typeof t === "number" ? t : Date.parse(t), tz); if (by.has(w)) by.set(w, by.get(w)! + 1); }
+  return weeks.map((week) => ({ week, value: by.get(week)! }));
+}
+
+// ---------------------------------------------------------------- HQ's own records
+
+/** "Comment REVIEW": the keyword itself is in capitals, so "comment below" isn't one (as workflow-evidence). */
+const KEYWORD = /\b[Cc]omment ([A-Z][A-Z0-9]{2,})\b/;
+const DAY = 864e5;
+const tally = (xs: string[]): ARow[] =>
+  [...xs.reduce((m, x) => m.set(x, (m.get(x) ?? 0) + 1), new Map<string, number>())].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, ALIMITS.breakdown);
+const PLATFORM: Record<string, string> = { instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", x: "X", facebook: "Facebook", linkedin: "LinkedIn", pinterest: "Pinterest", threads: "Threads", discord: "Discord", telegram: "Telegram" };
+
+function readPosts(slug: string): PublishedPost[] {
+  try {
+    return fs.readFileSync(path.join(businessDir(slug), "published.jsonl"), "utf8").split("\n").filter(Boolean).flatMap((l) => {
+      try { return [JSON.parse(l) as PublishedPost]; } catch { return []; }
+    });
+  } catch { return []; }
+}
+
+/** Studio jobs with a finished render, dated by their folder name (YYYY-MM-DD-…) or the newest render. */
+function studioJobTimes(slug: string): number[] {
+  const dir = path.join(businessDir(slug), "studio");
+  const out: number[] = [];
+  for (const job of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+    try {
+      const jd = path.join(dir, job);
+      const renders = fs.readdirSync(jd).filter((n) => n.endsWith(".mp4") && n !== "master.mp4");
+      if (!renders.length) continue;
+      const m = /^(\d{4}-\d{2}-\d{2})/.exec(job);
+      out.push(m ? Date.parse(`${m[1]}T12:00:00Z`) : Math.max(...renders.map((n) => fs.statSync(path.join(jd, n)).mtimeMs)));
+    } catch { /* not a job folder */ }
+  }
+  return out;
+}
+
+/** Active notes in the business's own brain, by type (lib/brain-store). */
+function vaultNoteCounts(slug: string): ARow[] {
+  try {
+    const counts = brainStats(slug).counts.business;
+    return Object.entries(counts).map(([t, value]) => ({ label: t[0].toUpperCase() + t.slice(1) + "s", value })).filter((r) => r.value > 0);
+  } catch { return []; }
+}
+
+/** How much of the brand kit is filled in: guide, palette, a mark, social templates, emails, a video style. */
+function brandCoverage(slug: string): { share: number; missing: string[] } | null {
+  const dir = businessDir(slug);
+  if (!fs.existsSync(dir)) return null;
+  let kit: any = null;
+  try { kit = JSON.parse(fs.readFileSync(path.join(dir, "brand", "kit.json"), "utf8")); } catch { /* none */ }
+  const exists = (f: string) => fs.existsSync(path.join(dir, f));
+  const parts: [string, boolean][] = [
+    ["a brand guide", Boolean(kit?.guide) || exists("brand/brand-guide.md")],
+    ["a colour palette", (kit?.colors?.length ?? 0) >= 3 || exists("brand/tokens.json")],
+    ["a logo or mark", (kit?.assets ?? []).some((a: any) => /logo|mark|icon/i.test(`${a.file} ${a.label}`)) || (() => { try { return fs.readdirSync(path.join(dir, "brand")).some((n) => /logo|mark|icon/i.test(n)); } catch { return false; } })()],
+    ["social templates", (kit?.assets ?? []).some((a: any) => /social|post|story|cover/i.test(`${a.file} ${a.label}`)) || exists("brand/social-square.svg")],
+    ["branded emails", (kit?.emails?.length ?? 0) > 0],
+    ["a video style", exists("brand.json") || exists("style.json")],
+  ];
+  return { share: parts.filter(([, ok]) => ok).length / parts.length, missing: parts.filter(([, ok]) => !ok).map(([what]) => what) };
+}
+
+/** How many of the timestamps fall in the 7 days up to `now`: the headline for weekly counts, so a Monday doesn't read 0. */
+const last7 = (times: (string | number)[], now: number) => times.filter((t) => { const x = typeof t === "number" ? t : Date.parse(t); return x <= now && now - x < 7 * DAY; }).length;
+
+const m = (id: AnalyticsId, value: number | null, note: string, extra: Partial<AnalyticsMetric> = {}): AnalyticsMetric =>
+  ({ id, value, quality: value === null ? "missing" : "exact", note, ...extra });
+
+/** What HQ measures from its own records for one business. `openFindings` comes from the CEO's live findings when known. */
+/** Numbers HQ can only measure at refresh time (they need the live site or a local service). */
+export type Extras = {
+  openFindings?: { total: number; bySeverity: ARow[] } | null;
+  competitors?: { weeks: { week: string; value: number }[]; byCompetitor: ARow[]; watches: number } | null;
+};
+
+export function hqMetrics(slug: string, now = Date.now(), extras: Extras = {}): AnalyticsMetric[] {
+  const { openFindings, competitors } = extras;
+  const profile = getProfile(slug);
+  if (!profile) throw Error("Unknown business");
+  const tz = profile.timezone || "UTC";
+  const out: AnalyticsMetric[] = [];
+  const recent = (t: string | number) => now - (typeof t === "number" ? t : Date.parse(t)) < 28 * DAY;
+
+  const posts = readPosts(slug).filter((p) => p.status === "published" && (p.url || p.postId));
+  const pw = weeklyCounts(posts.map((p) => p.at), 12, now, tz);
+  out.push(posts.length
+    ? m("posts_published", last7(posts.map((p) => p.at), now), `Last 7 days; ${posts.length} posts read back from the platform in all`, { weeks: pw, breakdown: tally(posts.filter((p) => recent(p.at)).map((p) => PLATFORM[p.platform] ?? p.platform)), period: "last 4 weeks" })
+    : m("posts_published", null, "No published posts logged yet (/hq:publish logs them)"));
+  const kw = posts.filter((p) => KEYWORD.test(p.caption ?? ""));
+  out.push(kw.length
+    ? m("keyword_posts", last7(kw.map((p) => p.at), now), `Keywords: ${[...new Set(kw.map((p) => (p.caption ?? "").match(KEYWORD)![1]))].slice(0, 6).join(", ")}`,
+      { weeks: weeklyCounts(kw.map((p) => p.at), 12, now, tz), breakdown: tally(kw.filter((p) => recent(p.at)).map((p) => (p.caption ?? "").match(KEYWORD)![1])), period: "last 4 weeks" })
+    : m("keyword_posts", null, "No published post asks for a comment keyword yet"));
+
+  const jobs = studioJobTimes(slug);
+  out.push(jobs.length
+    ? m("videos_edited", last7(jobs, now), `Last 7 days; ${jobs.length} Studio jobs with a finished render in all`, { weeks: weeklyCounts(jobs, 12, now, tz) })
+    : m("videos_edited", null, "No Studio job has a finished render yet"));
+
+  try {
+    const flows = lifecycleState(slug).snapshot?.flows ?? [];
+    const days = flows.flatMap((f) => f.daily.map((d) => ({ ...d, flow: f.label })));
+    if (days.length) {
+      const weeks = lastWeeks(12, now, tz), by = new Map(weeks.map((w) => [w, 0]));
+      for (const d of days) { const w = isoWeek(Date.parse(`${d.day}T12:00:00Z`), "UTC"); if (by.has(w)) by.set(w, by.get(w)! + d.sent); }
+      const split = new Map<string, number>();
+      for (const d of days) if (recent(`${d.day}T12:00:00Z`) && d.sent) split.set(d.flow, (split.get(d.flow) ?? 0) + d.sent);
+      const sent7 = days.filter((d) => { const t = Date.parse(`${d.day}T12:00:00Z`); return now - t < 7 * DAY && t <= now; }).reduce((n, d) => n + d.sent, 0);
+      out.push(m("lifecycle_sent", sent7, `Last 7 days, ${flows.length} automated flows; owner tests excluded`, {
+        weeks: weeks.map((week) => ({ week, value: by.get(week)! })), period: "last 4 weeks",
+        breakdown: [...split].map(([label, value]) => ({ label: label.slice(0, 80), value })).sort((a, b) => b.value - a.value).slice(0, ALIMITS.breakdown),
+      }));
+    } else out.push(m("lifecycle_sent", null, "No lifecycle connection with per-flow numbers yet"));
+  } catch { out.push(m("lifecycle_sent", null, "The lifecycle snapshot could not be read")); }
+
+  const reviews = listReviews(slug);
+  out.push(reviews.length
+    ? m("ceo_reviews", last7(reviews.map((r) => r.at), now), `${reviews.length} reviews saved; the latest ${reviews[0].at.slice(0, 10)}`, { weeks: weeklyCounts(reviews.map((r) => r.at), 12, now, tz) })
+    : m("ceo_reviews", null, "No CEO review saved yet (/hq:ceo)"));
+
+  const xs = listExperiments(slug);
+  out.push(xs.length
+    ? m("experiments_run", xs.filter((x) => x.status === "running").length, `${xs.length} logged; the value is how many are running`, { weeks: weeklyCounts(xs.map((x) => x.startedAt), 12, now, tz), breakdown: tally(xs.map((x) => x.status)), period: "all time" })
+    : m("experiments_run", null, "No experiment logged yet (hq experiment add)"));
+
+  const notes = vaultNoteCounts(slug);
+  out.push(notes.length
+    ? m("vault_notes", notes.reduce((n, r) => n + r.value, 0), "Facts, decisions, lessons, playbooks and signals in the business's vault", { breakdown: notes, period: "now" })
+    : m("vault_notes", null, "The business's vault has no brain notes yet"));
+
+  if (openFindings) out.push(m("open_findings", openFindings.total, "The CEO's open findings for this business and this Mac", { breakdown: openFindings.bySeverity, period: "now" }));
+  else out.push(m("open_findings", null, "Counted at each refresh (npm run hq -- analytics refresh)"));
+
+  const brand = brandCoverage(slug);
+  out.push(brand ? m("brand_kit_coverage", Math.round(brand.share * 1000) / 1000, brand.missing.length ? `Missing ${brand.missing.join(", ")}` : "Guide, palette, mark, social templates, emails and a video style")
+    : m("brand_kit_coverage", null, "No brand kit yet"));
+
+  if (competitors) out.push(m("competitor_changes", competitors.weeks.slice(-4).reduce((n, w) => n + w.value, 0), `Changes the watcher saw on ${competitors.watches} rival pages, last 4 weeks`,
+    { weeks: competitors.weeks, breakdown: competitors.byCompetitor, period: "last 4 weeks, by rival" }));
+
+  // Acquisition spend from the business's ledger (Expenses:Advertising / Expenses:Commissions), per week.
+  try {
+    const ledger = loadLedger(ledgerPath(slug));
+    if (ledger.trim()) {
+      const weeks = lastWeeks(12, now, tz), by = new Map(weeks.map((w) => [w, 0]));
+      let postings = 0;
+      for (let d = 0; d < 7 * 13; d++) {
+        const day = new Date(now - d * DAY); const from = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
+        const r = acquisitionSpend(ledger, profile.currency, from, new Date(from.getTime() + DAY));
+        const w = isoWeek(from.getTime() + 12 * 3600e3, tz);
+        if (r.postings && by.has(w)) { by.set(w, Math.round((by.get(w)! + r.total) * 100) / 100); postings += r.postings; }
+      }
+      if (postings) {
+        const r28 = acquisitionSpend(ledger, profile.currency, new Date(now - 28 * DAY), new Date(now + DAY));
+        out.push(m("ad_spend", r28.total, "Advertising and commissions in the ledger, last 4 weeks", { weeks: weeks.map((week) => ({ week, value: by.get(week)! })) }));
+      }
+    }
+  } catch { /* no ledger */ }
+
+  try {
+    const c = workflowChecksState(slug).snapshot;
+    const all = c?.workflows.flatMap((w) => w.checks) ?? [];
+    out.push(all.length
+      ? m("workflow_checks_passing", Math.round((all.filter((k) => k.ok).length / all.length) * 1000) / 1000, `${all.filter((k) => k.ok).length} of ${all.length} checks passed, ${c!.observedAt.slice(0, 10)}`)
+      : m("workflow_checks_passing", null, "No workflow-checks connection yet"));
+  } catch { out.push(m("workflow_checks_passing", null, "The workflow checks could not be read")); }
+  return out;
+}
+
+// ---------------------------------------------------------------- storage
+
+const CONNECTION = "analytics-connection.json";
+const files = (slug: string) => {
+  const dir = businessDir(slug);
+  return { dir, connection: path.join(dir, CONNECTION), snapshot: path.join(dir, "analytics-snapshot.json"), hq: path.join(dir, "analytics-hq.json"), state: path.join(dir, "analytics-state.json"), history: path.join(dir, "analytics") };
+};
+const readJson = (file: string): unknown => { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; } };
+export const demoAnalyticsAdapter = () => path.join(hqRoot(), "templates", "analytics", "demo-adapter.mjs");
+
+/** One kept week: each metric's reading when the week's last refresh ran. */
+export type KeptWeek = { week: string; values: Partial<Record<AnalyticsId, number | null>> };
+
+export type AnalyticsState = {
+  connected: boolean; demo: boolean; snapshot: AnalyticsSnapshot | null; hq: AnalyticsSnapshot | null;
+  stale: boolean; failed: boolean; failedAt: string | null; history: KeptWeek[];
+};
+
+export function analyticsState(slug: string, now: Date = new Date()): AnalyticsState {
+  const profile = getProfile(slug);
+  if (!profile) throw Error("Unknown business");
+  const f = files(slug);
+  const connected = fs.existsSync(f.connection);
+  const demo = !connected && Boolean(profile.demo);
+  const raw = readJson(f.snapshot), hqRaw = readJson(f.hq);
+  const snapshot = analyticsProblem(raw, profile.currency) === null ? (raw as AnalyticsSnapshot) : null;
+  const hq = analyticsProblem(hqRaw, profile.currency) === null ? (hqRaw as AnalyticsSnapshot) : null;
+  const failedAt = (readJson(f.state) as { failedAt?: string } | null)?.failedAt ?? null;
+  const age = snapshot ? now.getTime() - Date.parse(snapshot.observedAt) : Infinity;
+  const history = (fs.existsSync(f.history) ? fs.readdirSync(f.history) : [])
+    .filter((n) => /^\d{4}-W\d{2}\.json$/.test(n)).sort()
+    .map((n) => readJson(path.join(f.history, n)) as KeptWeek | null)
+    .filter((k): k is KeptWeek => Boolean(k && WEEK.test(k.week) && k.values && typeof k.values === "object"));
+  return { connected, demo, snapshot, hq, stale: age < 0 || age > ALIMITS.staleHours * 3600e3, failed: Boolean(failedAt), failedAt, history };
+}
+
+function takeLock(file: string): boolean {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try { fs.closeSync(fs.openSync(file, "wx", 0o600)); return true; } catch {
+      try { if (Date.now() - fs.statSync(file).mtimeMs > 120e3) { fs.rmSync(file, { force: true }); continue; } } catch { continue; }
+      return false;
+    }
+  }
+  return false;
+}
+
+/** Re-measure HQ's own numbers, run the business's adapter (or the demo one), and keep this week's readings.
+ *  An adapter failure keeps the previous snapshot and is recorded; HQ's own numbers are saved either way. */
+export async function runAnalytics(slug: string, now: Date = new Date(), extras: Extras = {}): Promise<AnalyticsState & { adapterError: string | null }> {
+  const profile = getProfile(slug);
+  if (!profile) throw Error("Unknown business");
+  const f = files(slug);
+  const lock = path.join(f.dir, "analytics.lock");
+  if (!takeLock(lock)) throw Error("An analytics refresh is already running for this business");
+  let adapterError: string | null = null;
+  try {
+    const hq: AnalyticsSnapshot = { version: 1, observedAt: now.toISOString(), currency: profile.currency, metrics: hqMetrics(slug, now.getTime(), extras) };
+    const hqProblem = analyticsProblem(hq, profile.currency);
+    if (hqProblem) throw Error(`HQ's own analytics failed validation at ${hqProblem}`);
+    writePrivateJson(f.hq, rebuildAnalytics(hq));
+
+    const command = fs.existsSync(f.connection) ? readConnection(slug, CONNECTION).command
+      : profile.demo ? [process.execPath, demoAnalyticsAdapter()] : null;
+    let adapter: AnalyticsSnapshot | null = null;
+    if (command) {
+      try {
+        const value = await execAdapter(command, { action: "report", weeks: 12, currency: profile.currency, timezone: profile.timezone, now: now.toISOString() }, 240000);
+        const problem = analyticsProblem(value, profile.currency);
+        if (problem) throw Error(`Invalid analytics snapshot at ${problem}`);
+        adapter = rebuildAnalytics(value as AnalyticsSnapshot);
+        writePrivateJson(f.snapshot, adapter);
+        fs.rmSync(f.state, { force: true });
+      } catch (e) {
+        adapterError = e instanceof Error ? e.message : String(e);
+        writePrivateJson(f.state, { failedAt: now.toISOString() });
+      }
+    }
+
+    // Keep this week's reading of every number, so "now only" sources still build a trend.
+    const week = isoWeek(now, profile.timezone || "UTC");
+    const values: KeptWeek["values"] = {};
+    for (const x of [...hq.metrics, ...(adapter ?? analyticsState(slug, now).snapshot ?? { metrics: [] }).metrics]) values[x.id] = x.value;
+    try {
+      const sc = scorecardState(slug, now).snapshot;
+      for (const x of sc?.weeks[0]?.metrics ?? []) if (!(x.id in values)) values[x.id as AnalyticsId] = x.value;
+    } catch { /* no scorecard */ }
+    fs.mkdirSync(f.history, { recursive: true, mode: 0o700 });
+    writePrivateJson(path.join(f.history, `${week}.json`), { week, values });
+    const kept = fs.readdirSync(f.history).filter((n) => /^\d{4}-W\d{2}\.json$/.test(n)).sort();
+    for (const old of kept.slice(0, Math.max(0, kept.length - 52))) fs.rmSync(path.join(f.history, old));
+  } finally {
+    fs.rmSync(lock, { force: true });
+  }
+  return { ...analyticsState(slug, now), adapterError };
+}
+
+// ---------------------------------------------------------------- the board
+
+export type BoardMetric = {
+  id: AnalyticsId; def: AnalyticsDef;
+  status: "measured" | "missing" | "na";
+  value: number | null; quality: AQuality; note: string;
+  /** Oldest first, at most 26 weeks. */
+  points: APoint[];
+  breakdown: ARow[]; period: string | null;
+  /** Change from the week before, when both are known. */
+  change: number | null;
+  from: "scorecard" | "hq" | "adapter" | null;
+  workflows: string[];
+};
+export type Board = {
+  business: { slug: string; name: string; currency: string; demo: boolean; model: string };
+  observedAt: string | null; stale: boolean; failed: boolean; connected: boolean;
+  metrics: BoardMetric[];
+  coverage: { measured: number; applicable: number; workflowsMeasured: number; workflows: number };
+};
+
+/** Merge weekly points: earlier sources first, later ones win on the same week; oldest first, the newest `last`. */
+function mergePoints(last: number, ...sources: APoint[][]): APoint[] {
+  const by = new Map<string, number | null>();
+  for (const s of sources) for (const p of s) if (p.value !== null || !by.has(p.week)) by.set(p.week, p.value);
+  return [...by.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-last).map(([week, value]) => ({ week, value }));
+}
+
+/** Everything the dashboard draws for one business, one entry per catalogue metric. */
+export function analyticsBoard(slug: string, now: Date = new Date()): Board {
+  const profile = getProfile(slug);
+  if (!profile) throw Error("Unknown business");
+  const s = analyticsState(slug, now);
+  let sc: ReturnType<typeof scorecardState> | null = null;
+  try { sc = scorecardState(slug, now); } catch { sc = null; }
+  // HQ's own numbers are cheap, so the page measures them live; the saved copy is the fallback.
+  let hqLive: AnalyticsMetric[] | null = null;
+  try { hqLive = hqMetrics(slug, now.getTime()); } catch { hqLive = null; }
+  // Live readings win; what only a refresh can measure (findings, competitor changes) comes from the saved copy.
+  const hq = new Map((hqLive ?? []).map((x) => [x.id, x]));
+  for (const x of s.hq?.metrics ?? []) if (x.value !== null && (hq.get(x.id)?.value ?? null) === null) hq.set(x.id, x);
+  const adapter = new Map((s.snapshot?.metrics ?? []).map((x) => [x.id, x]));
+  const kept = (id: AnalyticsId): APoint[] => s.history.filter((k) => id in k.values).map((k) => ({ week: k.week, value: k.values[id] ?? null }));
+  const titles = WORKFLOWS.map((w) => w.title);
+  const recurring = isRecurring(profile.model);
+
+  const metrics: BoardMetric[] = ANALYTICS_IDS.map((id) => {
+    const def: AnalyticsDef = ANALYTICS[id];
+    const workflows = titles.filter((t) => WORKFLOW_ANALYTICS[t]?.includes(id));
+    const base = { id, def, workflows };
+    const a = adapter.get(id);
+    const fromAdapter = (x: AnalyticsMetric): BoardMetric => {
+      const points = mergePoints(26, kept(id), x.weeks ?? []);
+      return finish({ ...base, status: x.quality === "na" ? "na" : x.quality === "missing" ? "missing" : "measured", value: x.value, quality: x.quality, note: x.note, points, breakdown: x.breakdown ?? [], period: x.period ?? null, from: "adapter" });
+    };
+    // An adapter's reading wins for any id it actually measures.
+    if (a && (a.quality === "exact" || a.quality === "approx")) return fromAdapter(a);
+    if (def.source === "scorecard" && sc?.snapshot) {
+      const cur = sc.snapshot.weeks[0].metrics.find((x) => x.id === id);
+      if (cur && cur.value !== null) {
+        const weeks = [...sc.history, ...sc.snapshot.weeks].map((w) => ({ week: w.week, value: w.metrics.find((x) => x.id === id)?.value ?? null }));
+        return finish({ ...base, status: "measured", value: cur.value, quality: cur.quality, note: cur.note, points: mergePoints(26, weeks), breakdown: cur.breakdown ?? [], period: cur.breakdown ? "this week" : null, from: "scorecard" });
+      }
+      if (cur) return finish({ ...base, status: recurring || !RECURRING_ONLY.includes(id) ? "missing" : "na", value: null, quality: "missing", note: cur.note, points: [], breakdown: [], period: null, from: "scorecard" });
+    }
+    if (hq.get(id)?.value != null) {
+      const x = hq.get(id)!;
+      return finish({ ...base, status: "measured", value: x.value, quality: x.quality, note: x.note, points: mergePoints(26, kept(id), x.weeks ?? []), breakdown: x.breakdown ?? [], period: x.period ?? null, from: "hq" });
+    }
+    if (a) return fromAdapter(a);
+    const na = !recurring && RECURRING_ONLY.includes(id);
+    const hx = hq.get(id);
+    return finish({ ...base, status: na ? "na" : "missing", value: null, quality: na ? "na" : "missing",
+      note: na ? `Needs recurring billing; this business is ${profile.model}` : hx?.note ?? (def.source === "adapter" ? (s.connected || s.demo ? "Not reported by the analytics adapter" : "No analytics adapter connected") : "Not reported by the scorecard adapter"),
+      points: [], breakdown: [], period: null, from: null });
+  });
+
+  const applicable = metrics.filter((x) => x.status !== "na");
+  const measuredIds = new Set(metrics.filter((x) => x.status === "measured").map((x) => x.id));
+  const naIds = new Set(metrics.filter((x) => x.status === "na").map((x) => x.id));
+  const relevant = titles.filter((t) => !(WORKFLOW_ANALYTICS[t] ?? []).every((id) => naIds.has(id)));
+  return {
+    business: { slug, name: profile.name, currency: profile.currency, demo: Boolean(profile.demo), model: profile.model },
+    observedAt: [s.snapshot?.observedAt, s.hq?.observedAt, sc?.snapshot?.observedAt].filter((x): x is string => Boolean(x)).sort().at(-1) ?? null,
+    stale: s.stale && (s.connected || s.demo), failed: s.failed, connected: s.connected || s.demo,
+    metrics,
+    coverage: {
+      measured: measuredIds.size, applicable: applicable.length,
+      workflowsMeasured: relevant.filter((t) => (WORKFLOW_ANALYTICS[t] ?? []).some((id) => measuredIds.has(id))).length, workflows: relevant.length,
+    },
+  };
+}
+
+function finish(x: Omit<BoardMetric, "change">): BoardMetric {
+  const known = x.points.filter((p) => p.value !== null);
+  const [prev, last] = known.slice(-2);
+  const change = prev && last && x.value !== null && last.value === x.value ? Math.round(((last.value as number) - (prev.value as number)) * 1000) / 1000 : null;
+  return { ...x, change };
+}

@@ -62,6 +62,10 @@ Then read the business's history, so the review builds on what came before:
 - **the brain:** `npm run hq -- brain read <slug> ceo` (every decision, fact, lesson, playbook and
   recent signal in the business vault and the HQ brain) and `npm run hq -- brain show <slug>` for the
   counts and the **promotion candidates** (lessons with evidence not yet in the HQ brain)
+- **the numbers:** `npm run hq -- analytics show <slug>` prints every number the workflows are judged by
+  that is measured, with what it counts; `--missing` lists the rest and what each needs. The scorecard picks the
+  weakest lever; these numbers say which workflow inside it is failing. A live workflow with no measured number is
+  a delegation to `/hq:dept data`. The same charts are on the Data & Analytics tab (`/data`).
 
 ## 3. Decide
 

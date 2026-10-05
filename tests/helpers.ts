@@ -105,10 +105,10 @@ export function nameRegex(names: string[]): RegExp | null {
 /** Tracked files that look like a business's private scorecard plumbing: its connection, snapshots or
  *  adapter (by name), or a live endpoint or key an adapter would hold (by content). The demo adapter and the framework's own runner are exempt, and test files may be named after what they test. */
 export function privateScorecardLeaks(entries: { file: string; text: string }[]): string[] {
-  const NAME = [/(^|\/)scorecard-(connection|snapshot|state)\.json$/, /(^|\/)scorecard\/\d{4}-W\d{2}\.json$/, /adapter[^/]*\.(m?[jt]s|cjs|sh|py)$/];
+  const NAME = [/(^|\/)(scorecard|analytics)-(connection|snapshot|state|hq)\.json$/, /(^|\/)(scorecard|analytics)\/\d{4}-W\d{2}\.json$/, /adapter[^/]*\.(m?[jt]s|cjs|sh|py)$/];
   const CONTENT = [/\/rest\/v1\/rpc\//, /[a-z0-9]{20}\.supabase\.co/, /\b(sk|rk)_(live|test)_[A-Za-z0-9]{8,}/, /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}/];
   return entries
-    .filter(({ file }) => !file.startsWith("templates/scorecard/") && file !== "lib/private-adapter.ts")
+    .filter(({ file }) => !file.startsWith("templates/scorecard/") && !file.startsWith("templates/analytics/") && file !== "lib/private-adapter.ts")
     .filter(({ file, text }) => (!file.startsWith("tests/") && NAME.some((r) => r.test(file))) || CONTENT.some((r) => r.test(text)))
     .map(({ file }) => file);
 }

@@ -164,3 +164,68 @@ export function Funnel({ rows, title, color }: { rows: { label: string; count: n
     </ul>
   );
 }
+
+/** Weekly bars, oldest to newest, one series. Missing weeks leave an empty slot; every bar carries a hover title. */
+export function WeekBars({ points, title, format, color = "#2DD4BF", height = 112 }: {
+  points: { label: string; value: number | null }[]; title: string; format: (v: number) => string; color?: string; height?: number;
+}) {
+  const known = points.filter((p) => p.value !== null);
+  if (!known.length) return <p className="text-[12px] text-bb-muted">No weeks reported yet.</p>;
+  const n = points.length, max = Math.max(...known.map((p) => Math.abs(p.value as number)), 0) || 1;
+  const y = (v: number) => 100 - (Math.max(0, v) / max) * 96;
+  return (
+    <figure className="space-y-1">
+      <div className="flex gap-2">
+        <div className="flex w-14 shrink-0 flex-col justify-between text-right font-mono text-[10px] text-bb-dim tabular-nums" style={{ height }}>
+          <span>{format(max)}</span><span>0</span>
+        </div>
+        <div className="relative min-w-0 flex-1" style={{ height }}>
+          <svg role="img" aria-label={title} viewBox={`0 0 ${n} 100`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
+            <title>{title}</title>
+            <line x1="0" x2={n} y1="100" y2="100" stroke="#1f2940" strokeWidth="1" style={STROKE} />
+            {points.map((p, i) => (
+              <g key={p.label}>
+                <rect x={i} width="1" y="0" height="100" fill="transparent"><title>{`${p.label}: ${p.value === null ? "not reported" : format(p.value)}`}</title></rect>
+                {p.value !== null && p.value > 0 && (
+                  <rect x={i + 0.16} width="0.68" y={y(p.value)} height={100 - y(p.value)} fill={color} opacity={i === n - 1 ? 1 : 0.7} pointerEvents="none" />
+                )}
+              </g>
+            ))}
+          </svg>
+        </div>
+      </div>
+      <figcaption className="flex justify-between pl-16 font-mono text-[10px] text-bb-dim">
+        <span>{points[0].label}</span><span>{points.at(-1)!.label}</span>
+      </figcaption>
+    </figure>
+  );
+}
+
+/** A split of one period by category: labelled horizontal bars with each row's value. `parts` (counts, money) are
+ *  pieces of one total: largest first, each with its share, the tail folded into "N more". Otherwise (rates, by-month
+ *  series) the rows keep their order, show no share, and the tail is listed, never summed. */
+export function SplitBars({ rows, title, format, color = "#5AB0F0", limit = 8, parts = true }: {
+  rows: { label: string; value: number }[]; title: string; format: (v: number) => string; color?: string; limit?: number; parts?: boolean;
+}) {
+  if (!rows.length) return <p className="text-[12px] text-bb-muted">Nothing to split yet.</p>;
+  const ordered = parts ? [...rows].sort((a, b) => b.value - a.value) : rows;
+  const shown = ordered.slice(0, limit), rest = ordered.slice(limit);
+  const all = parts && rest.length ? [...shown, { label: `${rest.length} more`, value: rest.reduce((n, r) => n + r.value, 0) }] : shown;
+  const top = Math.max(...ordered.map((r) => r.value)) || 1, total = parts ? ordered.reduce((n, r) => n + r.value, 0) : 0;
+  return (
+    <div className="space-y-1.5">
+      <ul aria-label={title} className="space-y-1.5">
+        {all.map((r) => (
+          <li key={r.label} className="space-y-0.5" title={`${r.label}: ${format(r.value)}${total > 0 ? ` (${((r.value / total) * 100).toFixed(0)}% of the total)` : ""}`}>
+            <div className="flex items-baseline justify-between gap-3 text-[11.5px]">
+              <span className="min-w-0 truncate text-bb-muted">{r.label}</span>
+              <span className="whitespace-nowrap font-mono tabular-nums">{format(r.value)}{total > 0 && <span className="text-bb-dim"> · {((r.value / total) * 100).toFixed(0)}%</span>}</span>
+            </div>
+            <Bar share={r.value / top} color={color} title={`${title}: ${r.label} ${format(r.value)}`} thick={6} />
+          </li>
+        ))}
+      </ul>
+      {!parts && rest.length > 0 && <p className="text-[11px] text-bb-dim">Also: {rest.map((r) => `${r.label} ${format(r.value)}`).join(", ")}</p>}
+    </div>
+  );
+}

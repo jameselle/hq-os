@@ -50,6 +50,9 @@ curl -s "http://127.0.0.1:3150/api/status?business=<slug>"
   business and the HQ brain, this department's lessons and those of the departments that feed it,
   its playbooks (the vault's `SOPs/` count) and the signals sent to it in the last 30 days. Obey the
   decisions, use the facts, follow the playbooks, and act on the signals.
+- **The numbers:** `npm run hq -- analytics show <slug> --dept <dept>` prints every measured number of the
+  workflows this department owns or works on, with its note; add `--missing` for the ones not measured yet and
+  what each needs. Aim the week at the numbers that are weak or moving the wrong way.
 
 ## 3. Plan
 
@@ -84,7 +87,7 @@ department's tab in HQ and in the vault under `Departments/<Label>/Plans/`.
 - …
 
 ## Measure
-- …
+- … (name each number as `analytics show` labels it, with this week's value, so next week's plan can compare)
 ```
 
 ```bash

@@ -101,6 +101,14 @@ The department needs one **web-analytics** tool (Umami, Plausible CE or PostHog)
 
 ## 2. Accounts and connections
 
+### The analytics board
+
+Under the scorecard, the Data tab draws every number the workflows are judged by: a headline row, then each lever's
+charts (weekly trends, weekly counts and splits), what each unmeasured number needs, and every workflow with its
+numbers. It reads the scorecard's history, HQ's own records and a private read-only analytics adapter per business;
+`npm run hq -- analytics show <slug> [--missing] [--dept <dept>]` prints the same. Setting it up: [Analytics: every
+number, every workflow](/guides/analytics).
+
 ### The growth scorecard
 
 The scorecard is a card on the CEO and Data tabs, one per business: this week's numbers for the three growth levers

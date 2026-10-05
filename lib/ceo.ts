@@ -305,6 +305,31 @@ export function buildFindings(
     });
   }
 
+  // ---- Analytics: the numbers each workflow is judged by (lib/analytics.ts) ----
+  const an = f.analytics;
+  if (profile && an) {
+    const share = `${an.measured} of ${an.applicable} numbers and ${an.workflowsMeasured} of ${an.workflows} workflows are measured`;
+    if (an.connected && (an.failed || an.stale)) {
+      out.push({
+        id: "analytics-stale",
+        severity: "attention",
+        dept: "data",
+        title: an.failed ? "The last analytics refresh failed" : "The analytics are out of date",
+        detail: `${an.failed ? "The analytics adapter errored or reported something HQ rejected, so the Data & Analytics tab shows its previous readings." : "No fresh adapter readings for more than 36 hours."} ${share}.`,
+        action: `Run \`npm run hq -- analytics refresh ${profile.slug}\` and read its error; the daily \`com.hq.scorecard\` job runs it after the scorecard.`,
+      });
+    } else if (!an.connected && !an.demo) {
+      out.push({
+        id: "analytics-none",
+        severity: "info",
+        dept: "data",
+        title: "Most workflow numbers are invisible",
+        detail: `There is no analytics adapter, so only the scorecard and HQ's own records are measured: ${share}.`,
+        action: `Write a private read-only adapter and point analytics-connection.json at it (docs/guides/analytics.md), then \`npm run hq -- analytics refresh ${profile.slug}\`. \`npm run hq -- analytics show ${profile.slug} --missing\` lists what each number needs.`,
+      });
+    }
+  }
+
   // ---- Growth scorecard: the CEO routes by lever, so it needs the lever numbers ----
   const card = f.scorecard;
   if (profile && card) {

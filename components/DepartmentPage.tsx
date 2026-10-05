@@ -1,6 +1,7 @@
 // One department. Same bones as every HQ page: title + blurb with actions on
 // the right, a row of stat tiles, a check strip, then the sections.
 
+import { AnalyticsBoard } from "@/components/AnalyticsBoard";
 import { ScorecardCard } from "@/components/ScorecardCard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -155,8 +156,10 @@ export default async function DepartmentPage({ params, embedded=false }: { param
 
       {d.slug === "data" && business && <ScorecardCard business={business} />}
 
+      {d.slug === "data" && business && !embedded && <AnalyticsBoard business={business} />}
+
       {showPublishing && (
-        <section className="card p-4">
+        <section className="card p-4 min-w-0">
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
             <h2 className="text-[15px] font-semibold">
               Publishing <span className="text-bb-muted font-normal">({report.publishing.length} channels)</span>
@@ -173,7 +176,7 @@ export default async function DepartmentPage({ params, embedded=false }: { param
           {report.publishing.length === 0 ? (
             <p className="text-[12px] text-bb-muted mt-3">This business&apos;s profile lists no channels.</p>
           ) : (
-            <table className="w-full border-collapse mt-3">
+            <div className="mt-3 overflow-x-auto"><table className="w-full border-collapse">
               <thead>
                 <tr>
                   <th className={th}>Channel</th>
@@ -198,7 +201,7 @@ export default async function DepartmentPage({ params, embedded=false }: { param
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
           {posts.length > 0 && (
             <div className="mt-4 border-t border-bb-border/60 pt-3">
@@ -223,7 +226,7 @@ export default async function DepartmentPage({ params, embedded=false }: { param
       )}
 
       {showIntel && (
-        <section className="card p-4">
+        <section className="card p-4 min-w-0">
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
             <h2 className="text-[15px] font-semibold">
               Competitors <span className="text-bb-muted font-normal">({business.competitors?.length ?? 0})</span>
@@ -242,7 +245,7 @@ export default async function DepartmentPage({ params, embedded=false }: { param
               No competitors in the profile yet. Run <code className="font-mono text-bb-fg/80">/hq:competitors setup</code>.
             </p>
           ) : (
-            <table className="w-full border-collapse mt-3">
+            <div className="mt-3 overflow-x-auto"><table className="w-full border-collapse">
               <thead>
                 <tr>
                   <th className={th}>Competitor</th>
@@ -291,20 +294,20 @@ export default async function DepartmentPage({ params, embedded=false }: { param
                   );
                 })}
               </tbody>
-            </table>
+            </table></div>
           )}
         </section>
       )}
 
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
-        <section className="card p-4">
+        <section className="card p-4 min-w-0">
           <div className="flex items-baseline justify-between gap-3">
             <h2 className="text-[15px] font-semibold">
               Tools <span className="text-bb-muted font-normal">({d.tools.length})</span>
             </h2>
             <span className="text-[10.5px] text-bb-dim font-mono">teal open source · indigo open core · pink free proprietary · green built in HQ</span>
           </div>
-          <table className="w-full border-collapse mt-3">
+          <div className="mt-3 overflow-x-auto"><table className="w-full border-collapse">
             <thead>
               <tr>
                 <th className={th}>Tool</th>
@@ -360,11 +363,11 @@ export default async function DepartmentPage({ params, embedded=false }: { param
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </section>
 
         <div className="space-y-4">
-          <section className="card p-4">
+          <section className="card p-4 min-w-0">
             <div className="flex items-baseline justify-between gap-3">
               <h2 className="text-[15px] font-semibold">This week&apos;s plan</h2>
               {plan && <span className="text-[10.5px] text-bb-dim font-mono">{plan.at.slice(0, 10)}</span>}
@@ -387,7 +390,7 @@ export default async function DepartmentPage({ params, embedded=false }: { param
             )}
           </section>
 
-          <section className="card p-4">
+          <section className="card p-4 min-w-0">
             <h2 className="text-[15px] font-semibold">The job</h2>
             <ul className="mt-2 space-y-1.5">
               {d.covers.map((c) => (
@@ -408,7 +411,7 @@ export default async function DepartmentPage({ params, embedded=false }: { param
             )}
           </section>
 
-          <section className="card p-4">
+          <section className="card p-4 min-w-0">
             <h2 className="text-[15px] font-semibold">
               Claude skills <span className="text-bb-muted font-normal">({d.skillsReady}/{d.skills.length})</span>
             </h2>

@@ -11,7 +11,8 @@
         "Plan has Goal this week, Do, Needs the owner and Measure sections",
         "Has 3 to 5 actions under Do",
         "Every named skill is ready and every named tool has a state other than missing",
-        "Owner-only steps (sign-ins, publishing, money) are under Needs the owner"
+        "Owner-only steps (sign-ins, publishing, money) are under Needs the owner",
+        "Read the department's numbers with `npm run hq -- analytics show <slug> --dept <dept>`, and the Measure section names numbers with their current values"
       ]
     },
     {

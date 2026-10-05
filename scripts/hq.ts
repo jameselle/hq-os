@@ -9,7 +9,7 @@
 // Publishing   connections save <file.json|-> · connections show · publishing <slug> · log-post <slug> <post.json|->
 // Competitors  competitors sync <slug> · competitors changes <slug> [--days N] [--json] · competitors log <slug> <name> <file|-> · competitors recheck <slug>
 // Brain        brain init · brain read <slug> <dept> [--chars N] · brain write <slug|hq> <note.json|-> · brain promote <slug> <note> [--title T] [--body file] · brain show <slug>
-// Tools        finance init <slug> · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug> · workflows check <slug|--all>
+// Tools        finance init <slug> · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug> · analytics refresh <slug|--all> · analytics show <slug> [--missing] [--dept <dept>] · workflows check <slug|--all>
 // Lifecycle    lifecycle show <slug> [flow] [--cached] · lifecycle explain <slug> <flow> · lifecycle approve <slug> <message> [--yes --before <ISO>]
 //              lifecycle test <slug> <message> · lifecycle mode <slug> <flow> off|draft|auto [--yes]
 // Experiments  experiment add <slug> "<hypothesis>" --metric <id> [--baseline N] · experiment close <slug> <id> won|lost|inconclusive [--result N] [--note "…"] · experiment list <slug>
@@ -31,11 +31,14 @@ import { backupIsExternal } from "../lib/ceo";
 import { brainStats, candidates, hqBrainRoot, initBrain, promote, readBundle, writeNote, type NoteInput } from "../lib/brain-store";
 import { NOTE_TYPES, TYPE_INFO } from "../lib/brain";
 import { runScorecard, scorecardState } from "../lib/scorecard";
+import { analyticsBoard, isoWeek, lastWeeks, runAnalytics } from "../lib/analytics";
+import { fetchCompetitorChanges, fetchOpenFindings } from "../lib/analytics-findings";
+import { WORKFLOW_ANALYTICS, formatAnalytics } from "../lib/analytics-metrics";
 import { runWorkflowChecks, workflowChecksState } from "../lib/workflow-checks";
 import { lifecycleState, runLifecycle, supports, type LifecycleFlow, type LifecycleSnapshot, type WriteAction } from "../lib/lifecycle";
 import { flowOfMessage, flowPage, namingProblems } from "../lib/lifecycle-names";
 import { explainFlow, flowStatus, lifecycleStatus, timeLabel } from "../lib/lifecycle-status";
-import { workflowSlug } from "../lib/workflows";
+import { workflowSlug, workflowsFor } from "../lib/workflows";
 import { addExperiment, closeExperiment, experimentsMarkdown, listExperiments, type Verdict } from "../lib/experiments";
 import { formatValue, scorecardRows } from "../lib/scorecard-metrics";
 import { validateProfile } from "../lib/profile";
@@ -356,8 +359,8 @@ function defaultServices(): Service[] {
     },
     {
       label: "com.hq.scorecard",
-      description: "Daily growth scorecard refresh for every connected business",
-      program: [node, "run", "hq", "--", "scorecard", "refresh", "--all"],
+      description: "Daily growth scorecard and analytics refresh for every business",
+      program: ["/bin/sh", "-c", `${node} run hq -- scorecard refresh --all; ${node} run hq -- analytics refresh --all`],
       cwd: hqRoot(),
       keepAlive: false,
       schedule: { Hour: 6, Minute: 0 },
@@ -1053,6 +1056,39 @@ async function main() {
       }
       if (failed) process.exit(1);
       return;
+    }
+    case "analytics": {
+      if (pos[0] === "refresh") {
+        const slugs = flag("--all") ? listBusinesses().profiles.map((p) => p.slug) : [pos[1] ?? die("analytics refresh <slug> | --all")];
+        let failed = 0;
+        for (const slug of slugs) {
+          try {
+            const r = await runAnalytics(slug, new Date(), {
+              openFindings: await fetchOpenFindings(slug),
+              competitors: await fetchCompetitorChanges(slug, lastWeeks(12, Date.now(), getProfile(slug)?.timezone || "UTC"), getProfile(slug)?.timezone || "UTC", isoWeek),
+            });
+            const b = analyticsBoard(slug);
+            console.log(`ok ${slug} ${b.coverage.measured}/${b.coverage.applicable} numbers, ${b.coverage.workflowsMeasured}/${b.coverage.workflows} workflows${r.demo ? " (demo)" : r.connected ? "" : " (no adapter)"}${r.adapterError ? ` · ADAPTER FAILED: ${r.adapterError}` : ""}`);
+            if (r.adapterError) failed++;
+          } catch (e) { failed++; console.log(`failed ${slug}: ${e instanceof Error ? e.message : e}`); }
+        }
+        if (failed) process.exit(1);
+        return;
+      }
+      if (pos[0] === "show") {
+        const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+        const b = analyticsBoard(p.slug);
+        console.log(`${p.name} · ${b.coverage.measured}/${b.coverage.applicable} numbers measured · ${b.coverage.workflowsMeasured}/${b.coverage.workflows} workflows · read ${b.observedAt ?? "never"}${b.failed ? " · LAST ADAPTER RUN FAILED" : ""}`);
+        const status = flag("--missing") ? "missing" : "measured";
+        // --dept <slug>: only the numbers of workflows that department owns or has a step in.
+        const di = args.indexOf("--dept"), dept = di >= 0 ? args[di + 1] : null;
+        const mine = dept ? new Set(workflowsFor(dept).flatMap((w) => WORKFLOW_ANALYTICS[w.title] ?? [])) : null;
+        if (dept) console.log(`numbers of the ${workflowsFor(dept).length} workflows ${dept} owns or works on`);
+        for (const m of b.metrics.filter((x) => x.status === status && (!mine || mine.has(x.id))))
+          console.log(`${m.def.lever.padEnd(7)} ${m.def.label.padEnd(40)} ${formatAnalytics(m.def.unit, m.value, p.currency).padStart(12)}  ${(m.from ?? "").padEnd(9)} ${m.note.slice(0, 90)}`);
+        return;
+      }
+      return die("analytics: refresh <slug|--all> | show <slug> [--missing] [--dept <dept>]");
     }
     case "scorecard": {
       if (pos[0] === "refresh") {

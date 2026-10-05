@@ -243,3 +243,21 @@ test("the weakest lever becomes one finding for the workflow's owner", () => {
   assert.match(f.title, /30\.6%/);
   assert.match(f.action, /Onboarding to first value/);
 });
+
+const analytics = (over: Record<string, unknown> = {}) => ({ connected: true, demo: false, stale: false, failed: false, measured: 40, applicable: 90, workflowsMeasured: 30, workflows: 49, ...over });
+
+test("analytics: a failed or stale adapter is attention for Data; no adapter is an info note; a demo or a healthy one says nothing", () => {
+  const find = (a: ReturnType<typeof analytics>) => buildFindings(depts(), facts({ analytics: a }), profile()).filter((x) => x.id.startsWith("analytics"));
+  const failed = find(analytics({ failed: true }));
+  assert.equal(failed.length, 1);
+  assert.equal(failed[0].id, "analytics-stale");
+  assert.equal(failed[0].severity, "attention");
+  assert.equal(failed[0].dept, "data");
+  assert.match(failed[0].detail, /40 of 90 numbers/);
+  assert.equal(find(analytics({ stale: true }))[0].title, "The analytics are out of date");
+  const none = find(analytics({ connected: false }));
+  assert.equal(none[0].id, "analytics-none");
+  assert.equal(none[0].severity, "info");
+  assert.deepEqual(find(analytics({ connected: false, demo: true })), []);
+  assert.deepEqual(find(analytics()), []);
+});
