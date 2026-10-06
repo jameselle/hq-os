@@ -80,7 +80,8 @@ accounts, signed into in their own browser. HQ doesn't hold their logins or keys
 ad account for the owner.
 
 What HQ needs instead is the **spend**: post it to `Expenses:Advertising` in the business's ledger
-([Finance](/guides/finance)) so the scorecard can work out cost to win and payback.
+([Finance](/guides/finance)) so the scorecard can work out cost to win and payback. Tag each campaign's spend with
+the metadata `campaign: "<campaign id>"` so the Campaigns page shows its cost per sign-up.
 
 ## 3. Skills to use
 
@@ -91,8 +92,13 @@ What HQ needs instead is the **spend**: post it to `Expenses:Advertising` in the
 - `/small-business:growth-pulse`: a growth check-in.
 - `/small-business:marketing-monday`: the weekly marketing plan.
 
-This department has no `/hq:` skill of its own; `/hq:dept ads` plans its week, and `/hq:competitors` (in
-[Market & Competitors](/guides/competitors)) feeds it rivals' ads every week.
+- `/hq:campaign`: plan a campaign from the business's brain, channel plan and competitors, write it to HQ (goal,
+  audience, offer, channels, dates, budget, the tag on every link, the number to move), link the posts, blog posts
+  and emails that serve it, report it weekly and close it with learnings. Every campaign shows on the
+  **Campaigns** page under Lead in the side nav. See [Campaigns](/guides/campaigns).
+
+`/hq:dept ads` plans the department's week, and `/hq:competitors` (in [Market & Competitors](/guides/competitors))
+feeds it rivals' ads every week.
 
 ## 4. Check it's working
 
@@ -108,7 +114,8 @@ This department has no `/hq:` skill of its own; `/hq:dept ads` plans its week, a
 
 - [ ] The owner knows where the two ad libraries are and has looked up the main competitors in each.
 - [ ] Ad spend has a home in the ledger (`Expenses:Advertising`), or the owner has decided not to run paid ads yet.
-- [ ] A campaign plan from `/marketing:campaign-plan` exists with a budget cap the owner approved.
+- [ ] A campaign plan from `/marketing:campaign-plan` or `/hq:campaign` exists with a budget cap the owner approved,
+      and it's on the Campaigns page.
 - [ ] GrowthBook and claude-ads are either installed with the owner's yes or consciously left for later.
 - [ ] The department tab shows **equipped**.
 

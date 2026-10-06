@@ -6,9 +6,11 @@
 
 import type { Profile } from "./profile";
 import { recentChanges, shortUrl, watchTargets } from "./competitors";
+import { briefRunFinding } from "./competitor-brief";
 import { channelStatuses } from "./publishing";
 import { LEVERS, type Lever } from "./workflows";
 import { formatValue } from "./scorecard-metrics";
+import { addMonths, burnText, jumpText } from "./unit-economics";
 import type { DeptStatus, Finding, HostFacts, Severity } from "./types";
 
 export const SEVERITY_RANK: Record<Severity, number> = { critical: 0, attention: 1, decision: 2, info: 3 };
@@ -106,13 +108,15 @@ export function buildFindings(
   }
 
   // ---- Machine services ----
-  if (f.postizInstalled && !f.postizUp) {
+  // Only a problem when this business posts something through Postiz; HQ's own route is Composio.
+  const usesPostiz = profile ? channelStatuses(profile.channels, f.connections, f.postizUp).some((c) => c.via === "postiz") : false;
+  if (f.postizInstalled && !f.postizUp && usesPostiz) {
     out.push({
       id: "postiz-down",
       severity: "attention",
       dept: "content",
       title: "Postiz isn't running",
-      detail: "Nothing scheduled will post while the scheduler is down.",
+      detail: "A channel of this business posts through Postiz, and nothing scheduled there goes out while it's down.",
       action: "Run `npm run hq -- services start`, or `/hq:services` to see which piece is down.",
     });
   }
@@ -229,6 +233,8 @@ export function buildFindings(
         action: "Run `/hq:competitors`: a sweep of changes, content and ads, saved as the department's weekly brief.",
       });
     }
+    const runFailed = comps.length ? briefRunFinding(f.intel.lastRun, f.intel.lastBriefAt, profile.slug) : null;
+    if (runFailed) out.push(runFailed);
   }
 
   // ---- Owner decisions about the machine ----
@@ -260,7 +266,8 @@ export function buildFindings(
 
   // Dashboards don't count: something has to collect the traffic.
   const collectors = ["Umami", "Plausible CE", "PostHog"];
-  if (!dept("data")?.tools.some((t) => collectors.includes(t.name) && t.state !== "missing")) {
+  // A hosted collector recorded in the profile (Umami Cloud, Plausible's hosted plan …) counts too.
+  if (!profile?.analytics && !dept("data")?.tools.some((t) => collectors.includes(t.name) && t.state !== "missing")) {
     out.push({
       id: "no-analytics",
       severity: "attention",
@@ -268,8 +275,8 @@ export function buildFindings(
       title: "No analytics tool is running",
       detail: "Growth, SEO and ads can't be judged without traffic numbers.",
       action: profile?.sites.length
-        ? `Self-host Umami (MIT, lightest) and add its script to ${profile.sites[0]}.`
-        : "Self-host Umami (MIT, lightest) and add its script to each site.",
+        ? `Self-host Umami (MIT, lightest), or use Umami Cloud's free tier, and add its script to ${profile.sites[0]}; then record it in the profile as "analytics": {"provider": "umami-cloud", "id": "<website id>"}.`
+        : "Self-host Umami (MIT, lightest), or use Umami Cloud's free tier, and add its script to each site; then record it in the profile's \"analytics\".",
     });
   }
 
@@ -314,7 +321,60 @@ export function buildFindings(
       dept: "finance",
       title: "The books have income but no costs",
       detail: `${fin.synced ? "Income syncs from billing every day" : "The ledger has income"}, but no costs are recorded for the last 90 days, so margin, cost to win and payback all read better than they are.`,
-      action: `Add the business's running costs (hosting, software, ads, contractors) to its ledger, or ask \`/hq:dept finance\` to set them up as monthly entries. The Finance tab shows money in and out.`,
+      action: `If the business already keeps its books in Xero, connect it read-only and import the monthly costs (Finance guide, "Connect your accounting system"). Otherwise add the running costs (hosting, software, ads, contractors) to its ledger, or ask \`/hq:dept finance\` to set them up as monthly entries. The Finance tab shows money in and out.`,
+    });
+  }
+  if (profile && fin?.costs?.connected && fin.costs.failed) {
+    out.push({
+      id: "finance-costs-refresh-failed",
+      severity: "attention",
+      dept: "finance",
+      title: "The monthly costs import failed",
+      detail: `HQ couldn't refresh the running costs from the accounting system${fin.costs.why ? `: ${fin.costs.why}` : "."} ${fin.costs.lastOk ? `The costs in the ledger are from ${fin.costs.lastOk.slice(0, 10)}.` : "No costs have been imported yet."}`,
+      action: `Run \`npm run hq -- finance costs refresh ${profile.slug} --force\` and read its error. If the connection lapsed, reconnect it with \`/hq:connections connect xero\`; the daily \`com.hq.finance\` job tries again the next day.`,
+    });
+  }
+
+  // ---- Unit economics: a cost line that jumped, and burn well above revenue (lib/unit-economics.ts) ----
+  // Each reopens when a newer month is worked out: `since` is the start of the month after the one it reads.
+  const unit = profile ? fin?.unit : null;
+  if (profile && unit) {
+    const since = `${addMonths(unit.latest, 1)}-01T00:00:00.000Z`;
+    for (const j of unit.jumps) {
+      const t = jumpText(j, fin!.currency);
+      out.push({
+        id: `cost-jump-${j.account.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`,
+        severity: "attention",
+        dept: "finance",
+        title: t.title,
+        since,
+        detail: t.detail,
+        action: `Check what's behind it in Fava (localhost:5055) or the accounting system: a one-off, a price rise, or a cost that belongs to another business (take that out with finance/costs-adjustments.json). \`npm run hq -- finance unit-economics ${profile.slug}\` shows every line.`,
+      });
+    }
+    if (unit.burn) {
+      const t = burnText(unit.burn, fin!.currency);
+      out.push({
+        id: "unit-economics-burn",
+        severity: "attention",
+        dept: "finance",
+        title: t.title,
+        since,
+        detail: t.detail,
+        action: `Run the Unit economics check workflow: \`npm run hq -- finance unit-economics ${profile.slug} --save\`, then decide which costs to cut and the payback limit for acquisition spend.`,
+      });
+    }
+  }
+
+  // ---- Weekly social plan: a post HQ gave up on is the owner's to fix (it is never retried on its own) ----
+  for (const p of profile ? f.social?.failed ?? [] : []) {
+    out.push({
+      id: `social-post-failed-${p.id}`,
+      severity: "attention",
+      dept: "content",
+      title: `HQ couldn't post ${p.day}'s ${p.network} ${p.format}`,
+      detail: `It failed ${p.attempts} time${p.attempts === 1 ? "" : "s"} and HQ stopped trying${p.error ? `: ${p.error}` : "."} Nothing went out twice: every attempt looked for the post on the account first.`,
+      action: `Fix the cause, then \`npm run hq -- social approve ${profile!.slug} ${p.id}\` to let HQ try again (attempts start over), or post it by hand and \`npm run hq -- social posted ${profile!.slug} ${p.id} <link>\`. Content & Social shows the error.`,
     });
   }
 

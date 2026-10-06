@@ -170,6 +170,7 @@ export const DEPARTMENTS: Department[] = [
       { id: "hq:script", what: "A talking-to-camera script a stranger understands: plain words, three angles, cold-reader test, script-check" },
       { id: "hq:edit", what: "Raw footage + brief → finished video, automatically, QA'd" },
       { id: "hq:walkthrough", what: "\"How it works\" videos of your own app, in your cloned voice, free and local" },
+      { id: "hq:social", what: "Draft the week's posts per network from the channel plan (HQ's weekly social plan runs it)" },
       { id: "hq:publish", what: "Post to any channel by its route, with approval and read-back" },
       { id: "hq:connections", what: "See and connect the accounts HQ can post to" },
       { id: "postiz:postiz", what: "Schedule and post through Postiz" },
@@ -232,6 +233,7 @@ export const DEPARTMENTS: Department[] = [
       { name: "claude-ads", what: "Audit-and-plan skill pack for 12 ad platforms (researched, not installed).", repo: "AgriciDaniel/claude-ads", licence: oss("MIT"), check: { paths: ["~/.claude/skills/ads"] }, warn: "Installs 25 agents globally and pins some to Sonnet. Doesn't handle regulated-industry ad approval." },
     ],
     skills: [
+      { id: "hq:campaign", what: "Plan a campaign from the brain, tag and link its work, report it weekly, close it with learnings" },
       { id: "small-business:ad-manager", what: "Run and review ad campaigns" },
       { id: "marketing:campaign-plan", what: "Campaign plan and budget" },
       { id: "marketing:performance-report", what: "What the spend returned" },
@@ -560,7 +562,7 @@ export const DEPARTMENTS: Department[] = [
 
 /** Left out because what we'd use them for needs a paid plan. */
 export const EXCLUDED = [
-  { name: "Xero, MYOB, QuickBooks", reason: "accounting is subscription-only; ERPNext or Beancount instead" },
+  { name: "Xero, MYOB, QuickBooks", reason: "subscription accounting, never required: Beancount or ERPNext keep the books. A business that already pays for one can connect it read-only to import its running costs (Finance guide)" },
   { name: "Klaviyo, Mailchimp paid tiers", reason: "free tiers cap contacts and sends; Listmonk instead" },
   { name: "Ahrefs, Semrush", reason: "paid; Search Console + Bing + SerpBear instead" },
   { name: "HubSpot paid hubs", reason: "the useful parts are paid; Twenty instead" },

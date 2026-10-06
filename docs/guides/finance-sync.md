@@ -9,6 +9,8 @@ once from the ledger. Code: `lib/finance-sync.ts`; template adapter: `templates/
   `ledger.beancount` are never touched. Every sync runs `bean-check`; if the ledger wouldn't check out, the old file stays.
 - It runs daily at 06:00, before the scorecard (`com.hq.scorecard`), so cost to win and payback read fresh books.
   By hand: `npm run hq -- finance sync <slug|--all>`, then `npm run hq -- finance show <slug>`.
+- Costs come from the accounting system, not billing: a business on Xero imports its monthly costs read-only into
+  `finance/costs-xero.beancount` ([Finance guide](/guides/finance), "Connect your accounting system").
 - The Finance tab shows **money in and out**: income after refunds by month, costs over the last 3 months by account,
   and margin. With income but no costs, it says so, and the CEO raises "The books have income but no costs".
 

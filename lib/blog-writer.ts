@@ -8,6 +8,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 
 import { readBundle } from "./brain-store";
+import { liveCampaignBriefs } from "./campaign-store";
 import { blogDir, hasPublisher, listDrafts, log, publisherList, readBlogConfig } from "./blog-store";
 import { getProfile } from "./store";
 
@@ -39,6 +40,7 @@ export async function gatherInputs(slug: string, day: string) {
     existingPosts: existing.map((p) => ({ slug: p.slug, title: p.title, url: p.url })),
     recentDrafts: drafts,
     brain,
+    campaigns: liveCampaignBriefs(slug, ["blog"]).map(({ linkParams: _, ...c }) => c),
   };
 }
 
@@ -61,6 +63,7 @@ export async function writeDraft(slug: string, day: string, timeoutMs = 25 * 60e
     `- Business folder for today: ${research}`,
     `- Read ${path.join(research, "inputs.json")} first.`,
     `- Write your research notes to ${path.join(research, "notes.md")}.`,
+    "- `campaigns` in inputs.json are the business's live campaigns that use the blog. If today's post serves one, set `campaign` in the front block to its id. Never add utm tags to links inside the post.",
     `- Write exactly one draft to ${drafts}/${day}-<slug>.md in the draft format above, then stop.`,
   ].join("\n");
   const abs = (p: string) => `/${p}/**`; // Claude Code permission rules take absolute paths with a leading //.

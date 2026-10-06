@@ -40,7 +40,7 @@ export function financeProblem(v: unknown, currency: string): string | null {
 }
 
 /** A label as one beancount account segment: "Gold monthly" -> "Gold-monthly". */
-const segment = (label: string) => {
+export const segment = (label: string) => {
   const s = label.normalize("NFKD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "Other";
   return /^[A-Z]/.test(s) ? s : `X-${s}`.replace(/^X-([a-z])/, (_, c: string) => c.toUpperCase());
 };
@@ -92,7 +92,8 @@ function ensureInclude(ledger: string) {
   fs.appendFileSync(ledger, `\n; Daily totals from the business's billing, written by HQ's finance sync (npm run hq -- finance sync <slug>).\ninclude "${SYNCED}"\n`);
 }
 
-function beanCheck(ledger: string): string | null {
+/** bean-check the ledger: null when it passes (or no bean-check is installed), else the first lines of its complaint. */
+export function beanCheck(ledger: string): string | null {
   for (const bin of [path.join(process.env.HOME ?? "", ".local", "bin", "bean-check"), "bean-check"]) {
     try { execFileSync(bin, [ledger], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60000 }); return null; }
     catch (e) {

@@ -11,6 +11,8 @@ import { lifecycleState } from "./lifecycle";
 import { scorecardState } from "./scorecard";
 import { businessDir, getProfile, ledgerPath } from "./store";
 import { supportState } from "./support";
+import { workflowEvidence } from "./workflow-evidence";
+import { WORKFLOWS } from "./workflows";
 
 const safe = <T>(f: () => T, fallback: T): T => { try { return f(); } catch { return fallback; } };
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -42,6 +44,13 @@ export function builtDepartments(slug: string): Record<string, string> {
 
   const support = safe(() => supportState(slug), null);
   if (support?.snapshot) out.support = `${plural(support.snapshot.waiting.length, "conversation")} waiting; themes and reply times read daily`;
+
+  // Any department that owns a workflow proven live for this business (the same proof as the Workflows page), so a
+  // department built later lights up without a rule of its own here. Partial workflows don't count.
+  const evidence = safe(() => workflowEvidence(slug).evidence, {} as ReturnType<typeof workflowEvidence>["evidence"]);
+  const live: Record<string, string[]> = {};
+  for (const w of WORKFLOWS) if (w.owner !== "ceo" && evidence[w.title]?.state === "live") (live[w.owner] ??= []).push(w.title);
+  for (const [dept, titles] of Object.entries(live)) out[dept] ??= `${plural(titles.length, "workflow")} live: ${titles.join(", ")}`;
 
   return out;
 }

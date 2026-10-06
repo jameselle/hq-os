@@ -12,8 +12,9 @@ sales tax) and tax done.
 **It covers:** bookkeeping and reconciliation; invoices and bills; cash flow; month-end, BAS/GST and tax.
 
 **Owner's time:** about 20 minutes to start (opening balances and the first month's transactions take longer, and
-are best done with the bank statements to hand). **Cost:** free. Every tool here is open source; Xero, MYOB and
-QuickBooks are left out on purpose (subscription-only).
+are best done with the bank statements to hand). **Cost:** free. Every tool here is open source. HQ never requires
+Xero, MYOB or QuickBooks (they're subscription-only), but a business that already pays for one can connect it
+read-only so its running costs flow into the ledger: see "Connect your accounting system (Xero) for costs" below.
 
 ## Before you start
 
@@ -53,6 +54,139 @@ plain text, so Claude can read and write it, and it is what the growth scorecard
 - **How HQ checks it:** port 5055 answering (running), or `fava` or `bean-check` on PATH (installed), shown on the
   department tab.
 
+### Connect your accounting system (Xero) for costs
+
+Income comes from billing, but costs live in the accounting system. Without them the Finance tab's margin, and the
+scorecard's cost to win and payback, all read better than they are (the CEO says "The books have income but no
+costs"). If the business already pays for Xero, connect it **read-only** and HQ imports the monthly cost totals per
+account into `finance/costs-xero.beancount`. HQ never writes to Xero, and never needs it: a business without one adds
+its costs to the ledger by hand.
+
+**What gets imported:** Xero's profit and loss report by month, last 12 months. Only the expense lines (Cost of
+Sales and Operating Expenses), one transaction per account per month, dated the month's last day, with no payees.
+Income, totals and profit rows are skipped (income already comes from billing). The file is rewritten whole on every
+import, checked with `bean-check`, and left as it was if the check fails. Months before the ledger's own start get
+their own `open` lines in that file, balanced against `Liabilities:Imported:Xero`, so older months check out too.
+
+**Where each Xero account lands:**
+
+| Xero account name contains | Ledger account | Counts toward cost to win |
+|---|---|---|
+| advertising, marketing, promotion, ads, sponsor | `Expenses:Advertising:<Account>` | yes |
+| affiliate, partner, referral, commission | `Expenses:Partnerships:<Account>` | no (see below) |
+| anything else (hosting, data, software, wages, travel …) | `Expenses:Operating:<Account>` | no |
+
+Affiliates and partners go to `Expenses:Partnerships`, **not** `Expenses:Commissions`: the growth scorecard already
+counts the commissions the product pays its affiliates as acquisition spend, so posting Xero's affiliate line as
+Commissions would count the same money twice in cost to win.
+
+**Set it up (about 15 minutes, once):**
+
+1. **Register your own free Xero app.** Composio has no ready-made Xero sign-in, so you bring your own OAuth app.
+   Go to [developer.xero.com/app/manage](https://developer.xero.com/app/manage), sign in with your Xero login, and
+   choose **New app**. Pick **Web app**, give it a name (say "Demo Coffee HQ"), set **Company or application URL**
+   to your website, and set **Redirect URI** to `https://backend.composio.dev/api/v1/auth-apps/add`. If Composio's
+   Xero setup page shows a different redirect URL, use Composio's.
+2. **Copy the app's keys.** After you create it, the app's **Configuration** page shows the **Client ID**. Click
+   **Generate a secret** for the **Client secret**: it's shown once, so keep the page open for the next step.
+3. **Give them to Composio, not to Claude.** In [dashboard.composio.dev](https://dashboard.composio.dev), open the
+   apps you can connect, choose **Xero**, and set up its auth with your own app: paste the Client ID and Client
+   secret there (never into a chat). Ask for read-only scopes only:
+   `offline_access accounting.reports.read accounting.transactions.read accounting.settings.read accounting.contacts.read`.
+4. **Connect your organisation.** Run `/hq:connections connect xero` (or follow the sign-in link Claude's Composio
+   connector gives you), sign in to Xero and pick the organisation. Then ask Claude to list your Xero connections
+   with the `XERO_GET_CONNECTIONS` tool: note the organisation's **tenant id** and the Composio **account id**
+   (it looks like `xero_word-word`). Neither is a secret.
+5. **Tell HQ which organisation is this business's.** Write
+   `$HQ_DATA/businesses/<slug>/finance/costs-connection.json`:
+   ```json
+   { "source": "xero", "composioAccount": "xero_demo-coffee", "tenantId": "00000000-0000-4000-8000-000000000001", "share": 1, "currency": "AUD" }
+   ```
+   `currency` is optional and, when set, must be the Xero organisation's base currency. The ledger's currency (the
+   profile's `currency`) must be the same: HQ doesn't convert currencies and refuses the import if they differ.
+6. **Run the first import:** `npm run hq -- finance costs refresh <slug> --force`. It prints the months, the totals per
+   category (Advertising, Partnerships, Operating) and the file it wrote. Check it any time with
+   `npm run hq -- finance costs <slug>`; the Finance tab shows the costs and says they came from Xero.
+
+**From a file instead.** With a report you fetched yourself (the raw `XERO_GET_PROFIT_LOSS_REPORT` response, with
+`timeframe` `MONTH` and `periods` up to 11) or another system's export turned into HQ's own shape, import it by hand:
+
+```
+npm run hq -- finance import-costs <slug> report.json --from xero --currency AUD [--share 0.5] [--since 2026-01]
+npm run hq -- finance import-costs <slug> costs.json --from json
+```
+
+The generic shape: `{"version": 1, "source": "myob", "currency": "AUD", "months": [{"month": "2026-09", "lines":
+[{"account": "Rent", "section": "Operating Expenses", "amount": 500}]}]}` (amounts positive, a credit negative). It
+writes `finance/costs-<source>.beancount`.
+
+**The monthly refresh.** The `com.hq.finance` job runs daily at 05:30 and refreshes each business with a
+`costs-connection.json` once a month, from the 3rd (so the month just gone has been reconciled). It fetches the last
+12 complete months and rewrites the costs file, so late changes in Xero flow through. Your Xero connection lives in
+Claude's Composio connector, which only a Claude session can use, so the job runs Claude Code headless, allowed only
+the Composio workbench: HQ writes the one read-only cell (Xero's organisation, for the base currency, and the profit
+and loss report), the run passes it on unchanged, and HQ reads the report from the tool's output, never from the
+model's words. Only the currency and the report's rows come back; never the organisation's address or tax details.
+Every attempt is recorded in `finance/costs-refresh.json`; a failed one is retried the next day, and the CEO shows
+"The monthly costs import failed" until it works. Install the job with `npm run hq -- services add-defaults && npm
+run hq -- services install` (or add `com.hq.finance` to `services.json` by hand).
+
+**One company, several businesses.** When one company's Xero pays for more than one business, give each business its
+share: `"share": 0.6` in one business's `costs-connection.json` and `0.4` in the other's (or `--share` on a manual
+import). Every line is multiplied by it. Or put all the costs on one business (`"share": 1`) and record in the other's
+brain that its costs are carried there. `"since": "2026-01"` (or `--since`) skips earlier months.
+
+**Costs that belong somewhere else.** HQ imports account totals, not suppliers, so take a specific charge out with an
+adjustment: a cost another business should carry, or a charge you're getting refunded. List them in
+`finance/costs-adjustments.json` in the business's folder:
+
+```json
+[{ "month": "2026-09", "account": "Software & Subscriptions", "amount": 1200, "reason": "Annual design tool for another business" }]
+```
+
+Every import applies them (the monthly refresh too), before any share, and the costs file says what was taken out and
+why. An adjustment bigger than its line stops the import instead of guessing. When a refund arrives in your
+accounting system, remove its adjustment so it isn't taken out twice.
+
+**Other accounting systems.** The same "bring your own OAuth app" steps apply to any Composio toolkit without a
+ready-made sign-in (MYOB, QuickBooks and others): register a free developer app with the provider, set its redirect
+URL to the one Composio's setup page shows, paste the client id and secret into Composio yourself, and connect
+with read-only scopes. Until HQ reads that system directly, export its monthly profit and loss into the generic shape
+above and import it with `--from json`.
+
+### Unit economics
+
+Once the ledger holds income and costs, HQ works out the business's unit economics for the last closed month (the
+month in progress is left out) and compares it with the average of the 3 months before. It is the number behind the
+**Unit economics check** workflow, shown under **Unit economics** on this tab, on the Data tab and in a monthly brief.
+
+- **From the ledger:** revenue (income less refunds), total costs, acquisition spend (`Expenses:Advertising`,
+  `Expenses:Partnerships` and `Expenses:Commissions`), operating costs (the rest), net margin, burn (costs less
+  revenue), gross margin (only when payment fees or cost of sales are recorded) and the top 5 cost lines with their
+  change from the month before.
+- **From the growth scorecard:** paying customers, MRR, new paying customers (every week of the month must be known)
+  and churn (weekly churn compounded to the month, at least 2 weeks known).
+- **Worked out from both:** revenue per paying customer (MRR over paying customers), cost per paying customer,
+  customer lifetime (1 / monthly churn), lifetime value, cost to win (acquisition spend over new paying customers),
+  lifetime value to cost to win, payback months and break-even paying customers (costs over revenue per customer).
+- **Nothing is zero-filled.** A number without its inputs reads "not measured" with the reason, for example "No
+  cost of sales or payment fees in the ledger". Where the scorecard or the analytics adapter measures a number
+  itself (cost to win, lifetime value), its reading wins on the Data tab and HQ's fills the gap.
+
+For Demo Coffee (an invented coffee club): September revenue $2,400, costs $5,372, burn $2,972; 80 paying members on
+$2,400 of MRR is $30 each, so break-even needs 180 paying members. 10 new members against $400 of ads and cafe
+partners is a cost to win of $40, paid back in about 1.4 months.
+
+**The brief.** `npm run hq -- finance unit-economics <slug>` prints it; add `--save` to keep it as a finance plan
+(with a copy in the vault's Finance plans). The workflow reads **live** when the ledger has at least 3 closed months
+with both income and costs, the costs reach the month before last or later, and the numbers were worked out this
+month (the daily analytics refresh, or a saved brief). Otherwise it reads partial and says what's missing.
+
+**What the CEO flags.** A cost line more than 50% above its average over the 3 months before, and higher by more than
+$250 or 5% of the average month's costs (whichever is bigger): "Packaging cost $900 in Sep 2026, up from an average
+of $200". And costs at least 3x revenue for 3 months running, with the paying members needed to break even. Mark
+either done and it stays hidden until the next month is worked out.
+
 ### ERPNext
 
 - **What it's for:** full accounting, invoicing and inventory (a Xero alternative).
@@ -88,8 +222,10 @@ plain text, so Claude can read and write it, and it is what the growth scorecard
 
 ## 2. Accounts and connections
 
-- **None to connect.** HQ never holds bank logins or accounting passwords; transactions come from statements or
-  exports the owner downloads.
+- **Nothing you have to connect.** HQ never holds bank logins or accounting passwords; transactions come from
+  statements or exports the owner downloads, and income syncs from billing ([Finance sync](/guides/finance-sync)).
+- **Optional: your accounting system, for costs.** If the business already keeps its books in Xero, HQ can read its
+  profit and loss report every month and post the running costs into the ledger. Set up below.
 - **What the scorecard reads from the books:** the growth scorecard's **cost to win** and **payback** come from this
   ledger. HQ adds up spend posted to `Expenses:Advertising` and `Expenses:Commissions` (and their sub-accounts, such
   as `Expenses:Advertising:Search`) over the last 4 weeks, plus any extra spend the scorecard adapter reports, and
@@ -142,6 +278,8 @@ plain text, so Claude can read and write it, and it is what the growth scorecard
 - [ ] `Expenses:Commissions` is opened if the business pays commissions, and ad spend is being posted to
       `Expenses:Advertising`.
 - [ ] Every finance skill shows as ready on the department tab.
+- [ ] If the business already uses Xero: `finance/costs-connection.json` is written, `npm run hq -- finance costs <slug>`
+      lists the imported months, `com.hq.finance` is installed, and the CEO has no "income but no costs" finding.
 
 ## Good to know
 

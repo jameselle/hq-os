@@ -290,6 +290,7 @@ snapshot. HQ never stores keys or tokens: they stay in Composio, WoopSocial, Pos
 **Posting and learning**
 
 - `/hq:connections`: see and connect the accounts HQ can post to.
+- `/hq:social`: draft the week's posts for every network from the business's channel plan and what actually happened that week. HQ's weekly social plan runs it; see [Weekly social plan](/guides/social).
 - `/hq:publish`: post to any channel by its route. It dry-runs every channel first, asks the owner, posts, reads
   the post back from the platform, and logs it.
 - `/postiz:postiz`: schedule and post through Postiz.

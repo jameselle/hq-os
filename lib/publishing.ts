@@ -152,6 +152,14 @@ export function resolveRoute(platform: string, spec: ChannelSpec): PlatformRoute
   return p.routes.find((r) => r.via === via) ?? { via };
 }
 
+/** The weekly social plan's word wins: a network the owner posts by hand, or another tool posts, needs no route. */
+export function withPosting(channels: Record<string, ChannelSpec>, posting: Record<string, string>): Record<string, ChannelSpec> {
+  return Object.fromEntries(Object.entries(channels).map(([platform, spec]) =>
+    posting[platform] === "hand" || posting[platform] === "elsewhere"
+      ? [platform, { ...(typeof spec === "object" ? spec : {}), handle: channelHandle(spec), via: "manual" as const }]
+      : [platform, spec]));
+}
+
 // ---------- connection snapshot (written by /hq:connections, never contains secrets) ----------
 
 export type ConnectionAccount = { id: string; alias?: string; name?: string; status: string };

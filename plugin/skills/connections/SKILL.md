@@ -3,10 +3,11 @@ name: connections
 description: >
   See and manage the accounts HQ can post through: refresh HQ's snapshot of
   Composio connections (Instagram, YouTube, Pinterest, Facebook, LinkedIn, X,
-  TikTok, WoopSocial, Search Console …), or connect a new account when the owner
-  asks. Use when the user says "/hq:connections", "what accounts are connected",
-  "connect TikTok/Facebook/LinkedIn", "refresh connections", or a CEO finding says
-  a channel isn't connected or connection status is unknown.
+  TikTok, WoopSocial, Search Console …) and the accounting system a business's
+  costs come from (Xero, read-only), or connect a new account when the owner asks.
+  Use when the user says "/hq:connections", "what accounts are connected",
+  "connect TikTok/Facebook/LinkedIn", "connect Xero", "refresh connections", or a
+  CEO finding says a channel isn't connected or connection status is unknown.
 ---
 
 # Connections
@@ -50,6 +51,16 @@ Run commands from `$HQ_ROOT` (default `~/business-os`).
 - **WoopSocial (TikTok):** the owner creates a free WoopSocial account and connects TikTok
   there. Then they add WoopSocial's API key to the `woop_social` toolkit in Composio themselves.
   **Never** ask for the key in chat. Then refresh.
+- **Xero (read-only, for a business's running costs):** Composio has no ready-made Xero sign-in, so the
+  owner first registers their own free Xero web app (developer.xero.com/app/manage; redirect URI
+  `https://backend.composio.dev/api/v1/auth-apps/add`, or the one Composio's Xero setup page shows) and pastes its
+  Client ID and secret into Composio's Xero auth setup themselves, with read-only scopes
+  (`offline_access accounting.reports.read accounting.transactions.read accounting.settings.read accounting.contacts.read`).
+  **Never** ask for the secret in chat. Then `add` the `xero` toolkit as above, and once it's `ACTIVE`, run
+  `XERO_GET_CONNECTIONS` to find the organisation's tenant id and write
+  `$HQ_DATA/businesses/<slug>/finance/costs-connection.json` (`{"source":"xero","composioAccount":"<id>","tenantId":"<id>","share":1}`),
+  then `npm run hq -- finance costs refresh <slug> --force`. Full steps: the Finance guide, "Connect your accounting
+  system". The same bring-your-own-app steps apply to other toolkits without managed sign-in (MYOB, QuickBooks).
 - **Postiz channels:** the owner connects them in Postiz (localhost:4200). Nothing to snapshot.
 - **ManyChat (auto-replies):** not a Composio toolkit. The owner connects Instagram, Facebook
   or TikTok inside ManyChat (app.manychat.com); ManyChat is a Meta partner, so there's no

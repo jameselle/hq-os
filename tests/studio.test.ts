@@ -71,6 +71,16 @@ test("pauses are cut from real silence, with air kept either side", () => {
   assert.equal(outputDuration(pieces), 8.3);
 });
 
+test("a trimmed pause never leaves a sliver piece shorter than loudnorm's 100 ms frame", () => {
+  // Real case (2026-10-06): the closing silence 39.787-40.469 runs 0.099 s past the segment end (40.37), so the cut
+  // stopped at 40.319 and left a 0.051 s piece of silence. With that sliver last, the first pass's loudnorm lost the
+  // last 2.8 s of audio (the whole closing line): 35.40 s of sound under 38.24 s of picture.
+  // Measured on the real graph: a final piece of 0.08 s or less truncates; 0.1 s and longer is fine.
+  const pieces = keepPieces(spec({ segments: [{ source: "a", start: 0.28, end: 40.37 }], tightenPauses: 0.3 }), {}, { a: [[39.787, 40.469]] });
+  assert.deepEqual(pieces.map((p) => [p.start, p.end]), [[0.28, 39.937]]);
+  assert.ok(pieces.every((p) => p.end - p.start >= 0.15), "no piece shorter than 0.15 s");
+});
+
 test("without silence data, word gaps decide", () => {
   const words = { a: [W("one", 0, 1), W("two", 3, 4)] };
   assert.equal(keepPieces(spec({ tightenPauses: 0.5 }), words).length, 2);

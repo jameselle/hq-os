@@ -28,6 +28,18 @@ service, and the billing keys are free to create.
 The department needs one **web-analytics** tool (Umami, Plausible CE or PostHog), one **dashboard** tool
 (Looker Studio, Metabase or Apache Superset), and DuckDB. Start with Umami, Looker Studio and DuckDB.
 
+A self-hosted Umami runs on this Mac, which a public site can't reach. For a live site, Umami Cloud's free Hobby
+tier is the simplest collector: make the account, add the website, put its script tag on every page (and allow
+`cloud.umami.is` in `script-src` and `gateway.umami.is` in `connect-src` if the site has a CSP), then record it in
+the business's profile so HQ counts it:
+
+```json
+"analytics": { "provider": "umami-cloud", "id": "<website id from the script tag>", "sites": ["https://example.com/"] }
+```
+
+The website id is public (it's in the page source). An API key for reading the numbers back is a secret: keep it in
+the Keychain, never in the profile.
+
 ### Looker Studio
 
 - **What it's for:** free dashboards over Google Sheets, GA4 and Search Console.

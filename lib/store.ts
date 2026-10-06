@@ -182,7 +182,9 @@ export function readReview(slug: string, file?: string): { file: string; markdow
 
 // ---------- department plans ----------
 
-export function savePlan(slug: string, dept: string, markdown: string, at: Date = new Date()) {
+/** `title` names the vault copy ("unit economics" gives "<date> — Finance unit economics.md"), so a brief doesn't
+ *  replace the same day's plan; the default is "plan". */
+export function savePlan(slug: string, dept: string, markdown: string, at: Date = new Date(), title = "plan") {
   const profile = getProfile(slug);
   if (!profile) throw new Error(`no such business: ${slug}`);
   if (!DEPARTMENTS.some((d) => d.slug === dept)) throw new Error(`no such department: ${dept}`);
@@ -195,7 +197,7 @@ export function savePlan(slug: string, dept: string, markdown: string, at: Date 
   const label = safeName(deptLabel(dept));
   const vdir = path.join(vaultRoot(profile), "Departments", label, "Plans");
   fs.mkdirSync(vdir, { recursive: true });
-  const note = path.join(vdir, `${date} — ${label} plan.md`);
+  const note = path.join(vdir, `${date} — ${label} ${safeName(title)}.md`);
   fs.writeFileSync(
     note,
     frontmatter({ type: "department-plan", business: profile.name, department: deptLabel(dept), date }) + markdown.trim() + "\n",

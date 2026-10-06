@@ -100,3 +100,40 @@ test("the config is validated", () => {
   assert.throws(() => validateConfig({ mode: "sometimes", site: SITE }), /mode/);
   assert.throws(() => validateConfig({ mode: "off", site: "http://x" }), /https/);
 });
+
+test("a dash anywhere that reaches the page fails, source titles included", () => {
+  const d = good();
+  d.meta.sources[0].title = "Publisher — page";
+  assert.ok(failed(d).includes("dashes"));
+  const e = good();
+  e.meta.faq = [{ q: "Does it keep?", a: "Yes – for a week." }];
+  assert.ok(failed(e).includes("dashes"));
+});
+
+test("the keyword check reads words, not the exact phrase", () => {
+  const d = good();
+  d.meta.keyword = "remove bookmaker margin";
+  d.meta.title = "How to make cold brew coffee at home";
+  d.markdown = d.markdown.replace("How to make cold brew coffee at home starts with coarse beans and patience.", "To remove the bookmaker margin, rescale the implied chances.");
+  assert.ok(!failed(d).includes("keyword"));
+  d.markdown = d.markdown.replace("To remove the bookmaker margin, rescale the implied chances.", "Rescale the implied chances.");
+  assert.ok(failed(d).includes("keyword"));
+});
+
+test("gambling posts can't carry an inducement, but can explain bonus bets", () => {
+  const d = good();
+  d.markdown += "\n\nUse promo code SAVE20 to get a welcome offer.\n\n18+. Gamble responsibly.\n";
+  const c = checkDraft(d, ctx({ regulated: ["gambling"] })).find((x) => x.id === "claims")!;
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /promo code/);
+  const e = good();
+  e.markdown += "\n\nBookmakers give bonus bets as part of their promotions; a hedge turns one into withdrawable cash.\n\n18+. Gamble responsibly.\n";
+  assert.equal(checkDraft(e, ctx({ regulated: ["gambling"] })).find((x) => x.id === "claims")!.ok, true);
+});
+
+test("a business's own never-name list fails the claims check", () => {
+  const d = good();
+  d.markdown += "\n\nPrices from Polymarket move fast.\n";
+  assert.ok(failed(d, ctx({ banned: ["polymarket"] })).includes("claims"));
+  assert.ok(!failed(d).includes("claims"));
+});

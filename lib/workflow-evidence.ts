@@ -7,11 +7,15 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { listDrafts as listBlogDrafts } from "./blog-store";
+import { listSocial } from "./social-store";
+import { campaignReports } from "./campaign-report";
 
 import { lifecycleState } from "./lifecycle";
 import { workflowChecksState, type WorkflowCheck } from "./workflow-checks";
 import { scorecardState } from "./scorecard";
 import { businessDir, getProfile, listReviews, type PublishedPost } from "./store";
+import { addMonths, monthName } from "./unit-economics";
+import { unitEvidenceFacts } from "./unit-economics-store";
 
 export type Evidence = {
   /** live: the workflow runs end to end. partial: some steps run (named in proof), the rest are still to build. */
@@ -34,8 +38,16 @@ export type EvidenceFacts = {
     /** Per automated message: which workflow it serves and what it actually delivered. */
     workflows?: { label: string; enabled: boolean; serves?: string; sent30d?: number; lastSentAt?: string | null; drafts?: number }[];
   } | null;
+  /** The weekly social plan (lib/social-store.ts): posts out, and drafts written. */
+  social?: { posted: number; lastPosted?: string; drafts: number; lastDraft?: string } | null;
   /** The daily blog (lib/blog-store.ts): posts read back live, and drafts written. */
   blog?: { published: number; lastPublished?: string; drafts: number; lastDraft?: string } | null;
+  /** Campaigns (lib/campaigns.ts): status, and how many linked items went out (posts posted, blog posts live,
+   *  read-back posts, emails delivered). */
+  campaigns?: { name: string; status: string; out: number; updatedAt?: string }[] | null;
+  /** Unit economics (lib/unit-economics.ts): closed months with both income and costs, the newest month with costs,
+   *  the current month, and when HQ last worked the numbers out (analytics refresh) or saved the monthly brief. */
+  unitEconomics?: { bothMonths: number; latest: string | null; thisMonth: string; computedAt: string | null; briefAt: string | null } | null;
   /** Pass/fail checks from the business's workflow-checks adapter (lib/workflow-checks.ts). */
   checks?: { observedAt: string; stale: boolean; workflows: { title: string; checks: WorkflowCheck[] }[] } | null;
 };
@@ -120,11 +132,56 @@ export function evidenceFrom(f: EvidenceFacts): Record<string, Evidence> {
     for (const title of ["Onboarding to first value", "Churn early warning"]) out[title] ??= watchOnly;
   }
 
+  const so = f.social;
+  if (so?.posted) out["Weekly social plan from the channel plan"] = { state: "live", proof: [`${plural(so.posted, "planned post")} out, each with its link`], last: so.lastPosted };
+  else if (so?.drafts) out["Weekly social plan from the channel plan"] = { state: "partial", proof: [`${plural(so.drafts, "post")} drafted from the channel plan`, "None has gone out yet"], last: so.lastDraft };
+
   const b = f.blog;
   if (b?.published) {
     out["Daily blog from search demand"] = { state: "live", proof: [`${plural(b.published, "post")} researched, checked and read back live`], last: b.lastPublished };
   } else if (b?.drafts) {
     out["Daily blog from search demand"] = { state: "partial", proof: [`${plural(b.drafts, "draft")} researched and written`, "None has gone live yet"], last: b.lastDraft };
+  }
+
+  const cs = f.campaigns ?? [];
+  const running = cs.filter((c) => c.status === "live" && c.out > 0);
+  const CAMPAIGN = "Campaign from brief to results";
+  if (running.length) {
+    const items = running.reduce((n, c) => n + c.out, 0);
+    const proof = [`${plural(running.length, "campaign")} live with work out: ${list(running.map((c) => c.name))}`, `${plural(items, "linked item")} out (posts, blog posts, emails)`];
+    const waiting = cs.filter((c) => c.status === "planned" || (c.status === "live" && !c.out)).length;
+    if (waiting) proof.push(`${plural(waiting, "more campaign")} planned or waiting on its first item`);
+    out[CAMPAIGN] = { state: "live", proof, last: latest(running.map((c) => c.updatedAt)) };
+  } else if (cs.some((c) => ["live", "planned", "paused"].includes(c.status))) {
+    const live = cs.filter((c) => c.status === "live"), planned = cs.filter((c) => c.status === "planned");
+    out[CAMPAIGN] = { state: "partial", proof: [
+      live.length ? `${plural(live.length, "campaign")} live: ${list(live.map((c) => c.name))}` : `${plural(planned.length, "campaign")} planned: ${list(planned.map((c) => c.name))}`,
+      "Nothing linked to a live campaign has gone out yet",
+    ], last: latest(cs.map((c) => c.updatedAt)) };
+  }
+
+  // Unit economics: live with 3 or more months of income and costs, costs no older than the month before last, and the
+  // numbers worked out this month (the daily analytics refresh, or a saved brief).
+  const ue = f.unitEconomics;
+  if (ue) {
+    const UE = "Unit economics check";
+    const thisMonth = (t: string | null) => Boolean(t && t.slice(0, 7) === ue.thisMonth);
+    const ran = [ue.computedAt, ue.briefAt].filter(thisMonth).sort().at(-1);
+    const fresh = Boolean(ue.latest && ue.latest >= addMonths(ue.thisMonth, -2));
+    const have = [
+      ue.bothMonths ? `${plural(ue.bothMonths, "month")} of income and costs in the ledger${ue.latest ? `, costs to ${monthName(ue.latest)}` : ""}` : "",
+      thisMonth(ue.computedAt) ? `Numbers worked out ${ue.computedAt!.slice(0, 10)} by the analytics refresh` : "",
+      thisMonth(ue.briefAt) ? `Monthly brief saved ${ue.briefAt!.slice(0, 10)}` : "",
+    ].filter(Boolean);
+    if (ue.bothMonths >= 3 && fresh && ran) out[UE] = { state: "live", proof: have, last: ran };
+    else {
+      const not = [
+        ue.bothMonths < 3 ? `Not yet: ${3 - ue.bothMonths} more ${ue.bothMonths === 2 ? "month" : "months"} with both income and costs (needs 3)` : "",
+        !fresh ? `Not yet: costs stop at ${ue.latest ? monthName(ue.latest) : "no closed month"}; import last month's` : "",
+        !ran ? "Not yet: not worked out this month (npm run hq -- analytics refresh, or finance unit-economics --save)" : "",
+      ].filter(Boolean);
+      out[UE] = { state: "partial", proof: [...have, ...not], last: latest([ue.computedAt ?? undefined, ue.briefAt ?? undefined]) };
+    }
   }
 
   // Checks prove workflows that send nothing (pages, measurement). Live only when every check passed recently.
@@ -144,12 +201,28 @@ export function evidenceFrom(f: EvidenceFacts): Record<string, Evidence> {
   return out;
 }
 
+function campaignFacts(slug: string): EvidenceFacts["campaigns"] {
+  try {
+    const rs = campaignReports(slug, { readings: false });
+    return rs.length ? rs.map((r) => ({ name: r.campaign.name, status: r.campaign.status, out: r.out, updatedAt: r.campaign.updatedAt })) : null;
+  } catch { return null; }
+}
+
 function readPosts(slug: string): PublishedPost[] {
   try {
     return fs.readFileSync(path.join(businessDir(slug), "published.jsonl"), "utf8").split("\n").filter(Boolean).flatMap((l) => {
       try { return [JSON.parse(l) as PublishedPost]; } catch { return []; }
     });
   } catch { return []; }
+}
+
+function socialFacts(slug: string): EvidenceFacts["social"] {
+  try {
+    const all = listSocial(slug, 26);
+    if (!all.length) return null;
+    const out = all.filter((d) => d.status === "posted");
+    return { posted: out.length, lastPosted: out.map((d) => d.postedAt).filter(Boolean).sort().at(-1), drafts: all.length, lastDraft: all.map((d) => d.day).sort().at(-1) };
+  } catch { return null; }
 }
 
 function blogFacts(slug: string): EvidenceFacts["blog"] {
@@ -189,7 +262,7 @@ function plansCount(slug: string): number {
 }
 
 /** Read the business's records and return the evidence. Unknown business → no evidence. */
-export function workflowEvidence(slug: string): { demo: boolean; evidence: Record<string, Evidence> } {
+export function workflowEvidence(slug: string, now: Date = new Date()): { demo: boolean; evidence: Record<string, Evidence> } {
   const profile = getProfile(slug);
   if (!profile) return { demo: false, evidence: {} };
   const reviews = listReviews(slug);
@@ -225,6 +298,9 @@ export function workflowEvidence(slug: string): { demo: boolean; evidence: Recor
     lifecycle,
     checks,
     blog: blogFacts(slug),
+    social: socialFacts(slug),
+    campaigns: campaignFacts(slug),
+    unitEconomics: (() => { try { return unitEvidenceFacts(slug, now); } catch { return null; } })(),
   };
   return { demo: facts.demo, evidence: evidenceFrom(facts) };
 }

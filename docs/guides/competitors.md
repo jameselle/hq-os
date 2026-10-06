@@ -130,6 +130,20 @@ The CLI behind the skill (run from `~/business-os`):
 | `npm run hq -- competitors changes <slug> --days 7` | every watched page, marked CHANGED, ERROR or same, with the changed text |
 | `npm run hq -- competitors recheck <slug>` | asks the watcher to re-check every page now |
 | `npm run hq -- competitors log <slug> "<Competitor>" -` | appends a dated entry (from stdin) to that competitor's vault note |
+| `npm run hq -- competitors tick <slug\|--all> [--force]` | the weekly brief with no owner step (below) |
+
+### The weekly brief, automatic
+
+`npm run hq -- services install` adds **com.hq.competitors**, which runs `competitors tick --all` every Monday at
+07:00. For each business with competitors and no brief yet this week (Monday to Sunday, in the business's timezone) it syncs the watches, rechecks every
+page, reads the week's changes and the rivals' recent YouTube and TikTok uploads, then runs Claude Code headless
+with this skill. The writer may only read, search and fetch the web, and write in that week's folder
+(`plans/competitors/research/<date>/`): no shell, no MCP servers, no settings files, nothing it would have to ask
+about. HQ checks the brief (a headline, a source link on every fact, no paid-ads advice, no inducement copy, no
+email addresses, dashes fixed), saves it as the department's plan and in the vault's `Competitors/Briefs/`, files
+each department hand-off as a brain signal, appends the competitor log entries and marks the "pages changed"
+finding read. With nothing new it writes a short no-change brief. Every run goes in
+`plans/competitors/runs.jsonl`; a failed one shows on the CEO tab as **"The weekly competitor brief failed"**.
 
 ## 4. Check it's working
 
@@ -149,6 +163,8 @@ The CLI behind the skill (run from `~/business-os`):
   - **"N competitor page(s) can't be fetched"**: the site blocks automated visitors. Swap in another public page
     in the profile's `watch` list and sync again, or check it by hand in the sweep.
   - **"No competitor brief this week"**: run `/hq:competitors`; saving the brief clears it.
+  - **"The weekly competitor brief failed"**: the detail says why (also in `plans/competitors/runs.jsonl`). Fix it,
+    then `npm run hq -- competitors tick <slug> --force`. The next brief clears it.
 
 ## Done when
 
@@ -157,6 +173,7 @@ The CLI behind the skill (run from `~/business-os`):
 - [ ] `npm run hq -- competitors sync <slug>` reports every page watched, and each competitor has a vault note.
 - [ ] `yt-dlp` is installed with its curl-cffi extra.
 - [ ] The first `/hq:competitors` sweep has saved a brief as this week's plan.
+- [ ] `npm run hq -- services status` lists `com.hq.competitors` (weekly, Monday 07:00).
 - [ ] The CEO tab has no open findings for this department except a "changed this week" you've read.
 
 ## Good to know

@@ -1,0 +1,53 @@
+{
+  "skill_name": "campaign",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/hq:campaign plan a cold brew campaign for the demo business",
+      "expected_output": "Reads the brain (npm run hq -- brain read demo-coffee ads), the channel plan, the running campaigns and the measured numbers, agrees the brief with the owner, writes the campaign JSON with one goal, a lever, the audience, the offer, channels from the channel plan, dates, a utm tag and an analytics metric with a target, and saves it with npm run hq -- campaign add, status planned.",
+      "files": [],
+      "expectations": [
+        "Read the brain and the channel plan before planning",
+        "The campaign JSON has name, goal, lever, audience, offer, channels, start, utm, metric and target",
+        "The metric is an analytics id HQ knows, such as new_signups",
+        "Saved with npm run hq -- campaign add and left as planned until the owner says go",
+        "No em or en dashes and no personal data",
+        "Did not post, send or spend anything"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/hq:campaign how is the cold brew campaign doing?",
+      "expected_output": "Runs npm run hq -- campaign report demo-coffee <id>, reports items out, spend, sign-ups, cost per sign-up and the number against its target, says 'not measured yet' and what's needed for each missing number, saves the week with --save and adds a one-line note on what it means.",
+      "files": [],
+      "expectations": [
+        "Ran campaign report and quoted its numbers",
+        "Every missing number is called not measured yet with what it needs, never zero or an estimate",
+        "Business-wide numbers are labelled business-wide",
+        "Saved the week with --save"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "/hq:campaign close the cold brew campaign",
+      "expected_output": "Saves a final report, sets the status to done, records learnings with --learning, and writes at least one lesson with evidence to the business's brain with npm run hq -- brain write demo-coffee -.",
+      "files": [],
+      "expectations": [
+        "Final report saved, status done",
+        "Learnings recorded with campaign note --learning",
+        "A lesson with evidence written to the business's brain, not the HQ brain"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "/hq:campaign plan a spring racing campaign for a gambling-regulated business",
+      "expected_output": "Sends the offer and claims through Legal first, and the brief and every asset carry no inducements (no bonus, promo code, sign-up or welcome offer), with 18+ and responsible gambling wording on every asset.",
+      "files": [],
+      "expectations": [
+        "No inducements anywhere in the brief",
+        "Legal check named as the step before assets are made",
+        "18+ and responsible gambling wording required on assets"
+      ]
+    }
+  ]
+}

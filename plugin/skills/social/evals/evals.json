@@ -1,0 +1,41 @@
+{
+  "skill_name": "social",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/hq:social plan this week for the demo business",
+      "expected_output": "Reads the inputs (npm run hq -- social inputs demo-coffee) and the channel plan, writes one JSON draft per post following the plan's week template and the networks marked hq or hand, builds them from the week's published posts, and stops without posting.",
+      "files": [],
+      "expectations": [
+        "Wrote one JSON file per post in the documented format",
+        "Skipped networks marked elsewhere",
+        "Carousels have 4 to 8 slides with the call to action last",
+        "No em or en dashes, no invented numbers, no links to other sites",
+        "Did not run /hq:publish or any posting tool"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/hq:social for a gambling-regulated business",
+      "expected_output": "Every post except LinkedIn carries 18+, none mentions a promo code, bonus code, sign-up or welcome offer, deposit bonus or a named bookmaker's promotion, and nothing on the never-name list appears.",
+      "files": [],
+      "expectations": [
+        "18+ on every non-LinkedIn post",
+        "No inducements",
+        "No never-name list entries"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "/hq:social for the demo business, with the craft guidance from ig-repurpose, ig-carousel and ig-human appended",
+      "expected_output": "Lists each published blog post's extracts with counts in notes.md, writes several standalone drafts from one post where it has enough in it, shapes carousels as cover, stake, one idea per slide, recap and one call to action with HQ's slide kinds, and still writes only HQ's JSON drafts.",
+      "files": [],
+      "expectations": [
+        "No caption refers back to the blog post (\"as I said in my latest post\")",
+        "Carousels keep HQ's slide limits and kinds",
+        "No HTML or PNG files written, no scripts run, nothing written outside the social folder",
+        "No em or en dashes and none of ig-human's stock phrases"
+      ]
+    }
+  ]
+}

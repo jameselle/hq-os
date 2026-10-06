@@ -9,12 +9,17 @@ import path from "node:path";
 
 import { ANALYTICS, ANALYTICS_IDS, RECURRING_ONLY, WORKFLOW_ANALYTICS, isRecurring, type AnalyticsDef, type AnalyticsId } from "./analytics-metrics";
 import { brainStats } from "./brain-store";
+import { listCampaigns } from "./campaign-store";
+import type { CampaignOutcome } from "./campaigns";
 import { listDrafts as listBlogDrafts, readBlogConfig } from "./blog-store";
+import { listSocial, readSocialConfig } from "./social-store";
 import { listExperiments } from "./experiments";
 import { lifecycleState } from "./lifecycle";
 import { execAdapter, readConnection, writePrivateJson } from "./private-adapter";
 import { looksPrivate, scorecardState } from "./scorecard";
 import { acquisitionSpend, loadLedger } from "./ledger-spend";
+import { unitAnalytics } from "./unit-economics";
+import { loadUnitEconomics } from "./unit-economics-store";
 import { businessDir, getProfile, hqRoot, ledgerPath, listReviews, type PublishedPost } from "./store";
 import { workflowChecksState } from "./workflow-checks";
 import { WORKFLOWS } from "./workflows";
@@ -25,9 +30,10 @@ export type APoint = { week: string; value: number | null };
 /** One metric as an adapter reports it. `value` is the current reading (null exactly when missing or na);
  *  `weeks` its weekly history (any order, unique weeks); `breakdown` a split of the current period. */
 export type AnalyticsMetric = { id: AnalyticsId; value: number | null; quality: AQuality; note: string; weeks?: APoint[]; breakdown?: ARow[]; period?: string };
-export type AnalyticsSnapshot = { version: 1; observedAt: string; currency: string; metrics: AnalyticsMetric[] };
+/** `campaigns` (optional): outcomes per campaign tag (utm_campaign), counts and money only (lib/campaigns.ts). */
+export type AnalyticsSnapshot = { version: 1; observedAt: string; currency: string; metrics: AnalyticsMetric[]; campaigns?: CampaignOutcome[] };
 
-export const ALIMITS = { metrics: 150, weeks: 26, breakdown: 20, text: 200, staleHours: 36 };
+export const ALIMITS = { metrics: 150, weeks: 26, breakdown: 20, text: 200, staleHours: 36, campaigns: 100 };
 
 const WEEK = /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
@@ -73,6 +79,21 @@ export function analyticsProblem(v: unknown, currency: string): string | null {
   if (!Array.isArray(x.metrics) || x.metrics.length > ALIMITS.metrics) return "metrics";
   for (let i = 0; i < x.metrics.length; i++) { const p = metricProblem(x.metrics[i], `metrics[${i}]`); if (p) return p; }
   if (new Set(x.metrics.map((m) => m.id)).size !== x.metrics.length) return "metrics";
+  if (x.campaigns !== undefined) {
+    if (!Array.isArray(x.campaigns) || x.campaigns.length > ALIMITS.campaigns) return "campaigns";
+    for (let i = 0; i < x.campaigns.length; i++) { const p = campaignRowProblem(x.campaigns[i], `campaigns[${i}]`); if (p) return p; }
+  }
+  return null;
+}
+
+// A campaign row is keyed by its campaign's utm tag, which may be a prefix ending in * (e.g. a series' "1m365-*").
+const TAG = /^[A-Za-z0-9][\w.-]{0,79}\*?$/;
+function campaignRowProblem(r: any, at: string): string | null {
+  if (!r || typeof r !== "object") return at;
+  if (typeof r.utm !== "string" || !TAG.test(r.utm) || looksPrivate(r.utm)) return `${at}.utm`;
+  if (r.id !== undefined && (typeof r.id !== "string" || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(r.id) || r.id.length > 60)) return `${at}.id`;
+  for (const k of ["visits", "signups", "paying", "revenue"]) if (r[k] !== undefined && !(finite(r[k]) && r[k] >= 0)) return `${at}.${k}`;
+  if (r.period !== undefined && !label(r.period)) return `${at}.period`;
   return null;
 }
 
@@ -85,6 +106,11 @@ export function rebuildAnalytics(s: AnalyticsSnapshot): AnalyticsSnapshot {
       ...(m.weeks ? { weeks: m.weeks.map(({ week, value }) => ({ week, value })) } : {}),
       ...(m.breakdown ? { breakdown: m.breakdown.map(({ label, value }) => ({ label, value })) } : {}),
     })),
+    ...(s.campaigns ? { campaigns: s.campaigns.map((r) => ({
+      utm: r.utm.toLowerCase(), ...(r.id !== undefined ? { id: r.id } : {}),
+      ...Object.fromEntries((["visits", "signups", "paying", "revenue"] as const).filter((k) => r[k] !== undefined).map((k) => [k, r[k]])),
+      ...(r.period !== undefined ? { period: r.period } : {}),
+    })) } : {}),
   };
 }
 
@@ -251,6 +277,19 @@ export function hqMetrics(slug: string, now = Date.now(), extras: Extras = {}): 
     ? m("blog_posts", last7(blogPosts, now), `Last 7 days; ${blogPosts.length} posts read back live in all`, { weeks: weeklyCounts(blogPosts, 12, now, tz) })
     : m("blog_posts", null, readBlogConfig(slug) ? "No post has gone live yet" : "No daily blog yet (npm run hq -- blog setup)"));
 
+  const socialPosted = listSocial(slug, 26).filter((d) => d.status === "posted" && d.postedAt).map((d) => d.postedAt!);
+  out.push(socialPosted.length
+    ? m("social_posts", last7(socialPosted, now), `Last 7 days; ${socialPosted.length} planned posts out in all`, { weeks: weeklyCounts(socialPosted, 12, now, tz) })
+    : m("social_posts", null, readSocialConfig(slug) ? "No planned post has gone out yet" : "No weekly social plan yet (npm run hq -- social setup)"));
+
+  try {
+    const cs = listCampaigns(slug);
+    const live = cs.filter((c) => c.status === "live");
+    out.push(cs.length
+      ? m("campaigns_live", live.length, `${cs.length} campaigns in all; the value is how many are live`, { breakdown: tally(cs.map((c) => c.status)), period: "now" })
+      : m("campaigns_live", null, "No campaign yet (npm run hq -- campaign add)"));
+  } catch { out.push(m("campaigns_live", null, "The campaigns could not be read")); }
+
   const brand = brandCoverage(slug);
   out.push(brand ? m("brand_kit_coverage", Math.round(brand.share * 1000) / 1000, brand.missing.length ? `Missing ${brand.missing.join(", ")}` : "Guide, palette, mark, social templates, emails and a video style")
     : m("brand_kit_coverage", null, "No brand kit yet"));
@@ -276,6 +315,11 @@ export function hqMetrics(slug: string, now = Date.now(), extras: Extras = {}): 
       }
     }
   } catch { /* no ledger */ }
+
+  // Unit economics for the last closed month, from the ledger and the scorecard (lib/unit-economics.ts).
+  try {
+    for (const x of unitAnalytics(loadUnitEconomics(slug, new Date(now)))) out.push({ id: x.id, value: x.value, quality: x.quality, note: x.note, ...(x.period ? { period: x.period } : {}), ...(x.breakdown?.length ? { breakdown: x.breakdown } : {}) });
+  } catch { out.push(m("monthly_costs", null, "The ledger could not be read")); }
 
   try {
     const c = workflowChecksState(slug).snapshot;
@@ -353,7 +397,9 @@ export async function runAnalytics(slug: string, now: Date = new Date(), extras:
     let adapter: AnalyticsSnapshot | null = null;
     if (command) {
       try {
-        const value = await execAdapter(command, { action: "report", weeks: 12, currency: profile.currency, timezone: profile.timezone, now: now.toISOString() }, 240000);
+        // The campaigns that have started, so the adapter can count visits, sign-ups and revenue per tag since each start.
+        const campaigns = listCampaigns(slug).filter((c) => c.status !== "planned").map(({ id, utm, start, end }) => ({ id, utm, start, ...(end ? { end } : {}) }));
+        const value = await execAdapter(command, { action: "report", weeks: 12, currency: profile.currency, timezone: profile.timezone, now: now.toISOString(), campaigns }, 240000);
         const problem = analyticsProblem(value, profile.currency);
         if (problem) throw Error(`Invalid analytics snapshot at ${problem}`);
         adapter = rebuildAnalytics(value as AnalyticsSnapshot);
@@ -446,7 +492,8 @@ export function analyticsBoard(slug: string, now: Date = new Date()): Board {
         const weeks = [...sc.history, ...sc.snapshot.weeks].map((w) => ({ week: w.week, value: w.metrics.find((x) => x.id === id)?.value ?? null }));
         return finish({ ...base, status: "measured", value: cur.value, quality: cur.quality, note: cur.note, points: mergePoints(26, weeks), breakdown: cur.breakdown ?? [], period: cur.breakdown ? "this week" : null, from: "scorecard" });
       }
-      if (cur) return finish({ ...base, status: recurring || !RECURRING_ONLY.includes(id) ? "missing" : "na", value: null, quality: "missing", note: cur.note, points: [], breakdown: [], period: null, from: "scorecard" });
+      // A number the scorecard can't measure this week falls to HQ's own reading of it, if there is one.
+      if (cur && hq.get(id)?.value == null) return finish({ ...base, status: recurring || !RECURRING_ONLY.includes(id) ? "missing" : "na", value: null, quality: "missing", note: cur.note, points: [], breakdown: [], period: null, from: "scorecard" });
     }
     if (hq.get(id)?.value != null) {
       const x = hq.get(id)!;

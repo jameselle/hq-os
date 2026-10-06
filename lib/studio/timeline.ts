@@ -9,6 +9,9 @@ export type Word = { w: string; start: number; end: number }; // seconds, source
  *  the owner's cuts. */
 export type Piece = { source: string; start: number; end: number; outStart: number; seg?: number };
 
+/** Shortest piece worth keeping, in seconds (see keepPieces). */
+const MIN_PIECE = 0.15;
+
 /** Split each segment at pauses longer than `maxPause`, keeping a little air either side.
  *  Pauses come from the audio's own silence (FFmpeg silencedetect) when available: whisper
  *  stretches word end times across silence, so word gaps under-report pauses. */
@@ -39,7 +42,9 @@ export function keepPieces(spec: EditSpec, words: Record<string, Word[]>, silenc
     }
     ranges.push([a, seg.end]);
     for (const [s0, e0] of ranges) {
-      if (e0 - s0 < 0.05) continue;
+      // A sliver is only pause air, and a last piece shorter than loudnorm's 100 ms frame cost the render its final
+      // seconds of sound (0.08 s truncated, 0.1 s didn't). 0.15 s matches the air kept either side of a cut.
+      if (e0 - s0 < MIN_PIECE) continue;
       out.push({ source: seg.source, start: round(s0), end: round(e0), outStart: round(t), seg: segIdx });
       t += e0 - s0;
     }

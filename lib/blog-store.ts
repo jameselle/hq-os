@@ -99,7 +99,7 @@ export async function checkDrafts(slug: string, only?: string): Promise<DraftFil
     const sourceStatus: Record<string, number> = {};
     for (const s of d.meta.sources) if (/^https?:\/\//.test(s.url)) sourceStatus[s.url] = await statusOf(s.url);
     d.meta.checks = checkDraft(d, {
-      site: config.site, regulated: profile.regulated,
+      site: config.site, regulated: profile.regulated, banned: config.banned,
       existingSlugs: listed.map((p) => p.slug).filter((s) => s !== d.meta.slug || d.meta.status !== "published"),
       existingTexts: mine.filter((m) => m.file !== d.file).map((m) => m.markdown),
       sourceStatus,

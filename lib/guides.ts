@@ -38,6 +38,20 @@ const OTHER: Guide[] = [
     file: "docs/guides/workflows.md",
   },
   {
+    slug: "social",
+    kind: "page",
+    title: "Weekly social plan: every network, every week",
+    blurb: "A channel plan per business, then each week's posts drafted from it and from what happened, with cards rendered, checked, approved and posted (by HQ or by hand).",
+    file: "docs/guides/social.md",
+  },
+  {
+    slug: "campaigns",
+    kind: "page",
+    title: "Campaigns: brief to results",
+    blurb: "Plan a campaign with one goal and one number, tag every link, link its posts, blog posts and emails, and track what it cost and what it brought on the Campaigns page.",
+    file: "docs/guides/campaigns.md",
+  },
+  {
     slug: "blog",
     kind: "page",
     title: "Daily blog: researched posts every day",

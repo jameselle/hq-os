@@ -32,6 +32,16 @@ export const TOOL_LABEL: Record<ToolState, string> = {
   missing: "not installed",
 };
 
+/** Comment-reply triage buckets (lib/social-replies.ts). */
+export const BUCKET_TONE: Record<string, string> = {
+  KEYWORD: VIOLET,
+  LEAD: GREEN,
+  SUBSTANCE: BLUE,
+  QUESTION: AMBER,
+  SUPPORT: SLATE,
+  NOISE: SLATE,
+};
+
 export const SEVERITY_TONE: Record<Severity, string> = {
   critical: RED,
   attention: AMBER,

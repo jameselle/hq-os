@@ -23,6 +23,18 @@
         "Tells the owner to add the API key in Composio themselves",
         "Does not ask for the key in chat"
       ]
+    },
+    {
+      "id": 3,
+      "prompt": "Connect Xero so HQ can import our costs",
+      "expected_output": "Explains Xero needs the owner's own free Xero web app (redirect URI from Composio), the Client ID and secret pasted into Composio by the owner, read-only scopes, then connect, find the tenant id with XERO_GET_CONNECTIONS, write finance/costs-connection.json and run the first refresh.",
+      "files": [],
+      "expectations": [
+        "Tells the owner to register their own Xero app at developer.xero.com with Composio's redirect URI",
+        "Tells the owner to paste the Client ID and secret into Composio themselves; never asks for them in chat",
+        "Asks only for read-only scopes",
+        "Writes finance/costs-connection.json with the Composio account id and tenant id, then runs finance costs refresh"
+      ]
     }
   ]
 }

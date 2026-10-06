@@ -93,6 +93,12 @@ test("TikTok defaults to WoopSocial and says how to connect it without pasting k
   assert.match(t.action, /never paste it into chat/);
 });
 
+test("Postiz being down matters only to a business that posts through it", () => {
+  const down = facts({ connections: snapshot({}), postizUp: false });
+  assert.ok(!ids(buildFindings(depts(), down, profile({ channels: { instagram: "@acme" } }))).includes("postiz-down"));
+  assert.ok(ids(buildFindings(depts(), down, profile({ channels: { discord: "https://discord.gg/x" } }))).includes("postiz-down"));
+});
+
 test("Postiz channels only raise a finding when Postiz is down", () => {
   const p = profile({ channels: { discord: "https://discord.gg/x" } });
   assert.ok(!ids(buildFindings(depts(), facts({ connections: snapshot({}) }), p)).includes("connect-discord"));
@@ -108,6 +114,7 @@ test("Search Console through Composio clears the gcloud finding", () => {
 test("dashboards alone don't count as analytics; a collector does", () => {
   assert.ok(ids(buildFindings(depts({ data: ["Looker Studio"] }), facts(), profile())).includes("no-analytics"));
   assert.ok(!ids(buildFindings(depts({ data: ["Umami"] }), facts(), profile())).includes("no-analytics"));
+  assert.ok(!ids(buildFindings(depts({ data: ["Looker Studio"] }), facts(), profile({ analytics: { provider: "umami-cloud", id: "demo-id" } }))).includes("no-analytics"), "a hosted collector in the profile counts");
 });
 
 test("findings marked done disappear", () => {

@@ -81,6 +81,7 @@ const metrics = [
   metric('track_record', { base: 1.04, wobble: 0.05, dp: 2 }),
   metric('academy_activation', { base: 0.66, wobble: 0.05 }),
   metric('offseason_churn', { value: 0.047, breakdown: [{ label: 'Summer months', value: 0.068 }, { label: 'Autumn months', value: 0.044 }, { label: 'Winter months', value: 0.031 }, { label: 'Spring months', value: 0.045 }], period: 'last 12 months, monthly churn' }),
+  metric('paused_instead', { base: 3, int: true, wobble: 0.5 }),
   metric('releases', { base: 6, int: true, wobble: 0.4 }),
   metric('customer_bugs', { base: 1, int: true, wobble: 0.9 }),
   metric('top_customer_retention', { base: 0.92, wobble: 0.02 }),
@@ -102,4 +103,11 @@ const metrics = [
   metric('complaints', { base: 0, int: true, wobble: 0 }),
 ].map((x) => (x.quality === 'na' ? { ...x, value: null } : x));
 
-process.stdout.write(JSON.stringify({ version: 1, observedAt: new Date(now).toISOString(), currency, metrics }) + '\n');
+// Invented outcomes per campaign tag, for the campaigns HQ says have started.
+const campaigns = (Array.isArray(input.campaigns) ? input.campaigns : []).slice(0, 100).map((c) => {
+  const k = seed(String(c.utm)), visits = Math.round(400 + k * 900), signups = Math.round(visits * (0.03 + k * 0.03));
+  const paying = Math.round(signups * 0.35);
+  return { id: c.id, utm: String(c.utm).replace(/\*$/, 'ig'), visits, signups, paying, revenue: Math.round(paying * 24 * 100) / 100, period: `since ${c.start}, demo data` };
+});
+
+process.stdout.write(JSON.stringify({ version: 1, observedAt: new Date(now).toISOString(), currency, metrics, campaigns }) + '\n');

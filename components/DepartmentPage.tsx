@@ -3,6 +3,7 @@
 
 import { AnalyticsBoard } from "@/components/AnalyticsBoard";
 import { FinanceBoard } from "@/components/FinanceBoard";
+import { UnitEconomicsBoard } from "@/components/UnitEconomicsBoard";
 import { SupportBoard } from "@/components/SupportBoard";
 import { ScorecardCard } from "@/components/ScorecardCard";
 import Link from "next/link";
@@ -161,6 +162,8 @@ export default async function DepartmentPage({ params, embedded=false }: { param
       {d.slug === "data" && business && !embedded && <AnalyticsBoard business={business} />}
 
       {d.slug === "finance" && business && !embedded && <FinanceBoard business={business} />}
+
+      {d.slug === "finance" && business && !embedded && <UnitEconomicsBoard business={business} />}
 
       {d.slug === "support" && business && !embedded && <SupportBoard business={business} />}
 

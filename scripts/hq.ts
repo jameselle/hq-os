@@ -9,12 +9,18 @@
 // Publishing   connections save <file.json|-> · connections show · publishing <slug> · log-post <slug> <post.json|->
 // Scripts      script-check <script.txt|-> [--slug <business>] [--keyword WORD] [--target <posted seconds>] [--wpm N]
 // Competitors  competitors sync <slug> · competitors changes <slug> [--days N] [--json] · competitors log <slug> <name> <file|-> · competitors recheck <slug>
+//              competitors tick <slug|--all> [--force] [--wait <seconds>]   (the weekly brief, headless; job com.hq.competitors)
 // Brain        brain init · brain read <slug> <dept> [--chars N] · brain write <slug|hq> <note.json|-> · brain promote <slug> <note> [--title T] [--body file] · brain show <slug>
-// Tools        support refresh <slug|--all> · support show|digest <slug> · finance init <slug> · finance sync <slug|--all> · finance show <slug> · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug> · analytics refresh <slug|--all> · analytics show <slug> [--missing] [--dept <dept>] · workflows check <slug|--all>
+// Tools        support refresh <slug|--all> · support show|digest <slug> · finance init <slug> · finance sync <slug|--all> · finance show <slug> · finance unit-economics <slug> [--save] · finance import-costs <slug> <file|-> [--from xero|json] [--share N] [--since YYYY-MM] [--currency XXX] · finance costs <slug> · finance costs refresh <slug|--all> [--force] [--dry-run] · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug> · analytics refresh <slug|--all> · analytics show <slug> [--missing] [--dept <dept>] · workflows check <slug|--all>
 // Lifecycle    lifecycle show <slug> [flow] [--cached] · lifecycle explain <slug> <flow> · lifecycle approve|reject <slug> <message> [--yes --before <ISO>] · lifecycle notes <slug> [--all]
 //              lifecycle test <slug> <message> · lifecycle mode <slug> <flow> off|draft|auto [--yes]
 // Blog         blog setup <slug> --site <url> [--hour 6] [--sc-account A --sc-site S] · blog inputs|write|check|show|publish <slug> [--dry-run] · blog approve|reject|reopen <slug> <draft> · blog note <slug> <draft> "…" · blog mode <slug> off|draft|auto · blog tick <slug|--all>
+// Social       social setup <slug> --networks instagram:hq,x:hand,… [--weekday 1 --hour 7] · social inputs|write|check|show <slug> · social approve|reject|reopen <slug> <id> · social note <slug> <id> "…" · social posted <slug> <id> <url> · social mode <slug> off|draft|auto · social publish <slug|--all> [--id <id>] [--dry-run [--at <ISO>]] [--container] · social insights <slug|--all> [--dry-run] · social tick <slug|--all>
+//              social replies <slug> [--list | --fetch [--dry-run] | --draft | --approve <comment id> [--text "…"] | --reject <comment id> | --post [--dry-run]]   (opt-in comment replies; only approved ones post)
 // Experiments  experiment add <slug> "<hypothesis>" --metric <id> [--baseline N] · experiment close <slug> <id> won|lost|inconclusive [--result N] [--note "…"] · experiment list <slug>
+// Campaigns    campaign add <slug> <file.json|-> · campaign list <slug> · campaign show <slug> <id> · campaign report <slug> <id> [--save] [--json]
+//              campaign status <slug> <id> planned|live|paused|done · campaign link <slug> <id> social|blog|email|experiment|post|note <ref> [--remove]
+//              campaign note <slug> <id> "…" [--learning]
 // Health       doctor
 //
 // Never reads .env files. Secrets it creates (the restic password) go straight
@@ -35,12 +41,23 @@ import { NOTE_TYPES, TYPE_INFO } from "../lib/brain";
 import { runScorecard, scorecardState } from "../lib/scorecard";
 import { analyticsBoard, isoWeek, lastWeeks, runAnalytics } from "../lib/analytics";
 import { financeConnected, moneyByMonth, syncFinance } from "../lib/finance-sync";
+import { importCosts, importedCosts, toImport, type CostsSummary } from "../lib/finance-costs";
+import { costsConnected, readCostsConnection, readRefreshState, realRefreshDeps, refreshCosts, type CostsConnection } from "../lib/finance-costs-refresh";
 import { digestWritten, runSupport, supportConnected, supportDigest, supportState, writeSupportDigest } from "../lib/support";
 import { loadLedger } from "../lib/ledger-spend";
+import { unitBrief } from "../lib/unit-economics";
+import { loadUnitEconomics } from "../lib/unit-economics-store";
 import { listNotes as listLifecycleNotes } from "../lib/lifecycle-notes";
 import { decide, decisionText, type BlogConfig } from "../lib/blog";
 import { addNote as addBlogNote, checkDrafts, draftToday, listDrafts, log as blogLog, publishReady, readBlogConfig, setStatus as setBlogStatus, writeBlogConfig, blogDir } from "../lib/blog-store";
 import { gatherInputs, writeDraft } from "../lib/blog-writer";
+import { NETWORKS, socialDecisionText, weekOf, type Network, type Posting, type SocialConfig } from "../lib/social";
+import { addSocialNote, checkSocialDrafts, listSocial, markPosted, readSocialConfig, setSocialStatus, socialDir, socialLog, writeSocialConfig } from "../lib/social-store";
+import { gatherSocialInputs, writeWeek } from "../lib/social-writer";
+import { fullCaption } from "../lib/social-publish";
+import { acquireSocialLock, insightsDue, offlineDeps, publishDue, realDeps, refreshInsights, type PublishOutcome } from "../lib/social-publisher";
+import { repliesConfig } from "../lib/social-replies";
+import { approveReply, draftReplies, fetchComments, postReplies, readQueue, realReplyDeps, rejectReply, replyTick } from "../lib/social-replies-store";
 import { fetchCompetitorChanges, fetchOpenFindings } from "../lib/analytics-findings";
 import { WORKFLOW_ANALYTICS, formatAnalytics } from "../lib/analytics-metrics";
 import { runWorkflowChecks, workflowChecksState } from "../lib/workflow-checks";
@@ -49,12 +66,17 @@ import { flowOfMessage, flowPage, namingProblems } from "../lib/lifecycle-names"
 import { explainFlow, flowStatus, lifecycleStatus, timeLabel } from "../lib/lifecycle-status";
 import { workflowSlug, workflowsFor } from "../lib/workflows";
 import { addExperiment, closeExperiment, experimentsMarkdown, listExperiments, type Verdict } from "../lib/experiments";
+import { addCampaign, addCampaignResult, getCampaign, linkCampaign, listCampaigns, noteCampaign, readCampaigns, setCampaignStatus, unlinkCampaign } from "../lib/campaign-store";
+import { campaignFacts } from "../lib/campaign-report";
+import { CAMPAIGN_STATUSES, CHANNEL_LABEL, LINK_KINDS, STATUS_LABEL, campaignReport, measuredNumbers, type CampaignStatus, type LinkKind, type Measure } from "../lib/campaigns";
+import { ANALYTICS, formatAnalytics as fmtA } from "../lib/analytics-metrics";
 import { formatValue, scorecardRows } from "../lib/scorecard-metrics";
 import { validateProfile } from "../lib/profile";
 import { PLATFORMS, captionProblems, channelStatuses, resolveRoute } from "../lib/publishing";
 import { checkScript, formatReport } from "../lib/script-check";
 import { mergeBrand } from "../lib/studio/brand";
 import { privateNames } from "../lib/brain-store";
+import { tick as competitorTick } from "../lib/competitor-tick";
 import { WATCHER_KEYCHAIN, WATCHER_URL, competitorFromTitle, competitorNoteHead, recentChanges, shortUrl, watchTag, watchTargets, type WatchRow } from "../lib/competitors";
 import {
   businessDir,
@@ -379,12 +401,36 @@ function defaultServices(): Service[] {
       schedule: { Hour: 6, Minute: 0 },
     },
     {
+      label: "com.hq.finance",
+      description: "Daily check, monthly refresh: each business's running costs from its accounting system (finance/costs-connection.json), re-imported from the 3rd of each month",
+      program: [node, "run", "hq", "--", "finance", "costs", "refresh", "--all"],
+      cwd: hqRoot(),
+      keepAlive: false,
+      schedule: { Hour: 5, Minute: 30 },
+    },
+    {
       label: "com.hq.blog",
       description: "Hourly: each business's daily blog post (research, write, check), then publish what the owner or the rules allow",
       program: [node, "run", "hq", "--", "blog", "tick", "--all"],
       cwd: hqRoot(),
       keepAlive: false,
       schedule: { Minute: 20 },
+    },
+    {
+      label: "com.hq.social",
+      description: "Hourly: each business's weekly social drafts on its planning day, checks and card renders, then HQ posts what's due and reads the account's numbers once a day",
+      program: [node, "run", "hq", "--", "social", "tick", "--all"],
+      cwd: hqRoot(),
+      keepAlive: false,
+      schedule: { Minute: 40 },
+    },
+    {
+      label: "com.hq.competitors",
+      description: "Weekly, Monday 07:00: each business's competitor sweep and brief (watcher recheck, headless writer, brain signals)",
+      program: [node, "run", "hq", "--", "competitors", "tick", "--all"],
+      cwd: hqRoot(),
+      keepAlive: false,
+      schedule: { Weekday: 1, Hour: 7, Minute: 0 },
     },
   ];
   const postiz = path.join(HOME, "postiz-app");
@@ -1062,6 +1108,321 @@ async function cmdBlog(pos: string[], args: string[], flag: (f: string) => boole
   }
 }
 
+
+// ---------------------------------------------------------------- social
+
+/** The days left in this ISO week (today through Sunday), in the business's timezone. */
+function daysLeftInWeek(tz: string, now = new Date()): string[] {
+  const today = new Date(now.toLocaleDateString("en-CA", { timeZone: tz }) + "T00:00:00Z");
+  const dow = (today.getUTCDay() + 6) % 7;
+  return Array.from({ length: 7 - dow }, (_, i) => new Date(today.getTime() + i * 864e5).toISOString().slice(0, 10));
+}
+const weekdayIn = (tz: string, d = new Date()) => ((new Date(d.toLocaleDateString("en-CA", { timeZone: tz }) + "T00:00:00Z").getUTCDay() + 6) % 7) + 1;
+
+const outcomeLine = (o: PublishOutcome) => `${o.id} ${o.network}/${o.format}: ${o.status}. ${o.detail}`;
+
+async function socialTick(slug: string) {
+  const p = getProfile(slug), c = readSocialConfig(slug);
+  if (!p || !c || (c.mode === "off" && !repliesConfig(c))) return;
+  const lock = acquireSocialLock(slug);
+  if (!lock) return console.log(`${slug}: a social run is already going`);
+  try {
+    // Social off with replies on: the reply queue only, no week, no posting, no insights.
+    if (c.mode === "off") { for (const l of await replyTick(slug, realReplyDeps, { beforeEach: lock.touch })) console.log(`${slug}: ${l}`); return; }
+    const week = weekOf(new Date(), p.timezone);
+    const haveWeek = listSocial(slug, 1).some((d) => d.week === week);
+    if (weekdayIn(p.timezone) === (c.weekday ?? 1) && hourIn(p.timezone) >= (c.hour ?? 7) && !haveWeek) {
+      const r = await writeWeek(slug, week, daysLeftInWeek(p.timezone));
+      console.log(`${slug}: ${r.ok ? `wrote ${r.made} posts for ${week}` : `no posts: ${r.why}`}`);
+    }
+    const checked = await checkSocialDrafts(slug);
+    if (checked.length) console.log(`${slug}: checked ${checked.length} posts, ${checked.filter((d) => d.checks?.some((x) => !x.ok)).length} failing`);
+    for (const o of await publishDue(slug, realDeps, { beforeEach: lock.touch })) console.log(`${slug}: ${outcomeLine(o)}`);
+    // Once a day, the account's own numbers for the analytics adapter (read-only).
+    if (insightsDue(slug, new Date())) { lock.touch(); const r = await refreshInsights(slug, realDeps); if (r.status !== "skipped") console.log(`${slug}: insights ${r.status}. ${r.detail}`); }
+    // Opted-in businesses: approved comment replies out, new comments in, drafts for the owner.
+    if (repliesConfig(c)) for (const l of await replyTick(slug, realReplyDeps, { beforeEach: lock.touch })) console.log(`${slug}: ${l}`);
+  } catch (e) {
+    socialLog(slug, { event: "tick-failed", why: String((e as Error).message).slice(0, 200) });
+    console.error(`${slug}: ${(e as Error).message}`);
+  } finally { lock.release(); }
+}
+
+async function socialPublish(slug: string, o: { dryRun: boolean; id?: string; container: boolean; at?: string }) {
+  if (o.container && !o.id) die("--container needs --id <post>");
+  if (o.at && !o.dryRun) die("--at only goes with --dry-run");
+  if (o.dryRun) {
+    // --at <ISO time> asks what a run then would do (a dry run never calls out, whatever the clock says).
+    const now = o.at ? new Date(o.at) : new Date();
+    if (Number.isNaN(now.getTime())) die("--at needs an ISO time, e.g. 2026-10-07T10:00:00+11:00");
+    const res = await publishDue(slug, offlineDeps(now), { dryRun: true, id: o.id });
+    if (!res.length) console.log(`${slug}: nothing on an HQ-posted network`);
+    for (const x of res) {
+      console.log(`${slug}: ${outcomeLine(x)}`);
+      // One post asked for by id: show exactly what would go out.
+      if (o.id) {
+        const d = listSocial(slug, 12).find((p) => p.id === x.id);
+        if (d) console.log(`\n--- caption as posted ---\n${fullCaption(d)}\n--- media ---\n${(d.media ?? []).join("\n") || d.video?.path || "(none)"}`);
+      }
+    }
+    return;
+  }
+  const lock = acquireSocialLock(slug);
+  if (!lock) return console.log(`${slug}: a social run is already going`);
+  try {
+    const res = await publishDue(slug, realDeps, { id: o.id, mode: o.container ? "container" : "publish", beforeEach: lock.touch });
+    if (!res.length) console.log(`${slug}: nothing due`);
+    for (const x of res) console.log(`${slug}: ${outcomeLine(x)}`);
+  } finally { lock.release(); }
+}
+
+async function socialInsights(slug: string, dryRun: boolean) {
+  if (dryRun) { const r = await refreshInsights(slug, offlineDeps(), { dryRun: true }); return console.log(`${slug}: insights ${r.status}. ${r.detail}`); }
+  const lock = acquireSocialLock(slug);
+  if (!lock) return console.log(`${slug}: a social run is already going`);
+  try { const r = await refreshInsights(slug, realDeps); console.log(`${slug}: insights ${r.status}. ${r.detail}`); } finally { lock.release(); }
+}
+
+async function socialReplies(slug: string, args: string[], flag: (f: string) => boolean) {
+  const valueOf = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
+  const dryRun = flag("--dry-run");
+  if (!repliesConfig(readSocialConfig(slug)) && !flag("--list")) die(`comment replies aren't switched on for ${slug}: add "replies": { "instagram": { "keychain": "<Keychain account>" } } to social.json (see /guides/social)`);
+  const locked = async (fn: () => Promise<void>) => {
+    const lock = acquireSocialLock(slug);
+    if (!lock) return console.log(`${slug}: a social run is already going`);
+    try { await fn(); } finally { lock.release(); }
+  };
+  if (flag("--approve")) { const d = approveReply(slug, valueOf("--approve") ?? die("--approve <comment id>"), valueOf("--text")); return console.log(`${d.id}: approved. HQ replies to @${d.username} at its next hourly run: ${d.reply}`); }
+  if (flag("--reject")) return console.log(`${rejectReply(slug, valueOf("--reject") ?? die("--reject <comment id>")).id}: rejected`);
+  if (flag("--fetch")) {
+    if (dryRun) { const r = await fetchComments(slug, realReplyDeps, { dryRun: true }); console.log(`${slug}: comments ${r.status}. ${r.detail}`); for (const x of r.items ?? []) console.log(`  @${x.username}: ${x.comment.slice(0, 100)}`); return; }
+    return locked(async () => { const r = await fetchComments(slug, realReplyDeps); console.log(`${slug}: comments ${r.status}. ${r.detail}`); });
+  }
+  if (flag("--draft")) return locked(async () => { const r = await draftReplies(slug, realReplyDeps); console.log(`${slug}: drafts ${r.status}. ${r.detail}${r.craft?.length ? ` (with ${r.craft.join(", ")})` : ""}${r.costUsd !== undefined ? ` (US$${r.costUsd.toFixed(2)})` : ""}`); });
+  if (flag("--post")) {
+    if (dryRun) { const r = await postReplies(slug, realReplyDeps, { dryRun: true }); if (!r.length) console.log(`${slug}: no approved replies waiting`); for (const x of r) console.log(`${slug}: ${x.id} ${x.status}. ${x.detail}`); return; }
+    return locked(async () => { const r = await postReplies(slug, realReplyDeps); if (!r.length) console.log(`${slug}: no approved replies waiting`); for (const x of r) console.log(`${slug}: ${x.id} ${x.status}. ${x.detail}`); });
+  }
+  const q = readQueue(slug);
+  if (!q.length) return console.log(`${slug}: the reply queue is empty`);
+  for (const x of q.slice(-60)) console.log(`${x.id}  ${x.status.padEnd(8)} ${(x.bucket ?? "").padEnd(9)} @${x.username}: ${x.comment.slice(0, 80)}${x.reply ? `\n${" ".repeat(x.id.length + 2)}→ ${x.reply}` : ""}${x.reelIdea ? "  [reel idea]" : ""}${x.error ? `  (${x.error})` : ""}`);
+}
+
+async function cmdSocial(pos: string[], args: string[], flag: (f: string) => boolean) {
+  const sub = pos[0];
+  const valueOf = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
+  if (sub === "tick") {
+    const slugs = flag("--all") ? listBusinesses().profiles.map((p) => p.slug).filter((s) => readSocialConfig(s)) : [pos[1] ?? die("social tick <slug|--all>")];
+    for (const s of slugs) await socialTick(s);
+    return;
+  }
+  if (sub === "insights") {
+    const slugs = flag("--all") ? listBusinesses().profiles.map((p) => p.slug).filter((s) => readSocialConfig(s)) : [(getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`)).slug];
+    for (const s of slugs) await socialInsights(s, flag("--dry-run"));
+    return;
+  }
+  if (sub === "publish") {
+    const slugs = flag("--all") ? listBusinesses().profiles.map((p) => p.slug).filter((s) => readSocialConfig(s)) : [(getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`)).slug];
+    for (const s of slugs) await socialPublish(s, { dryRun: flag("--dry-run"), id: valueOf("--id"), container: flag("--container"), at: valueOf("--at") });
+    return;
+  }
+  const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+  const c = readSocialConfig(p.slug);
+  switch (sub) {
+    case "setup": {
+      const nets = (valueOf("--networks") ?? die("social setup <slug> --networks instagram:hq,x:hand,…")).split(",").map((x) => x.trim()).filter(Boolean);
+      const networks: SocialConfig["networks"] = { ...(c?.networks ?? {}) };
+      for (const n of nets) {
+        const [net, posting] = n.split(":") as [Network, Posting];
+        if (!(NETWORKS as readonly string[]).includes(net) || !["hq", "hand", "elsewhere"].includes(posting)) die(`bad network ${n}: use <network>:hq|hand|elsewhere`);
+        networks[net] = { ...(networks[net] ?? {}), posting };
+      }
+      const cfg: SocialConfig = { ...(c ?? {}), mode: c?.mode ?? "auto", networks, weekday: Number(valueOf("--weekday") ?? c?.weekday ?? 1), hour: Number(valueOf("--hour") ?? c?.hour ?? 7),
+        approveUntil: c?.approveUntil ?? new Date(Date.now() + 7 * 864e5).toISOString() };
+      writeSocialConfig(p.slug, cfg);
+      return console.log(`social set up for ${p.name}: ${Object.entries(networks).map(([n, v]) => `${n} (${v?.posting})`).join(", ")}; drafts every ${["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][cfg.weekday!]} from ${cfg.hour}:00; every post waits for you until ${cfg.approveUntil!.slice(0, 10)}`);
+    }
+    case "inputs":
+      return console.log(JSON.stringify(gatherSocialInputs(p.slug, weekOf(new Date(), p.timezone), daysLeftInWeek(p.timezone)), null, 2));
+    case "write": {
+      const r = await writeWeek(p.slug, weekOf(new Date(), p.timezone), daysLeftInWeek(p.timezone));
+      if (!r.ok) return die(`no posts: ${r.why}`);
+      await checkSocialDrafts(p.slug);
+      return console.log(`wrote ${r.made} posts${r.costUsd !== undefined ? ` (US$${r.costUsd.toFixed(2)})` : ""}`);
+    }
+    case "check": {
+      for (const d of await checkSocialDrafts(p.slug, { render: !flag("--no-render") })) console.log(`${d.id} ${d.network}/${d.format}: ${(d.checks ?? []).filter((x) => !x.ok).map((x) => `${x.label} (${x.detail})`).join("; ") || "all pass"}${d.media?.length ? ` · ${d.media.length} cards` : ""}`);
+      return;
+    }
+    case "show": {
+      if (!c) return console.log(`${p.name} has no social plan yet: npm run hq -- social setup ${p.slug} --networks …`);
+      for (const d of listSocial(p.slug, 2)) console.log(`${d.day} ${d.network.padEnd(9)} ${d.format.padEnd(8)} ${d.status.padEnd(8)} ${socialDecisionText(c, d, new Date())}`);
+      return;
+    }
+    case "approve": case "reject": case "reopen": {
+      const d = setSocialStatus(p.slug, pos[2] ?? die(`social ${sub} <slug> <id>`), sub === "approve" ? "approved" : sub === "reject" ? "rejected" : "draft");
+      return console.log(`${d.id}: ${d.status}${c ? `. ${socialDecisionText(c, d, new Date())}` : ""}`);
+    }
+    case "note":
+      return console.log(`noted on ${addSocialNote(p.slug, pos[2] ?? die("social note <slug> <id> \"…\""), pos[3] ?? die("missing note")).id}`);
+    case "posted":
+      return console.log(`${markPosted(p.slug, pos[2] ?? die("social posted <slug> <id> <url>"), pos[3] ?? die("missing url")).id}: posted`);
+    case "mode": {
+      if (!c) return die("set it up first: social setup");
+      const mode = pos[2] as SocialConfig["mode"];
+      if (!["off", "draft", "auto"].includes(mode)) return die("social mode <slug> off|draft|auto");
+      writeSocialConfig(p.slug, { ...c, mode });
+      return console.log(`${p.name}'s social plan is now ${mode}`);
+    }
+    case "replies":
+      return socialReplies(p.slug, args, flag);
+    default:
+      return die("social: setup | inputs | write | check | show | approve | reject | reopen | note | posted | mode | publish | insights | replies | tick");
+  }
+}
+
+// ---------------------------------------------------------------- campaigns
+
+function cmdCampaign(pos: string[], args: string[], flag: (f: string) => boolean) {
+  const sub = pos[0];
+  const usage = "campaign: add <slug> <file.json|-> | list <slug> | show|report <slug> <id> | status <slug> <id> planned|live|paused|done | link <slug> <id> <kind> <ref> [--remove] | note <slug> <id> \"…\" [--learning]";
+  if (!sub || !["add", "list", "show", "report", "status", "link", "note"].includes(sub)) return die(usage);
+  const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1] ?? "(none given)"}`);
+  const money = (v: number | null) => fmtA("money", v, p.currency);
+  if (sub === "add") {
+    let input: unknown;
+    try { input = JSON.parse(readInput(pos[2])); } catch (e) { return die(`not JSON: ${(e as Error).message}`); }
+    const c = addCampaign(p.slug, input as never);
+    return console.log(`campaign ${c.id} added (${c.status}), tag ${c.utm}\n  ${path.join(businessDir(p.slug), "campaigns", `${c.id}.json`)}`);
+  }
+  if (sub === "list") {
+    const { campaigns, invalid } = readCampaigns(p.slug);
+    if (!campaigns.length) console.log(`${p.name} has no campaigns yet: npm run hq -- campaign add ${p.slug} <file.json>`);
+    for (const c of campaigns) console.log(`${STATUS_LABEL[c.status].padEnd(8)} ${c.start}${c.end ? ` to ${c.end}` : "".padEnd(14)}  ${c.id.padEnd(48)} ${c.name}`);
+    for (const x of invalid) console.log(`! ${x.file}: ${x.problems.join("; ")}`);
+    return;
+  }
+  const c = getCampaign(p.slug, pos[2] ?? die(usage));
+  if (sub === "status") {
+    const st = pos[3] as CampaignStatus;
+    if (!(CAMPAIGN_STATUSES as readonly string[]).includes(st)) return die("campaign status <slug> <id> planned|live|paused|done");
+    const x = setCampaignStatus(p.slug, c.id, st);
+    return console.log(`${x.name}: ${STATUS_LABEL[x.status]}${x.end ? ` (ends ${x.end})` : ""}`);
+  }
+  if (sub === "link") {
+    const kind = pos[3] as LinkKind, ref = pos.slice(4).join(" ");
+    if (!(LINK_KINDS as readonly string[]).includes(kind) || !ref) return die(`campaign link <slug> <id> ${LINK_KINDS.join("|")} <ref> [--remove]`);
+    const x = flag("--remove") ? unlinkCampaign(p.slug, c.id, kind, ref) : linkCampaign(p.slug, c.id, kind, ref);
+    return console.log(`${x.name}: ${flag("--remove") ? "unlinked" : "linked"} ${kind} ${ref} (${x.links.length} links)`);
+  }
+  if (sub === "note") {
+    const text = pos.slice(3).join(" ");
+    if (!text.trim()) return die("campaign note <slug> <id> \"…\" [--learning]");
+    const x = noteCampaign(p.slug, c.id, text, { learning: flag("--learning") });
+    return console.log(`${x.name}: ${flag("--learning") ? "learning" : "note"} saved (${x.notes.length} in all)`);
+  }
+  if (sub === "show") {
+    console.log(`${c.name}  [${STATUS_LABEL[c.status]}]  ${c.id}`);
+    console.log(`  goal       ${c.goal}`);
+    console.log(`  lever      ${c.lever} · owner ${c.owner} · ${c.start}${c.end ? ` to ${c.end}` : " onwards"}${c.budget !== undefined ? ` · budget ${money(c.budget)}` : ""}`);
+    console.log(`  audience   ${c.audience}`);
+    console.log(`  offer      ${c.offer}`);
+    console.log(`  channels   ${c.channels.map((x) => CHANNEL_LABEL[x] ?? x).join(", ")}`);
+    console.log(`  tag        ${c.utm}`);
+    console.log(`  judged by  ${ANALYTICS[c.metric].label}${c.target !== undefined ? `, target ${fmtA(ANALYTICS[c.metric].unit, c.target, p.currency)}` : ""}`);
+    for (const l of c.links) console.log(`  link       ${l.kind.padEnd(10)} ${l.ref}`);
+    for (const n of c.notes) console.log(`  ${n.learning ? "learning" : "note    "}   ${n.at.slice(0, 10)} ${n.text}`);
+    for (const r of c.results) console.log(`  result     ${r.at.slice(0, 10)} ${r.text}`);
+    return;
+  }
+  // report
+  const r = campaignReport(c, campaignFacts(p.slug, { campaigns: [c] }));
+  if (flag("--json")) return console.log(JSON.stringify(r, null, 2));
+  const fm = (m: Measure) => (m.value === null ? `not measured yet: ${m.note}` : `${fmtA(m.unit, m.value, p.currency)} (${m.note})`);
+  const posted = r.social.filter((s) => s.status === "posted").length;
+  console.log(`${p.name} · ${c.name}  [${STATUS_LABEL[c.status]}${r.day !== null ? `, day ${r.day + 1}` : `, starts ${c.start}`}]`);
+  console.log(`  goal              ${c.goal}`);
+  console.log(`  judged by         ${r.primary.label}${r.primary.target !== null ? `, target ${fmtA(r.primary.unit, r.primary.target, p.currency)}` : ""}: ${r.primary.value === null ? "not measured yet" : `${fmtA(r.primary.unit, r.primary.value, p.currency)}${r.primary.scope === "business" ? " business-wide" : ""}${r.primary.progress !== null ? `, ${Math.round(r.primary.progress * 100)}% of target` : r.primary.met !== null ? (r.primary.met ? ", target met" : ", target not met yet") : ""}`}`);
+  console.log(`  items out         ${r.out} (social ${posted} of ${r.social.length} posted · blog ${r.blog.filter((b) => b.status === "published").length} of ${r.blog.length} live · posts ${r.posts.filter((x) => x.readBack).length} of ${r.posts.length} read back · emails ${r.emails.reduce((n, e) => n + (e.sent ?? 0), 0)} delivered)`);
+  for (const [label, m] of [["spend", r.spend], ["visits", r.visits], ["sign-ups", r.signups], ["paying", r.paying], ["revenue", r.revenue], ["cost per sign-up", r.costPerSignup], ["cost per paying", r.costPerPaying]] as const)
+    console.log(`  ${label.padEnd(17)} ${fm(m)}`);
+  console.log(`  return on spend   ${r.roi.value === null ? `not measured yet: ${r.roi.note}` : `${Math.round(r.roi.value * 100)}%`}`);
+  for (const s of r.social) console.log(`  social            ${s.id} ${s.status}${s.url ? ` ${s.url}` : ""}`);
+  for (const b of r.blog) console.log(`  blog              ${b.slug} ${b.status}${b.url ? ` ${b.url}` : ""}`);
+  for (const x of r.posts) console.log(`  post              ${x.url}${x.readBack ? ` (read back, ${x.platform})` : " (not in HQ's publish log)"}`);
+  for (const e of r.emails) console.log(`  email             ${e.ref}${e.label ? ` (${e.label})` : ""}: ${e.sent === null ? e.note : `${e.sent} sent; ${e.note}`}`);
+  for (const e of r.experiments) console.log(`  experiment        ${e.id} ${e.status ?? "not found"}${e.hypothesis ? `: ${e.hypothesis.slice(0, 90)}` : ""}`);
+  for (const n of r.notes) console.log(`  note              ${n.ref}${n.found ? "" : " (not in the vault)"}`);
+  if (r.missing.length) { console.log("  not measured yet:"); for (const m of r.missing) console.log(`    - ${m}`); }
+  if (flag("--save")) {
+    const numbers = measuredNumbers(r);
+    const text = `Day ${r.day !== null ? r.day + 1 : 0}: ${r.out} ${r.out === 1 ? "item" : "items"} out; ${r.primary.label} ${r.primary.value === null ? "not measured yet" : fmtA(r.primary.unit, r.primary.value, p.currency) + (r.primary.scope === "business" ? " business-wide" : "")}`;
+    addCampaignResult(p.slug, c.id, { text, numbers });
+    console.log(`saved to the results log: ${text}`);
+  }
+}
+
+// ---------------------------------------------------------------- finance: running costs from an accounting system
+
+function printCosts(name: string, currency: string, s: CostsSummary) {
+  const f = (n: number) => formatValue("money", n, currency);
+  const cats = Object.keys(s.totals).sort();
+  console.log(`${name} · costs by month (${currency})${s.file ? ` · ${s.file}` : ""}`);
+  for (const m of s.months) console.log(`${m.month}  ${f(m.total).padStart(11)}  ${cats.map((k) => `${k} ${f(m.byCategory[k] ?? 0)}`).join(", ")}`);
+  console.log(`total    ${f(s.total).padStart(11)}  ${cats.map((k) => `${k} ${f(s.totals[k])}`).join(", ")}`);
+}
+
+async function cmdFinanceCosts(args: string[]) {
+  const VALUE = new Set(["--from", "--share", "--since", "--currency"]);
+  const pos = args.filter((a, i) => !a.startsWith("--") && !VALUE.has(args[i - 1]));
+  const valueOf = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
+  const flag = (f: string) => args.includes(f);
+  if (pos[0] === "import-costs") {
+    const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1] ?? "(none)"} · usage: finance import-costs <slug> <file|-> [--from xero|json] [--share N] [--since YYYY-MM] [--currency XXX]`);
+    const from = valueOf("--from");
+    if (from !== undefined && from !== "xero" && from !== "json") die("--from is xero or json");
+    const shareText = valueOf("--share");
+    const share = shareText === undefined ? undefined : Number(shareText);
+    if (share !== undefined && !(share > 0 && share <= 1)) die("--share is a number more than 0 and at most 1 (0.5 = half)");
+    let conn: CostsConnection | null = null;
+    try { conn = costsConnected(p.slug) ? readCostsConnection(p.slug) : null; } catch { conn = null; }
+    let raw: unknown;
+    try { raw = JSON.parse(readInput(pos[2])); } catch (e) { return die(`not JSON: ${(e as Error).message}`); }
+    try {
+      const imp = toImport(raw, from as "xero" | "json" | undefined, valueOf("--currency") ?? conn?.currency);
+      const s = importCosts(p.slug, imp, { share: share ?? conn?.share, since: valueOf("--since") ?? conn?.since });
+      printCosts(p.name, p.currency, s);
+      console.log(`wrote ${s.file} (bean-check: OK)`);
+    } catch (e) { return die(e instanceof Error ? e.message : String(e)); }
+    if (loaded("com.hq.fava")) spawnSync("/bin/launchctl", ["kickstart", "-k", `gui/${uid()}/com.hq.fava`], { stdio: "ignore" });
+    return;
+  }
+  if (pos[1] === "refresh") {
+    const slugs = flag("--all") ? listBusinesses().profiles.filter((p) => costsConnected(p.slug)).map((p) => p.slug) : [pos[2] ?? die("finance costs refresh <slug> | --all [--force] [--dry-run]")];
+    let failed = 0, imported = 0;
+    for (const slug of slugs) {
+      try {
+        const r = await refreshCosts(slug, realRefreshDeps, { force: flag("--force"), dryRun: flag("--dry-run") });
+        console.log(`${r.status} ${slug}: ${r.detail}`);
+        if (r.status === "failed") failed++;
+        if (r.summary) { imported++; const p = getProfile(slug)!; printCosts(p.name, p.currency, r.summary); }
+      } catch (e) { failed++; console.log(`failed ${slug}: ${e instanceof Error ? e.message : e}`); }
+    }
+    if (imported && loaded("com.hq.fava")) spawnSync("/bin/launchctl", ["kickstart", "-k", `gui/${uid()}/com.hq.fava`], { stdio: "ignore" });
+    if (failed) process.exit(1);
+    return;
+  }
+  const p = getProfile(pos[1] ?? "") ?? die("finance costs <slug> | costs refresh <slug|--all> [--force] [--dry-run]");
+  const files = importedCosts(p.slug, p.currency);
+  const st = readRefreshState(p.slug);
+  if (costsConnected(p.slug)) {
+    const c = readCostsConnection(p.slug);
+    console.log(`connected: ${c.source} (Composio account ${c.composioAccount}, share ${c.share ?? 1}${c.since ? `, from ${c.since}` : ""}) · refreshed ${st.lastOk ?? "never"}${st.ok === false ? ` · last try failed: ${st.why}` : ""}`);
+  } else console.log("no costs connection (finance/costs-connection.json); imports by hand only");
+  if (!files.length) return console.log(`${p.name}: no costs imported yet; run: finance import-costs ${p.slug} <file>`);
+  for (const f of files) { printCosts(`${p.name} · from ${f.source}, written ${f.updated.slice(0, 16).replace("T", " ")}`, p.currency, f); }
+}
+
 // ---------------------------------------------------------------- main
 
 async function main() {
@@ -1186,8 +1547,17 @@ async function main() {
           return cmdCompetitorsRecheck(p2[1]);
         case "log":
           return cmdCompetitorsLog(p2[1], p2[2], p2[3]);
+        case "tick": {
+          const waitArg = args.indexOf("--wait");
+          const wait = waitArg >= 0 ? Number(args[waitArg + 1]) : 90;
+          const target = flag("--all") ? "all" : [p2.filter((x) => x !== String(wait))[1] ?? die("competitors tick <slug|--all> [--force] [--wait <seconds>]")];
+          const results = await competitorTick(target, { force: flag("--force") }, { recheckWaitMs: wait * 1000, say: (l) => console.log(l) });
+          for (const r of results) console.log(`${r.slug}: ${r.status}${r.why ? `: ${r.why}` : ""}${r.plan ? ` → ${r.plan}` : ""}${r.signals !== undefined ? ` (${r.signals} signal(s))` : ""}${r.costUsd !== undefined ? ` US$${r.costUsd.toFixed(2)}` : ""}`);
+          if (results.some((r) => r.status === "failed")) process.exitCode = 1;
+          return;
+        }
         default:
-          return die("competitors: sync <slug> | changes <slug> [--days N] [--json] | recheck <slug> | log <slug> <name> <file|->");
+          return die("competitors: sync <slug> | changes <slug> [--days N] [--json] | recheck <slug> | log <slug> <name> <file|-> | tick <slug|--all> [--force] [--wait <seconds>]");
       }
     }
     case "support": {
@@ -1221,6 +1591,7 @@ async function main() {
       return die(usage);
     }
     case "finance": {
+      if (pos[0] === "import-costs" || pos[0] === "costs") return cmdFinanceCosts(args);
       if (pos[0] === "sync") {
         const slugs = flag("--all") ? listBusinesses().profiles.filter((p) => financeConnected(p.slug)).map((p) => p.slug) : [pos[1] ?? die("finance sync <slug> | --all")];
         let failed = 0;
@@ -1243,7 +1614,19 @@ async function main() {
         for (const m of months) console.log(`${m.month}  in ${f(m.income - m.refunds).padStart(10)}  out ${f(m.costs).padStart(10)}  margin ${f(m.income - m.refunds - m.costs).padStart(10)}${Object.keys(m.byCost).length ? "  " + Object.entries(m.byCost).map(([k, v]) => `${k} ${f(v)}`).join(", ") : ""}`);
         return;
       }
-      if (pos[0] !== "init") return die("finance: init <slug> | sync <slug|--all> | show <slug>");
+      if (pos[0] === "unit-economics") {
+        const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1] ?? "(none)"} · usage: finance unit-economics <slug> [--save]`);
+        const u = loadUnitEconomics(p.slug);
+        const md = unitBrief(u!, { business: p.name, today: new Date().toISOString().slice(0, 10) });
+        console.log(md);
+        if (flag("--save")) {
+          if (!u?.latest) return die("nothing to save: no closed month with costs in the ledger");
+          const r = savePlan(p.slug, "finance", md, new Date(), "unit economics");
+          console.log(`saved: ${r.file}\nvault: ${r.note}`);
+        }
+        return;
+      }
+      if (pos[0] !== "init") return die("finance: init <slug> | sync <slug|--all> | show <slug> | unit-economics <slug> [--save] | import-costs <slug> <file|-> | costs <slug> | costs refresh <slug|--all>");
       const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
       const file = initLedger(p);
       const check = which("bean-check") ? spawnSync("bean-check", [file], { encoding: "utf8" }) : null;
@@ -1396,6 +1779,8 @@ async function main() {
       }
       return die("brain: init | read <slug> <dept> | write <slug|hq> <note.json|-> | promote <slug> <note> | show <slug>");
     }
+    case "campaign":
+      return cmdCampaign(pos, args, flag);
     case "experiment": {
       const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
       const valueOf = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
@@ -1419,6 +1804,8 @@ async function main() {
     }
     case "blog":
       return cmdBlog(pos, args, flag);
+    case "social":
+      return cmdSocial(pos, args, flag);
     case "doctor":
       return cmdDoctor();
     default: {

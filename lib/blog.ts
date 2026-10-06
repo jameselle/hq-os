@@ -18,6 +18,8 @@ export type BlogConfig = {
   topics?: string[];
   /** Searches or subjects never to write about. */
   avoid?: string[];
+  /** Names or phrases this business's posts must never contain (for example operators it may not promote). */
+  banned?: string[];
   /** The Composio Search Console account alias and the exact property, for the research step. */
   searchConsole?: { account: string; site: string };
 };
@@ -39,6 +41,8 @@ export type BlogDraftMeta = {
   status: BlogStatus;
   /** Why this topic: the research note the writer left (search demand, competitor gap). */
   why?: string;
+  /** The id of the campaign this post serves (lib/campaigns.ts), if any. */
+  campaign?: string;
   checks?: BlogCheck[];
   checkedAt?: string;
   notes?: { at: string; text: string }[];
@@ -77,7 +81,11 @@ const DASH = /[–—]/;
 
 /** Words a post must never use, by the business's regulated flags. Matched case-insensitively as whole phrases. */
 export const BANNED: Partial<Record<RegulatedFlag, string[]>> = {
-  gambling: ["guaranteed", "risk-free", "risk free", "sure thing", "can't lose", "cannot lose", "free money", "lock of the"],
+  // Claims, plus inducements to gamble or to open a betting account (NSW makes publishing one an offence for anyone,
+  // third parties included): promotional calls, not explanations of how bonus bets work.
+  gambling: ["guaranteed", "risk-free", "risk free", "sure thing", "can't lose", "cannot lose", "free money", "lock of the",
+    "promo code", "bonus code", "sign-up offer", "sign up offer", "signup offer", "welcome offer", "welcome bonus",
+    "deposit bonus", "deposit match", "refer a friend", "first bet offer", "bet and get", "claim your bonus", "join now and"],
   finance: ["guaranteed returns", "risk-free", "risk free", "can't lose"],
   health: ["cure", "cures", "guaranteed results", "miracle"],
   alcohol: ["drink more"],
@@ -120,6 +128,8 @@ export type CheckContext = {
   existingSlugs: string[];
   /** Bodies of the site's own recent posts HQ knows about, to catch repeats. */
   existingTexts: string[];
+  /** The business's own never-name list (blog.json banned). */
+  banned?: string[];
   /** HTTP status of each source url, from a fetch HQ made; missing means not checked. */
   sourceStatus: Record<string, number>;
 };
@@ -130,7 +140,7 @@ export function checkDraft(d: BlogDraft, ctx: CheckContext): BlogCheck[] {
   const out: BlogCheck[] = [];
   const add = (id: string, label: string, ok: boolean, detail: string) => out.push({ id, label, ok, detail });
   const wc = words(markdown).length;
-  const allText = [meta.title, meta.description, markdown, ...meta.faq.flatMap((f) => [f.q, f.a])].join("\n");
+  const allText = [meta.title, meta.description, markdown, ...meta.faq.flatMap((f) => [f.q, f.a]), ...meta.sources.map((s) => s.title)].join("\n");
   const site = hostOf(ctx.site);
 
   add("slug", "Slug is new and well formed", SLUG.test(meta.slug) && meta.slug.length <= 80 && !ctx.existingSlugs.includes(meta.slug),
@@ -138,9 +148,12 @@ export function checkDraft(d: BlogDraft, ctx: CheckContext): BlogCheck[] {
   add("title", "Title 20 to 65 characters", meta.title.length >= 20 && meta.title.length <= 65, `${meta.title.length} characters`);
   add("description", "Description 70 to 160 characters", meta.description.length >= 70 && meta.description.length <= 160, `${meta.description.length} characters`);
   add("length", "700 to 2,500 words", wc >= 700 && wc <= 2500, `${wc} words`);
-  const kw = meta.keyword.toLowerCase();
   const firstPara = markdown.split(/\n\s*\n/).find((p) => p.trim() && !p.trim().startsWith("#")) ?? "";
-  add("keyword", "Keyword in the title or first paragraph", meta.title.toLowerCase().includes(kw) || firstPara.toLowerCase().includes(kw), `"${meta.keyword}"`);
+  // Every meaningful word of the keyword, in any order ("remove bookmaker margin" matches "remove the bookmaker margin").
+  const STOP = new Set(["a", "an", "the", "of", "to", "for", "in", "on", "and", "or", "how", "what", "is", "are", "with", "your"]);
+  const kwWords = words(meta.keyword).filter((w) => !STOP.has(w));
+  const has = (t: string) => { const ws = new Set(words(t)); return kwWords.length > 0 && kwWords.every((w) => ws.has(w) || ws.has(w.replace(/s$/, "")) || ws.has(`${w}s`)); };
+  add("keyword", "Keyword in the title or first paragraph", has(meta.title) || has(firstPara), `"${meta.keyword}"`);
 
   const subset = [/<[a-z!/][^>]*>/i.test(markdown) && "HTML", /!\[/.test(markdown) && "an image", /```/.test(markdown) && "a code block", /^#\s/m.test(markdown) && "an H1"].filter(Boolean);
   add("format", "Only the allowed markdown", subset.length === 0, subset.length ? `has ${subset.join(", ")}` : "ok");
@@ -155,7 +168,7 @@ export function checkDraft(d: BlogDraft, ctx: CheckContext): BlogCheck[] {
   const internal = links(markdown).filter((u) => site && hostOf(u) === site);
   add("internal-links", "At least 2 links to the site's own pages", internal.length >= 2, `${internal.length} internal links`);
 
-  const banned = ctx.regulated.flatMap((f) => BANNED[f] ?? []).filter((w) => new RegExp(`(^|[^a-z])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z]|$)`, "i").test(allText));
+  const banned = [...ctx.regulated.flatMap((f) => BANNED[f] ?? []), ...(ctx.banned ?? [])].filter((w) => new RegExp(`(^|[^a-z])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z]|$)`, "i").test(allText));
   add("claims", "No banned claims for this business", banned.length === 0, banned.length ? `uses ${[...new Set(banned)].map((w) => `"${w}"`).join(", ")}` : "none");
   for (const f of ctx.regulated) {
     const req = REQUIRED_LINES[f];

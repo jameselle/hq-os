@@ -18,10 +18,14 @@ import { departmentNotes } from "./regulations";
 import { DEPARTMENTS, EXCLUDED } from "./registry";
 import { WATCHER_KEYCHAIN, WATCHER_PORT, WATCHER_URL, competitorFromTitle, watchTag, type WatchRow } from "./competitors";
 import type { Profile } from "./profile";
-import { channelStatuses, type ConnectionsSnapshot } from "./publishing";
+import { channelStatuses, withPosting, type ConnectionsSnapshot } from "./publishing";
+import { listSocial, readSocialConfig } from "./social-store";
+import { lastBriefRun } from "./competitor-tick";
 import { scorecardState } from "./scorecard";
 import { analyticsAlarms, analyticsBoard, analyticsState } from "./analytics";
 import { financeConnected, moneyByMonth } from "./finance-sync";
+import { costsConnected, readRefreshState } from "./finance-costs-refresh";
+import { loadUnitEconomics } from "./unit-economics-store";
 import { ledgerPath } from "./store";
 import { loadLedger } from "./ledger-spend";
 import { scorecardRows } from "./scorecard-metrics";
@@ -236,7 +240,16 @@ function financeFacts(profile: Profile): HostFacts["finance"] {
   try {
     const cutoff = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 7);
     const months = moneyByMonth(loadLedger(ledgerPath(profile.slug)), profile.currency).filter((m) => m.month >= cutoff);
-    return { synced: financeConnected(profile.slug), income90: months.reduce((n, m) => n + m.income - m.refunds, 0), costs90: months.reduce((n, m) => n + m.costs, 0), currency: profile.currency };
+    const connected = costsConnected(profile.slug), st = connected ? readRefreshState(profile.slug) : {};
+    return { synced: financeConnected(profile.slug), income90: months.reduce((n, m) => n + m.income - m.refunds, 0), costs90: months.reduce((n, m) => n + m.costs, 0), currency: profile.currency,
+      costs: { connected, lastOk: st.lastOk ?? null, failed: st.ok === false, why: st.why ?? null }, unit: unitFacts(profile.slug) };
+  } catch { return null; }
+}
+
+function unitFacts(slug: string): NonNullable<HostFacts["finance"]>["unit"] {
+  try {
+    const u = loadUnitEconomics(slug);
+    return u?.latest ? { latest: u.latest.month, jumps: u.jumps, burn: u.burnStreak } : null;
   } catch { return null; }
 }
 
@@ -247,6 +260,17 @@ function analyticsFacts(slug: string): HostFacts["analytics"] {
   } catch {
     return null;
   }
+}
+
+/** Posts HQ couldn't put out after its attempts, from the last two weeks of drafts. */
+function socialFacts(slug: string): HostFacts["social"] {
+  try {
+    if (!readSocialConfig(slug)) return null;
+    const failed = listSocial(slug, 2).filter((d) => d.status === "failed")
+      .map((d) => ({ id: d.id, network: d.network, format: d.format, day: d.day, error: d.error, attempts: d.attempts?.length ?? 0 }))
+      .sort((a, b) => b.day.localeCompare(a.day));
+    return { failed };
+  } catch { return null; }
 }
 
 async function hostFacts(profile: Profile | null): Promise<HostFacts> {
@@ -262,7 +286,8 @@ async function hostFacts(profile: Profile | null): Promise<HostFacts> {
     scorecard: profile ? scorecardFacts(profile.slug) : null,
     analytics: profile ? analyticsFacts(profile.slug) : null,
     finance: profile ? financeFacts(profile) : null,
-    intel: { watcherUp: intel.up, rows: intel.rows, lastBriefAt: profile ? (latestPlan(profile.slug, "competitors")?.at ?? null) : null },
+    social: profile ? socialFacts(profile.slug) : null,
+    intel: { watcherUp: intel.up, rows: intel.rows, lastBriefAt: profile ? (latestPlan(profile.slug, "competitors")?.at ?? null) : null, lastRun: profile ? lastBriefRun(profile.slug) : null },
     backup: {
       repository: backup?.repository,
       lastSnapshotAt: backup?.lastSnapshot?.at,
@@ -316,14 +341,19 @@ export async function getStatus(preferred?: string | null): Promise<StatusReport
   const uniq = <T extends { repo: string }>(xs: T[]) => [...new Map(xs.map((x) => [x.repo, x])).values()];
   const allSkills = [...new Map(running.flatMap((d) => d.skills).map((s) => [s.id, s])).values()];
 
+  // Channels as they're really posted: the social plan's "hand" and "elsewhere" networks need no route.
+  let posting: Record<string, string> = {};
+  try { posting = Object.fromEntries(Object.entries(business ? readSocialConfig(business.slug)?.networks ?? {} : {}).map(([k, v]) => [k, v.posting])); } catch { /* no social plan */ }
+  const posted = business ? { ...business, channels: withPosting(business.channels, posting) } : null;
+
   return {
     generatedAt: new Date().toISOString(),
     business,
     businesses: profiles.map((p) => ({ slug: p.slug, name: p.name, demo: Boolean(p.demo) })),
     invalidBusinesses: invalid,
     departments,
-    publishing: business ? channelStatuses(business.channels, facts.connections, facts.postizUp) : [],
-    findings: buildFindings(running, facts, business, doneFindings(business?.slug ?? null)),
+    publishing: posted ? channelStatuses(posted.channels, facts.connections, facts.postizUp) : [],
+    findings: buildFindings(running, facts, posted, doneFindings(business?.slug ?? null)),
     totals: {
       departments: running.length,
       equipped: running.filter((d) => d.grade === "equipped").length,

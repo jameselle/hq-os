@@ -21,6 +21,10 @@ yes for *this* post, and never calls a post "done" until it has read it back fro
 
 Run commands from `$HQ_ROOT` (default `~/business-os`).
 
+Posts from the weekly social plan on networks HQ posts (`posting: "hq"` in `social.json`) don't need this skill:
+HQ puts them out by itself on their day once approved (`npm run hq -- social publish <slug> --dry-run` shows
+what's next). Use this skill for one-off posts and for formats HQ doesn't post by itself.
+
 ## 1. What, where, how
 
 - **Business:** the one named, or the current one. **Channels:** the ones named, or ask

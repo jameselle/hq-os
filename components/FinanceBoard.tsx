@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { WeekBars } from "@/components/charts";
 import { SplitBars } from "@/components/charts";
+import { importedCosts, sourceLabel } from "@/lib/finance-costs";
 import { financeConnected, moneyByMonth, SYNCED } from "@/lib/finance-sync";
 import { loadLedger } from "@/lib/ledger-spend";
 import type { Profile } from "@/lib/profile";
@@ -20,6 +21,7 @@ export function FinanceBoard({ business }: { business: Profile }) {
   const synced = path.join(path.dirname(ledger), SYNCED);
   const syncedAt = fs.existsSync(synced) ? fs.statSync(synced).mtime : null;
   const notes = syncedAt ? fs.readFileSync(synced, "utf8").split("\n").filter((l) => l.startsWith("; Note: ")).map((l) => l.slice(8)) : [];
+  const imported = (() => { try { return importedCosts(business.slug, business.currency).filter((c) => c.to); } catch { return []; } })();
   const f = (n: number) => formatValue("money", n, business.currency);
   const net = (m: (typeof months)[number]) => m.income - m.refunds;
   const last = months.at(-1), prev = months.at(-2);
@@ -33,7 +35,7 @@ export function FinanceBoard({ business }: { business: Profile }) {
           <div className="eyebrow mb-1">Finance · {business.name}</div>
           <h2 id="money-h" className="text-xl font-semibold">Money in and out</h2>
           <p className="text-[12.5px] text-bb-muted max-w-[80ch]">
-            From the ledger ({business.currency}): your own entries plus {financeConnected(business.slug) ? `daily totals synced from billing${syncedAt ? `, last ${syncedAt.toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: business.timezone })}` : ""}` : "nothing synced (no finance connection)"}. View every entry in Fava, <a href="http://localhost:5055" className="text-bb-blue hover:underline">localhost:5055</a>.
+            From the ledger ({business.currency}): your own entries plus {financeConnected(business.slug) ? `daily totals synced from billing${syncedAt ? `, last ${syncedAt.toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: business.timezone })}` : ""}` : "nothing synced (no finance connection)"}{imported.map((c) => `, plus monthly costs imported from ${sourceLabel(c.source)} (${label(c.from!)} to ${label(c.to!)})`).join("")}. View every entry in Fava, <a href="http://localhost:5055" className="text-bb-blue hover:underline">localhost:5055</a>.
           </p>
         </div>
       </div>
@@ -58,7 +60,7 @@ export function FinanceBoard({ business }: { business: Profile }) {
               <WeekBars points={months.map((m) => ({ label: label(m.month), value: net(m) }))} title="Income by month" format={f} color="#22C55E" /></div>
             <div className="card space-y-2 p-4"><h3 className="text-[13px] font-semibold">Costs, last 3 months</h3>
               {costs3 ? <SplitBars rows={Object.entries(byCost).map(([label, value]) => ({ label, value }))} title="Costs by account" format={f} color="#F59E0B" />
-                : <p className="text-[12.5px] text-bb-warn">No costs are in the ledger, so margin, cost to win and payback all read better than they are. Add hosting, software, ads and contractors to <code className="font-mono text-[11.5px]">ledger.beancount</code> (or ask the Finance department: <code className="font-mono text-[11.5px]">/hq:dept finance</code>).</p>}
+                : <p className="text-[12.5px] text-bb-warn">No costs are in the ledger, so margin, cost to win and payback all read better than they are. Import them from your accounting system (Finance guide, &ldquo;Connect your accounting system&rdquo;), or add hosting, software, ads and contractors to <code className="font-mono text-[11.5px]">ledger.beancount</code> (or ask the Finance department: <code className="font-mono text-[11.5px]">/hq:dept finance</code>).</p>}
             </div>
           </div>
           {notes.length > 0 && <ul className="space-y-0.5 text-[11.5px] text-bb-dim">{notes.map((n) => <li key={n}>{n}</li>)}</ul>}

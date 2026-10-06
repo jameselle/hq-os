@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { channelStatuses, resolveRoute, validateSnapshot, PLATFORMS } from "../lib/publishing";
+import { channelStatuses, resolveRoute, withPosting, validateSnapshot, PLATFORMS } from "../lib/publishing";
 import { validateProfile } from "../lib/profile";
 import { profile } from "./helpers";
 
@@ -66,4 +66,11 @@ test("captions never carry an em dash or an en dash (hard rule)", async () => {
   assert.match(captionProblems("a—b–c")[0], /em dash/);
   assert.equal(captionProblems("a—b–c").length, 2);
   assert.deepEqual(captionProblems("hyphen-ated is fine"), []);
+});
+
+test("the social plan's hand and elsewhere networks are posted by hand, not routed", () => {
+  const ch = withPosting({ discord: "https://discord.gg/x", x: { handle: "@a", via: "woopsocial" }, instagram: "@a" }, { discord: "hand", x: "elsewhere", instagram: "hq" });
+  assert.equal(resolveRoute("discord", ch.discord).via, "manual");
+  assert.equal(resolveRoute("x", ch.x).via, "manual");
+  assert.equal(resolveRoute("instagram", ch.instagram).via, "composio");
 });

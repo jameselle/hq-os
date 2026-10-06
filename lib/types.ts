@@ -126,7 +126,9 @@ export type HostFacts = {
   postizInstalled: boolean;
   backup: { repository?: string; lastSnapshotAt?: string; restoreTestOk?: boolean; /** "<label>: why" for each service the last backup couldn't stage. */ stagingFailed?: string[] };
   /** The current business's competitor watching (null rows = watcher unreachable). */
-  intel: { watcherUp: boolean; rows: import("./competitors").WatchRow[] | null; lastBriefAt: string | null };
+  intel: { watcherUp: boolean; rows: import("./competitors").WatchRow[] | null; lastBriefAt: string | null;
+    /** The weekly tick's newest run (lib/competitor-tick.ts), so a failed one shows as a finding. */
+    lastRun?: import("./competitor-brief").BriefRun | null };
   /** Latest /hq:connections snapshot (ids, aliases, statuses only), or null if never taken. */
   connections: import("./publishing").ConnectionsSnapshot | null;
   /** The current business's growth scorecard: whether it reports, and which numbers it can't measure yet. */
@@ -138,5 +140,9 @@ export type HostFacts = {
     /** Fault numbers reading above zero (lib/analytics.ts analyticsAlarms). */
     alarms?: import("./analytics").AnalyticsAlarm[] } | null;
   /** The business's books: whether billing syncs into the ledger, and income vs recorded costs over 90 days. */
-  finance?: { synced: boolean; income90: number; costs90: number; currency: string } | null;
+  finance?: { synced: boolean; income90: number; costs90: number; currency: string; costs?: { connected: boolean; lastOk: string | null; failed: boolean; why: string | null };
+    /** Unit economics for the last closed month (lib/unit-economics.ts): cost lines that jumped, and burn well above revenue. */
+    unit?: { latest: string; jumps: import("./unit-economics").CostJump[]; burn: import("./unit-economics").BurnStreak | null } | null } | null;
+  /** The weekly social plan: posts HQ tried to put out and gave up on (status failed), newest day first. */
+  social?: { failed: { id: string; network: string; format: string; day: string; error?: string; attempts: number }[] } | null;
 };

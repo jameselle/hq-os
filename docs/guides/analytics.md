@@ -43,7 +43,8 @@ A demo business with no connection runs `templates/analytics/demo-adapter.mjs`, 
 $HQ_DATA/businesses/<slug>/analytics-connection.json   {"command": ["/abs/path/node", "/abs/path/adapter.mjs"], "readOnly": true}
 ```
 
-- **Input** (stdin): `{"action":"report","weeks":12,"currency":"AUD","timezone":"Australia/Sydney","now":"<ISO>"}`.
+- **Input** (stdin): `{"action":"report","weeks":12,"currency":"AUD","timezone":"Australia/Sydney","now":"<ISO>","campaigns":[{"id":"cold-brew-month-2026-11-02","utm":"cold-brew","start":"2026-11-02"}]}`.
+  `campaigns` lists the business's campaigns that have started (live, paused or done), so the adapter can count per tag since each start.
 - **Output** (stdout): one JSON snapshot. 240 s timeout, 2 MB cap. A failed run keeps the previous snapshot; HQ's
   own numbers are still saved.
 - **Credentials** are fetched by the adapter at run time (Keychain), never put in the command array.
@@ -68,12 +69,33 @@ $HQ_DATA/businesses/<slug>/analytics-connection.json   {"command": ["/abs/path/n
 
 Rates run from 0 to 1, money is in the snapshot's currency, ratios are plain numbers (2.4 shows as "2.40x").
 
+### Campaigns (optional)
+
+An adapter that can split visits and sign-ups by the campaign tag on the link (`utm_campaign`, stored with each
+sign-up's first touch) reports them as `campaigns`, one row per tag, beside `metrics`:
+
+```ts
+campaigns?: [{
+  utm: string,         // the tag as it arrived ("cold-brew"); series-style tags in utm_source ("series-ig") work too
+  id?: string,         // the HQ campaign id, when the adapter matched it from the input
+  visits?: number,     // visits that arrived with the tag
+  signups?: number,    // sign-ups whose first touch carried it
+  paying?: number,     // of those, how many pay
+  revenue?: number,    // what they paid, in the snapshot's currency
+  period?: string,     // what the counts cover ("since 2026-11-02")
+}]                     // up to 100 rows; counts and money only
+```
+
+Leave a field out when it isn't measured; never send 0 for "don't know". The Campaigns page works out cost per
+sign-up, cost per paying customer and return on spend from these and the spend tagged in the ledger
+([Campaigns](/guides/campaigns)).
+
 ### Metric ids
 
 | Lever | Ids |
 |---|---|
 | Get customers | `new_signups`, `new_paying`, `new_mrr`, `posts_published`, `keyword_posts`, `videos_edited`, `comparison_signups`, `organic_signups`, `search_clicks`, `signups_by_source`, `followers`, `follows_per_post`, `views_per_post`, `link_clicks`, `keyword_dms`, `keyword_dm_delivery_rate`, `keyword_dms_waiting`, `keyword_dm_misses`, `dm_to_email_rate`, `email_to_trial_rate`, `partner_customers`, `partner_d90_retention`, `landing_conversion_rate`, `tool_users`, `tool_signup_rate`, `feature_adoption`, `ad_spend`, `community_members`, `community_paying`, `referral_signups`, `trial_to_paid_rate`, `checkouts_started`, `checkout_completion_rate`, `visitor_to_paid_rate`, `signups_by_market`, `promo_redemptions`, `referral_customers`, `sales` |
-| Keep customers | `activation_rate`, `paying_churn_rate`, `failed_payments`, `payment_recovery_rate`, `set_to_cancel`, `weekly_active_rate`, `lifecycle_sent`, `walkthrough_coverage`, `walkthrough_plays`, `time_to_activation`, `at_risk_customers`, `helped_churn_gap`, `support_tickets`, `requests_closed`, `churn_to_rival`, `competitor_changes`, `incidents`, `stale_minutes`, `uptime_rate`, `save_rate`, `cancel_reasons`, `reactivated`, `bad_week_churn`, `track_record`, `academy_activation`, `offseason_churn`, `releases`, `customer_bugs`, `top_customer_retention`, `account_incidents` |
+| Keep customers | `activation_rate`, `paying_churn_rate`, `failed_payments`, `payment_recovery_rate`, `set_to_cancel`, `weekly_active_rate`, `lifecycle_sent`, `walkthrough_coverage`, `walkthrough_plays`, `time_to_activation`, `at_risk_customers`, `helped_churn_gap`, `support_tickets`, `requests_closed`, `churn_to_rival`, `competitor_changes`, `incidents`, `stale_minutes`, `uptime_rate`, `save_rate`, `cancel_reasons`, `reactivated`, `bad_week_churn`, `track_record`, `academy_activation`, `offseason_churn`, `paused_instead`, `releases`, `customer_bugs`, `top_customer_retention`, `account_incidents` |
 | Expand revenue | `upgrades`, `downgrades`, `nrr`, `upgrade_prompt_rate`, `arpu`, `mrr_by_tier`, `annual_share`, `addon_attach_rate`, `b2b_mrr`, `support_upgrades`, `price_change_net`, `cross_sell_customers`, `content_product_sales` |
 | Foundation | `mrr`, `paying_customers`, `cost_to_win`, `payback_months`, `known_source_share`, `records_mismatch`, `ceo_reviews`, `experiments_run`, `vault_notes`, `open_findings`, `brand_kit_coverage`, `workflow_checks_passing`, `revenue`, `ltv`, `ltv_to_cac`, `complaints` |
 

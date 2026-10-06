@@ -68,6 +68,10 @@ curl -s "http://127.0.0.1:3150/api/status?business=<slug>"
   state is connected.
 - **Measure** something real: a number HQ or a tool can actually report.
 - If the department is skipped in the profile (`active: false`), say so and stop.
+- **Finance:** check the costs are in the books (`npm run hq -- finance costs <slug>`). A business that already
+  keeps its books in Xero imports them read-only every month (`finance/costs-connection.json` and the daily
+  `com.hq.finance` job; set up in the Finance guide, "Connect your accounting system"). If the refresh failed,
+  `npm run hq -- finance costs refresh <slug> --force` shows why. Without Xero, costs are monthly entries in the ledger.
 
 ## 4. Save
 

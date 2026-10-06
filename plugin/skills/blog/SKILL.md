@@ -64,12 +64,18 @@ Write `<drafts folder>/<YYYY-MM-DD>-<slug>.md`: a JSON block between `---` lines
   "faq": [{"q": "…", "a": "…"}],
   "date": "YYYY-MM-DD",
   "status": "draft",
-  "why": "one or two sentences: the search demand or competitor gap behind this topic"
+  "why": "one or two sentences: the search demand or competitor gap behind this topic",
+  "campaign": "optional: the id of a live campaign this post serves"
 }
 ---
 
 First paragraph answers the search…
 ```
+
+**Campaigns:** `inputs.json` lists the business's live campaigns that use the blog (`campaigns`: goal, audience,
+offer). If today's best topic serves one, set `campaign` to its id. Search demand still picks the topic; never
+force a campaign into a post. Don't add utm tags to links inside the post: they would replace where the reader
+really came from. The social posts that share it carry the campaign's tag.
 
 Then stop. Say in one line which topic you chose and why.
 

@@ -23,3 +23,14 @@ test("a department is built out only with evidence for that business", () => {
   assert.equal(after.finance, "1 ledger entry");
   assert.deepEqual(builtDepartments("nobody"), {});
 });
+
+test("a department that owns a live workflow is built out, a partial one isn't", () => {
+  tempData();
+  const p = profile({});
+  scaffoldBusiness(p);
+  const dir = path.join(businessDir(p.slug), "blog", "drafts");
+  fs.mkdirSync(dir, { recursive: true });
+  assert.equal(builtDepartments(p.slug).seo, undefined);
+  fs.writeFileSync(path.join(dir, "2026-10-06-demo.md"), `---\n${JSON.stringify({ title: "Demo post", slug: "demo", description: "A demo.", keyword: "demo", date: "2026-10-06", status: "published", url: "https://demo.example/blog/demo/", publishedAt: "2026-10-06T00:00:00Z" })}\n---\nBody.\n`);
+  assert.match(builtDepartments(p.slug).seo ?? "", /^1 workflow live: Daily blog from search demand$/);
+});

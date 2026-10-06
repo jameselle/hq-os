@@ -50,6 +50,9 @@ export type Profile = {
   competitors?: Competitor[];
   /** Obsidian vault: relative to the business folder, or an absolute path to an existing vault. */
   vault: { path: string };
+  /** Hosted web analytics already on the business's sites (e.g. Umami Cloud's free tier), so nothing has to run
+   *  on this Mac. `id` is the public website id from the tracking script, never an API key. */
+  analytics?: { provider: string; id?: string; sites?: string[] };
   createdAt: string; // ISO date
 };
 
@@ -101,6 +104,11 @@ export function validateProfile(raw: unknown): ValidationResult {
     errors.push(`regulated: list drawn from ${REGULATED_FLAGS.join(", ")} (may be empty)`);
   if (typeof p.vault !== "object" || p.vault === null || !isStr((p.vault as { path?: unknown }).path)) errors.push("vault.path: required");
   if (!isStr(p.createdAt) || Number.isNaN(Date.parse(p.createdAt))) errors.push("createdAt: ISO date");
+  if (p.analytics !== undefined) {
+    const a = p.analytics as { provider?: unknown; id?: unknown; sites?: unknown } | null;
+    if (!a || typeof a !== "object" || !isStr(a.provider)) errors.push("analytics.provider: required when analytics is set");
+    else if (a.sites !== undefined && !(Array.isArray(a.sites) && a.sites.every(isStr))) errors.push("analytics.sites: a list of URLs");
+  }
 
   if (p.competitors !== undefined) {
     if (!Array.isArray(p.competitors)) errors.push("competitors: a list");

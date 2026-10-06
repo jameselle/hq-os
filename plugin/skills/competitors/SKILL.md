@@ -48,6 +48,10 @@ Skip this if `npm run hq -- services status` already lists `com.hq.changedetecti
 
 ## Weekly sweep (the default)
 
+This sweep also runs by itself: the `com.hq.competitors` job runs `npm run hq -- competitors tick --all` every
+Monday at 07:00, with this skill as the writer's instructions (see the guide). If this week's brief is already
+saved (`plans/competitors/`), read it and build on it instead of sweeping again, unless the owner asks for a fresh one.
+
 1. **Page changes:** `npm run hq -- competitors changes <slug> --days 7`. This lists every watched page, and
    for changed ones the text that changed. Read the diffs. Price moves, new offers, new products or
    shipping changes matter; a rotating banner doesn't. Pages marked ERROR are blocking automated
@@ -89,7 +93,9 @@ Skip this if `npm run hq -- services status` already lists `com.hq.changedetecti
 - slower trends, blocked pages, gaps in coverage
 ```
 
-Then tell the owner the headline and the actions.
+Then mark the CEO's "competitor pages changed" finding as read, so it stops asking for a sweep that's done (it
+reopens by itself when a page changes again): `npm run hq -- done <slug> competitors-changed`. Tell the owner the
+headline and the actions.
 
 ## The brain (before and after)
 

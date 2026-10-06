@@ -40,6 +40,41 @@ export function acquisitionSpend(ledgerText: string, currency: string, from: Dat
   return {total: Math.max(0, Math.round(total * 100) / 100), postings};
 }
 
+const slugOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+/** One campaign's spend, all dates: Expenses:Advertising / Expenses:Commissions postings in a transaction tagged with
+ *  the metadata `campaign: "<id>"` (on the transaction, or on the posting itself), or posted to a sub-account named
+ *  for the campaign (`Expenses:Advertising:Spring-Sale` for "spring-sale-2026-10-01" or "spring-sale"). */
+export function campaignSpend(ledgerText: string, currency: string, id: string) {
+  const name = id.replace(/-\d{4}-\d{2}-\d{2}$/, '');
+  let total = 0, postings = 0;
+  type P = {account: string; value: number | null; tagged: boolean};
+  let txn: {tagged: boolean; postings: P[]} | null = null;
+  const flush = () => {
+    if (!txn) return;
+    for (const p of txn.postings) {
+      if (!SPEND.test(p.account) || p.value === null || !Number.isFinite(p.value) || p.value === 0) continue;
+      const seg = p.account.split(':')[2];
+      if (txn.tagged || p.tagged || (seg && [id, name].includes(slugOf(seg)))) { total += p.value; postings++; }
+    }
+    txn = null;
+  };
+  for (const line of ledgerText.split('\n')) {
+    if (/^(\d{4}-\d{2}-\d{2})\s+(\*|!|txn\b)/.test(line)) { flush(); txn = {tagged: false, postings: []}; continue; }
+    if (!/^\s/.test(line)) { flush(); continue; }
+    if (!txn) continue;
+    const meta = /^\s+campaign:\s*"([^"]*)"/.exec(line);
+    if (meta) {
+      if (meta[1].trim() === id) { if (txn.postings.length) txn.postings[txn.postings.length - 1].tagged = true; else txn.tagged = true; }
+      continue;
+    }
+    const p = POSTING.exec(line);
+    if (p) txn.postings.push({account: p[1], value: inCurrency(num(p[2]), p[3], p[4].replace(/;.*$/, ''), currency), tagged: false});
+  }
+  flush();
+  return {total: Math.max(0, Math.round(total * 100) / 100), postings};
+}
+
 /** The ledger's text with `include "…"` files inlined (relative to the including file, each once). */
 export function loadLedger(file: string, seen = new Set<string>()): string {
   const abs = path.resolve(file);
