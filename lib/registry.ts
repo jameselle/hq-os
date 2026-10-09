@@ -32,7 +32,7 @@ export const DEPARTMENTS: Department[] = [
       { name: "Plane", what: "Projects, issues, cycles and roadmaps (Jira/Linear alternative).", repo: "makeplane/plane", licence: oss("AGPL-3.0"), check: { paths: ["~/.local/opt/plane"] } },
       { name: "AppFlowy", what: "Docs, wikis and task boards (Notion alternative), desktop app.", repo: "AppFlowy-IO/AppFlowy", licence: oss("AGPL-3.0"), check: { apps: ["AppFlowy"] } },
       { name: "Docmost", what: "Team wiki and documentation (Confluence alternative).", repo: "docmost/docmost", licence: oss("AGPL-3.0"), check: { paths: ["~/.local/opt/docmost"] } },
-      { name: "Vikunja", what: "Lightweight to-do lists and kanban.", repo: "go-vikunja/vikunja", licence: oss("AGPL-3.0"), check: { bins: ["vikunja"], paths: ["~/.local/opt/vikunja"] } },
+      { name: "Vikunja", what: "Lightweight to-do lists and kanban.", repo: "go-vikunja/vikunja", licence: oss("AGPL-3.0"), check: { port: 3456, bins: ["vikunja"], paths: ["~/.local/opt/vikunja"] }, url: "http://localhost:3456" },
       { name: "Composio", what: "Connects Claude to 500+ apps (Gmail, Sheets, Notion, socials…) for cross-app automations.", repo: "ComposioHQ/composio", licence: free("Hobby plan"), check: { web: true, composio: "instagram" }, freeNote: "Free Hobby plan: 100,000 tool calls a month." },
       { name: "n8n", what: "Workflow automation with hundreds of integrations, self-hosted.", repo: "n8n-io/n8n", licence: free("Sustainable Use"), check: { npx: true }, freeNote: "Free to self-host for your own business; can't be resold as a service." },
       { name: "Activepieces", what: "No-code automations between apps (Zapier alternative).", repo: "activepieces/activepieces", licence: core("MIT"), check: { paths: ["~/.local/opt/activepieces"] } },
@@ -43,6 +43,7 @@ export const DEPARTMENTS: Department[] = [
       { id: "hq:dept", what: "One department's plan for the week" },
       { id: "hq:new-business", what: "Connect a business to HQ" },
       { id: "hq:add-tool", what: "Add a free tool to a department, properly" },
+      { id: "hq:playbook", what: "Run a playbook: plan and drafts from its trigger; apply, drop, judged in two weeks" },
       { id: "operations:status-report", what: "Weekly status report from what happened" },
       { id: "operations:runbook", what: "Write a step-by-step runbook" },
       { id: "operations:process-doc", what: "Document a process" },
@@ -251,6 +252,7 @@ export const DEPARTMENTS: Department[] = [
     covers: ["Competitor list and profiles", "Their pages, prices and offers (change watching)", "Their content and ads: what's working", "A weekly brief with actions for Content, SEO, Ads and Sales"],
     tools: [
       { name: "changedetection.io", what: "Watches competitors' pricing, offer and landing pages and records every change.", repo: "dgtlmoon/changedetection.io", licence: oss("Apache-2.0"), check: { port: 5010, bins: ["changedetection.io"] }, url: "http://localhost:5010" },
+      { name: "Codex", what: "Researches competitor accounts from a public seed profile for Trend Radar.", repo: "openai/codex", licence: oss("Apache-2.0"), check: { bins: ["codex"], paths: ["/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex", "/Applications/Codex.app/Contents/Resources/codex"] }, warn: "Uses the signed-in Codex account's usage allowance. Discovery requires available web-search access; no additional API key is configured. Research runs read-only with shell and connected apps disabled." },
       { name: "yt-dlp", what: "Reads public video lists and stats (YouTube; TikTok via its curl-cffi extra) and downloads videos for teardowns.", repo: "yt-dlp/yt-dlp", licence: oss("Unlicense"), check: { bins: ["yt-dlp"] }, warn: "Instagram profiles need a login, so they aren't read. Install with: uv tool install \"yt-dlp[default,curl-cffi]\"." },
       { name: "Meta Ad Library", what: "Every ad a competitor's Facebook/Instagram page is running.", repo: "https://www.facebook.com/ads/library", licence: free("Proprietary"), check: { web: true } },
       { name: "Google Ads Transparency Center", what: "Competitors' Google and YouTube ads.", repo: "https://adstransparency.google.com", licence: free("Proprietary"), check: { web: true } },
@@ -338,6 +340,7 @@ export const DEPARTMENTS: Department[] = [
       { id: "small-business:proposal-builder", what: "Write a proposal" },
       { id: "sales:pipeline-review", what: "Pipeline review" },
       { id: "sales:forecast", what: "Forecast" },
+      { id: "hq:partners", what: "Find and screen partners from public sources, draft outreach for the owner to send, track the pipeline weekly" },
     ],
   },
   {
@@ -398,6 +401,7 @@ export const DEPARTMENTS: Department[] = [
       { name: "Redis 7.4", what: "Cache and queues: Postiz on :6379, Twenty on its own :6380.", repo: "redis/redis", licence: free("RSALv2 / SSPL"), check: { port: 6379, paths: ["~/.local/opt/redis/bin/redis-server"] }, freeNote: "Source-available, free to self-host. Valkey (BSD) is the drop-in open-source fork if ever needed." },
       { name: "Temporal", what: "Durable background jobs (runs Postiz's scheduler).", repo: "temporalio/temporal", licence: oss("MIT"), check: { port: 7233, paths: ["~/.local/opt/temporal/temporal"] }, url: "http://localhost:8233" },
       { name: "Playwright", what: "Browser automation and end-to-end tests.", repo: "microsoft/playwright", licence: oss("Apache-2.0"), check: { npx: true } },
+      { name: "k6", what: "Load testing: simulate many customers at once (API calls, pages, WebSockets) against a disposable copy of production, step by step, and see what breaks first. Used by /hq:load-test.", repo: "grafana/k6", licence: oss("AGPL-3.0"), check: { bins: ["k6"] }, optional: true },
       {
         name: "Cua Driver",
         what: "Lets Claude operate native Mac apps and browsers in the background (no mouse or focus stolen) through its MCP: setup chores in apps with no API, and checking HQ's own screens as rendered.",
@@ -420,6 +424,24 @@ export const DEPARTMENTS: Department[] = [
       { name: "Grafana", what: "Dashboards over metrics and logs.", repo: "grafana/grafana", licence: oss("AGPL-3.0"), check: { bins: ["grafana"], paths: ["~/.local/opt/grafana"] } },
       { name: "Prometheus", what: "Metrics collection.", repo: "prometheus/prometheus", licence: oss("Apache-2.0"), check: { bins: ["prometheus"], paths: ["~/.local/opt/prometheus"] } },
       { name: "camofox-browser", what: "Anti-detect browser server for agents (researched, not installed).", repo: "jo-inc/camofox-browser", licence: oss("MIT"), check: { paths: ["~/.local/opt/camofox-browser"] }, warn: "Crash reports go to public GitHub issues by default; binds to all interfaces without a key." },
+      {
+        name: "Coolify",
+        what: "Self-hosted Heroku/Vercel on a Linux server (potential, not installed): one-click Docker setups for the tools that can't run on this Mac, such as Chatwoot, Documenso, DocuSeal and Umami, and it keeps services up while the Mac is shut.",
+        repo: "coollabsio/coolify",
+        licence: oss("Apache-2.0"),
+        check: { bins: ["coolify"] },
+        freeNote: "Free to self-host, but it needs a Linux server you supply over SSH: a paid VPS unless there's a spare box. Coolify Cloud is paid; we don't use it.",
+        warn: "Linux plus Docker only, so it can't run on the Macs and breaks HQ's ~/.local, no-Docker install rule by design. Needs the owner's yes for the server cost. Never put it on a box that already runs a business's production work.",
+      },
+      {
+        name: "OpenHands",
+        what: "Agent Canvas (potential, not installed): a control panel that runs coding agents (its own, or Claude Code, Codex, Gemini) locally, in Docker or on servers, with scheduled and webhook automations from Slack, GitHub, Linear and Notion.",
+        repo: "OpenHands/OpenHands",
+        licence: oss("MIT"),
+        check: { bins: ["agent-canvas"] },
+        freeNote: "Free; it drives Claude Code with the existing Pro/Max login, so no API key. OpenHands Cloud and Enterprise are paid; we don't use them.",
+        warn: "Mostly overlaps Claude Code plus HQ's own skills, launchd jobs and Workflows tab. Without a sandbox the agent has full access to the filesystem (clashes with the never-read-.env rule); the sandbox needs Docker. Needs Node 24 and uv. Worth a look only for agents that must run while the Mac is shut, which means a server (see Coolify).",
+      },
     ],
     skills: [
       { id: "hq:services", what: "Start, stop and fix HQ's services" },
@@ -430,6 +452,7 @@ export const DEPARTMENTS: Department[] = [
       { id: "engineering:debug", what: "Debug a problem" },
       { id: "engineering:testing-strategy", what: "What to test" },
       { id: "engineering:deploy-checklist", what: "Before you ship" },
+      { id: "hq:load-test", what: "How many customers at once before it breaks" },
       { id: "engineering:incident-response", what: "When it breaks" },
       { id: "engineering:tech-debt", what: "What to pay down" },
       { id: "superpowers:systematic-debugging", what: "Root-cause before fixing" },
@@ -610,6 +633,7 @@ const GROUPS: Record<string, string> = {
 
 const OPTIONAL = new Set([
   "camofox-browser", // researched, not for production scraping
+  "Coolify", "OpenHands", // potentials: Coolify needs a paid Linux server, OpenHands overlaps Claude Code
   "claude-ads", // when there's ad spend to audit
   "GrowthBook", // when there's traffic to test on
   "SerpBear", // Search Console already reports positions

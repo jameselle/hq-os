@@ -23,6 +23,7 @@ import { PILL } from "@/lib/tone";
 import { flowsFor } from "@/lib/workflow-detail";
 import { workflowEvidence, type Evidence } from "@/lib/workflow-evidence";
 import { LEVERS, WORKFLOWS, workflowBySlug, type Node } from "@/lib/workflows";
+import { workflowsTabUrl } from "@/lib/workflows-navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -115,7 +116,7 @@ export default async function WorkflowDetailPage({ params }: { params: Promise<{
     <div className="space-y-7 min-w-0">
       <div className="space-y-2">
         <div className="eyebrow">
-          <Link href="/workflows" className="hover:text-bb-fg">Workflows</Link> · W{String(n).padStart(2, "0")}
+          <Link href={workflowsTabUrl("all")} className="hover:text-bb-fg">Workflows</Link> · W{String(n).padStart(2, "0")}
           {business && <span className="text-bb-dim"> · {business.name}</span>}
         </div>
         <h1 className="text-2xl font-semibold">{w.title}</h1>

@@ -128,19 +128,23 @@ export function privateLine(months: CostMonth[]): string | null {
 
 // ---------------------------------------------------------------- where each cost lands
 
-export type CostCategory = "Advertising" | "Partnerships" | "Operating";
+export type CostCategory = "Advertising" | "Partnerships" | "CostOfSales" | "Operating";
 
-/** The category an accounting system's account name falls in. Affiliates and partners go to Partnerships, never
- *  Commissions: the growth scorecard already counts the commissions the product pays its affiliates as acquisition
- *  spend, so posting the accounting system's affiliate line to Expenses:Commissions would count them twice in cost
- *  to win. Advertising is counted (Expenses:Advertising); everything else (hosting, data, software, wages) is Operating. */
-export function costCategory(account: string): CostCategory {
+/** The category an accounting system's line falls in, from its account name and the report section it sits in.
+ *  Affiliates and partners go to Partnerships, never Commissions: the growth scorecard already counts the commissions
+ *  the product pays its affiliates as acquisition spend, so posting the accounting system's affiliate line to
+ *  Expenses:Commissions would count them twice in cost to win. Advertising is Advertising. Both count toward cost to
+ *  win wherever they sit in the report. Any other line in the report's Cost of Sales (or Cost of Goods Sold) section
+ *  is CostOfSales, the direct cost of serving customers that gross margin takes off revenue; everything else
+ *  (hosting outside cost of sales, software, wages, travel) is Operating. */
+export function costCategory(account: string, section = ""): CostCategory {
   if (/affiliat|partner|referr|commission|introduc/i.test(account)) return "Partnerships";
   if (/advertis|marketing|promotion|\bads?\b|sponsor/i.test(account)) return "Advertising";
+  if (/cost of (sales|goods)|\bcogs\b|direct costs?/i.test(section)) return "CostOfSales";
   return "Operating";
 }
 
-export const costAccount = (account: string) => `Expenses:${costCategory(account)}:${segment(account)}`;
+export const costAccount = (account: string, section = "") => `Expenses:${costCategory(account, section)}:${segment(account)}`;
 export const balancingAccount = (source: string) => `Liabilities:Imported:${segment(source.charAt(0).toUpperCase() + source.slice(1))}`;
 export const costsFile = (source: string) => `costs-${source}.beancount`;
 
@@ -155,7 +159,9 @@ const lastDay = (month: string) => {
 /** An amount to take out of an imported account's month before it lands (a cost that belongs to another business,
  *  or a charge being refunded), with the reason, which is written into the costs file. Kept per business in
  *  `finance/costs-adjustments.json` so every import, the monthly refresh included, applies it. */
-export type CostAdjustment = { month: string; account: string; amount: number; reason: string };
+/** `spreadMonths`: instead of taking the amount out for good, spread it evenly over that many months from `month` on
+ *  (a yearly plan paid in one go: out of its month, a twelfth into each month it covers that the import holds). */
+export type CostAdjustment = { month: string; account: string; amount: number; reason: string; spreadMonths?: number };
 export type ImportOptions = { share?: number; since?: string; adjustments?: CostAdjustment[] };
 
 /** Take each adjustment out of its month and account (company amounts, so before any share). An adjustment that
@@ -168,6 +174,19 @@ export function applyAdjustments(months: CostMonth[], adjustments: CostAdjustmen
     if (!line) continue; // that month isn't in this import (outside the window): nothing to take out
     if (a.amount > line.amount + 0.005) throw Error(`adjustment of ${a.amount} is more than ${a.account} in ${a.month} (${line.amount})`);
     line.amount = cents(line.amount - a.amount);
+    if (a.spreadMonths !== undefined) {
+      if (!Number.isInteger(a.spreadMonths) || a.spreadMonths < 2 || a.spreadMonths > 36) throw Error(`spreadMonths must be a whole number from 2 to 36: ${JSON.stringify(a)}`);
+      const part = cents(a.amount / a.spreadMonths);
+      for (let k = 0; k < a.spreadMonths; k++) {
+        const [y, mo] = a.month.split("-").map(Number);
+        const d = new Date(Date.UTC(y, mo - 1 + k, 1));
+        const target = out.find((m) => m.month === `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
+        if (!target) continue; // a month the import doesn't hold yet (it fills in as the months come)
+        const l = target.lines.find((x) => x.account.toLowerCase() === a.account.toLowerCase());
+        if (l) l.amount = cents(l.amount + part);
+        else target.lines.push({ account: line.account, section: line.section, amount: part });
+      }
+    }
   }
   return out.map((m) => ({ ...m, lines: m.lines.filter((l) => l.amount !== 0) }));
 }
@@ -194,7 +213,7 @@ export function costsText(imp: CostImport, o: ImportOptions & { observedAt: stri
   const label = sourceLabel(imp.source), bal = balancingAccount(imp.source);
   const first = months.find((m) => m.lines.length)?.month;
   const used = new Set<string>([bal]);
-  for (const m of months) for (const l of m.lines) used.add(costAccount(l.account));
+  for (const m of months) for (const l of m.lines) used.add(costAccount(l.account, l.section));
   const openOn = first ? `${first}-01` : null;
   const opens: string[] = [];
   for (const acct of [...used].sort()) {
@@ -207,13 +226,15 @@ export function costsText(imp: CostImport, o: ImportOptions & { observedAt: stri
     `; REWRITTEN ON EVERY IMPORT: don't edit; put your own entries in ledger.beancount. Imported ${o.observedAt}.`,
     ...(o.share !== undefined && o.share !== 1 ? [`; This business's share of the company's costs: ${o.share}.`] : []),
     ...(o.since ? [`; From ${o.since} on.`] : []),
-    ...(o.adjustments ?? []).filter((a) => imp.months.some((m) => m.month === a.month)).map((a) => `; Taken out of ${a.account} in ${a.month}: ${money(a.amount)} ${imp.currency} (${a.reason.replace(/\s+/g, " ")}).`),
+    ...(o.adjustments ?? []).filter((a) => imp.months.some((m) => m.month === a.month)).map((a) => a.spreadMonths
+      ? `; Spread over ${a.spreadMonths} months from ${a.month}: ${money(a.amount)} ${imp.currency} of ${a.account}, ${money(a.amount / a.spreadMonths)} a month (${a.reason.replace(/\s+/g, " ")}).`
+      : `; Taken out of ${a.account} in ${a.month}: ${money(a.amount)} ${imp.currency} (${a.reason.replace(/\s+/g, " ")}).`),
     "", ...opens, "",
   ];
   for (const m of months) {
-    for (const l of [...m.lines].sort((a, b) => costAccount(a.account).localeCompare(costAccount(b.account)))) {
+    for (const l of [...m.lines].sort((a, b) => costAccount(a.account, a.section).localeCompare(costAccount(b.account, b.section)))) {
       out.push(`${lastDay(m.month)} * ${quote(label)} ${quote(`Costs from ${label}: ${l.account}`)} #imported`);
-      out.push(`  ${costAccount(l.account).padEnd(50)} ${money(l.amount).padStart(12)} ${imp.currency}`);
+      out.push(`  ${costAccount(l.account, l.section).padEnd(50)} ${money(l.amount).padStart(12)} ${imp.currency}`);
       out.push(`  ${bal.padEnd(50)} ${money(-l.amount).padStart(12)} ${imp.currency}`, "");
     }
   }

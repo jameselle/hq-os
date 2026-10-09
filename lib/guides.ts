@@ -16,6 +16,8 @@ export const GUIDE_KINDS: Record<GuideKind, string> = {
 };
 
 const OTHER: Guide[] = [
+  {slug:"trend-radar-playbook",kind:"page",title:"Trend Radar playbook",blurb:"A practical three-route workflow: watch competitors, find small-creator breakouts, and collect Explore or For You ideas.",file:"docs/guides/trend-radar-playbook.md"},
+  {slug:"trend-radar",kind:"page",title:"Trend Radar",blurb:"Discover recent videos, track growth and inspect niche signals with source evidence.",file:"docs/guides/trend-radar.md"},
   {
     slug: "start-here",
     kind: "start",
@@ -38,6 +40,13 @@ const OTHER: Guide[] = [
     file: "docs/guides/workflows.md",
   },
   {
+    slug: "playbooks",
+    kind: "page",
+    title: "Playbooks: workflows HQ starts on its own",
+    blurb: "Triggers from signals, schedules and the CEO's routing; a headless run writes the plan and drafts; you apply it; HQ judges the number two weeks later and files the lesson.",
+    file: "docs/guides/playbooks.md",
+  },
+  {
     slug: "social",
     kind: "page",
     title: "Weekly social plan: every network, every week",
@@ -52,6 +61,13 @@ const OTHER: Guide[] = [
     file: "docs/guides/campaigns.md",
   },
   {
+    slug: "partners",
+    kind: "page",
+    title: "Partnerships: from found to live",
+    blurb: "Find and screen creators, podcasts, newsletters and affiliates, draft outreach for the owner to send, link each partner to a campaign with its own tag, and see what it brought.",
+    file: "docs/guides/partners.md",
+  },
+  {
     slug: "blog",
     kind: "page",
     title: "Daily blog: researched posts every day",
@@ -64,6 +80,13 @@ const OTHER: Guide[] = [
     title: "Set up a workflow end to end",
     blurb: "Build a workflow, prove it runs (messages delivered or checks passed), measure it, and recipes for trials, cancel saves, annual offers, pricing tiers, comparison pages and free tools.",
     file: "docs/guides/workflow-setup.md",
+  },
+  {
+    slug: "load-test",
+    kind: "page",
+    title: "Load testing: how many customers at once",
+    blurb: "A stepped load test on a disposable copy of production: simulated customers by plan, what breaks first, the report HQ keeps and when the next one is due.",
+    file: "docs/guides/load-test.md",
   },
   {
     slug: "brain",

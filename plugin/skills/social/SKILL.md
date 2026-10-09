@@ -37,7 +37,8 @@ plan win over them, and you never build files, run scripts or start other skills
 
 - **One idea per post**, the plan's call to action, in the brand voice. Australian English unless the business's
   country says otherwise.
-- **Carousels:** 4 to 8 slides, a hook on slide 1, one point per slide (a title of 2 to 8 words and a body of at
+- **Carousels:** (where `social.json` has `slideshow`, they go out as a slideshow Reel with music, each slide on screen
+  for 2.5 to 5.5 s, so keep bodies short enough to read in that time) 4 to 8 slides, a hook on slide 1, one point per slide (a title of 2 to 8 words and a body of at
   most 25 words), the call to action on the last slide. Give each slide the `kind` that shows its point best, and
   vary them: `cover` (slide 1: a hook of at most 8 words that makes people swipe, often a question or a surprising
   number), `point` (a title and one line), `stat` (one big number in `stat`, at most 12 characters, with the title
@@ -49,7 +50,12 @@ plan win over them, and you never build files, run scripts or start other skills
   video to use (`video.path` only if inputs name a real file).
 - **Captions** within the network's length; at most the plan's hashtags (Instagram and TikTok 5, X 2, LinkedIn 3,
   Pinterest none); a link only to the business's own site and only where the network shows links (not Instagram
-  captions: use the keyword or "link in bio").
+  captions: use "link in bio", or a comment keyword where one is answered, below).
+- **Comment keywords only where something answers them.** `inputs.json` `keywordDms` lists the networks where a
+  comment-to-DM tool (comment-dm, ManyChat) sends the link when someone comments a keyword. Only on those may a
+  post ask "Comment X" and set `keyword`. On any other network, or when `keywordDms` is empty, never ask for a
+  comment keyword, even if the channel plan suggests one: nobody would get a reply. HQ's `keyword` check fails a
+  draft that asks anyway.
 - **Regulated:** gambling means 18+ in every caption except LinkedIn (in the caption, not on the slides), no promises of winning or profit, never
   "guaranteed", "risk-free", "sure thing", and **no inducements**: never a promo code, bonus code, sign-up or
   welcome offer, deposit bonus, refer-a-friend, or a named bookmaker's promotion. Never name or show anything on
@@ -87,7 +93,7 @@ more to say is several story posts or a carousel), `reel`, `short` or `video` (a
 for X, LinkedIn, Threads, Facebook or Discord) or `thread`. X allows 280 characters including the hashtags, and
 counts every link as 23.
 
-Optional fields: `link` (own site only), `title` (pins), `video` (`{ "brief": "…" }`), `campaign` (the id of a
+Optional fields: `keyword` (only on a network in `keywordDms`; the example above assumes Instagram is one), `link` (own site only), `title` (pins), `video` (`{ "brief": "…" }`), `campaign` (the id of a
 live campaign the post serves), `board` (pins: a Pinterest board id, only when the channel plan gives one;
 otherwise the pin goes on the default board in `social.json`).
 

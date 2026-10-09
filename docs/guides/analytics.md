@@ -90,6 +90,28 @@ Leave a field out when it isn't measured; never send 0 for "don't know". The Cam
 sign-up, cost per paying customer and return on spend from these and the spend tagged in the ledger
 ([Campaigns](/guides/campaigns)).
 
+### Posts (optional)
+
+An adapter that can read the business's connected accounts reports every post that is up now as `posts`, newest
+first. Studio's planner shows them in its "Live now" view (a plan named after the business): the real profile
+grids, trial reels and each post's views, matched to the render it came from through HQ's own `published.jsonl`.
+
+```ts
+posts?: [{
+  platform: "instagram" | "tiktok" | "youtube" | "x" | "facebook" | "linkedin",
+  id: string,          // the platform's id for the post
+  url: string,         // https, on the platform's own site only
+  at: string,          // when it went up (ISO)
+  views: number | null,// views now; null when the platform gave none (never 0 for "don't know")
+  trial?: boolean,     // an Instagram trial reel (shown to non-followers, off the grid)
+  thumb?: string,      // https, on the platform's image hosts only (cdninstagram, fbcdn, tiktokcdn, ytimg, twimg, licdn)
+}]                     // up to 500
+```
+
+Read the accounts themselves, not HQ's log, so posts made by hand show and deleted ones drop out. Nothing else
+about a post (captions, comments, people) belongs here. The planner re-reads the accounts when its numbers are
+more than 6 hours old, and its Refresh button runs the whole refresh on demand.
+
 ### Metric ids
 
 | Lever | Ids |

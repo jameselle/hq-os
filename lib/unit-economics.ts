@@ -169,6 +169,8 @@ export type UnitEconomics = {
   bothMonths: number;
   topLines: CostLine[];
   jumps: CostJump[];
+  /** Lines in the latest month the owner marked one-off: kept in every number, left out of jumps. */
+  oneOffs: (OneOff & { amount: number })[];
   burnStreak: BurnStreak | null;
   /** Numbers that can't be measured for the latest month, with the reason, for the brief and the page. */
   gaps: { field: Field; why: string }[];
@@ -183,7 +185,16 @@ export const BURN_MULTIPLE = 2;
 const div = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : a / b);
 const round = (n: number | null, dp = 2) => (n === null || !Number.isFinite(n) ? null : Math.round(n * 10 ** dp) / 10 ** dp);
 
-export type UnitInput = { currency: string; ledgerText: string; weeks: ScoreWeek[]; now: Date; timezone?: string };
+/** A cost the owner says was a one-off (an office set-up, a yearly renewal): it stays in costs, burn and margins, but
+ *  isn't flagged as a jump. `account` is the ledger account or its label ("Office Equipment"). finance/one-offs.json. */
+export type OneOff = { month: string; account: string; reason: string };
+export type UnitInput = { currency: string; ledgerText: string; weeks: ScoreWeek[]; now: Date; timezone?: string; oneOffs?: OneOff[] };
+
+/** Does a one-off cover this account in this month? Matches the ledger account or its label, ignoring case and dashes. */
+export function isOneOff(oneOffs: OneOff[] | undefined, month: string, account: string): OneOff | null {
+  const norm = (s: string) => s.toLowerCase().replace(/[-_\s]+/g, " ").trim();
+  return oneOffs?.find((o) => o.month === month && (norm(o.account) === norm(account) || norm(o.account) === norm(lineLabel(account)))) ?? null;
+}
 
 export function unitEconomics(i: UnitInput): UnitEconomics {
   const current = monthOfDate(i.now, i.timezone || "UTC");
@@ -202,13 +213,17 @@ export function unitEconomics(i: UnitInput): UnitEconomics {
     if (!partnersInLedger && c.extraSpend) basis.push("Acquisition spend includes commissions the scorecard reports");
     const grossMargin = b.direct > 0 && b.revenue > 0 ? (b.revenue - b.direct) / b.revenue : null;
     if (grossMargin === null) missing.grossMargin = b.revenue > 0 ? "No cost of sales or payment fees in the ledger" : "No revenue this month";
+    else if (!Object.keys(b.lines).some((a) => /^Expenses:Fees:Payments(:|$)|(Merchant|Payment)-Fees$/i.test(a))) basis.push("Gross margin has no payment fees (none in the ledger), so it reads a little high");
     const arpu = c.paying ? (c.mrr !== null ? c.mrr / c.paying : b.revenue / c.paying) : null;
     if (arpu !== null) basis.push(c.mrr !== null ? "Revenue per customer is MRR over paying customers" : "Revenue per customer is the month's revenue over paying customers");
     if (c.late) basis.push(`Paying customers read in ${c.late}, just after the month`);
     const marginShare = grossMargin ?? 1;
     if (grossMargin === null) basis.push("Lifetime value and payback use revenue, not gross profit (no cost of sales recorded)");
     const lifetime = c.churn !== null && c.churn > 0 ? 1 / c.churn : null;
-    const ltv = arpu !== null && lifetime !== null ? arpu * marginShare * lifetime : null;
+    // A gross margin at or below zero means each customer costs more to serve than they pay: no positive lifetime
+    // value and no payback, so both stay missing with that reason rather than showing a negative number.
+    const underwater = marginShare <= 0;
+    const ltv = arpu !== null && lifetime !== null && !underwater ? arpu * marginShare * lifetime : null;
     const cac = c.newPaying && acquisition > 0 ? acquisition / c.newPaying : null;
     const values: Record<Field, number | null> = {
       revenue: b.revenue, costs: b.costs, operating: r2(b.costs - acquisition), acquisition,
@@ -216,18 +231,19 @@ export function unitEconomics(i: UnitInput): UnitEconomics {
       burn: r2(Math.max(0, b.costs - b.revenue)),
       paying: c.paying, newPaying: c.newPaying, churn: c.churn,
       arpu: round(arpu), costPerCustomer: round(div(b.costs, c.paying)), lifetime: round(lifetime, 1), ltv: round(ltv),
-      cac: round(cac), ltvToCac: round(div(ltv, cac)), payback: round(div(cac, arpu === null ? null : arpu * marginShare), 1),
+      cac: round(cac), ltvToCac: round(div(ltv, cac)), payback: underwater ? null : round(div(cac, arpu === null ? null : arpu * marginShare), 1),
       breakEven: arpu && b.costs > 0 ? Math.ceil(b.costs / arpu) : null, // costs already hold the direct costs
     };
     if (b.revenue <= 0) missing.netMargin = "No revenue this month";
     if (c.why.paying) for (const f of ["paying", "arpu", "costPerCustomer", "breakEven"] as Field[]) missing[f] = c.why.paying;
     if (c.why.churn) for (const f of ["churn", "lifetime"] as Field[]) missing[f] = c.why.churn;
     else if (lifetime === null) missing.lifetime = "No churn measured, so lifetime has no end yet";
-    if (ltv === null) missing.ltv = missing.arpu ?? missing.lifetime ?? "Needs revenue per customer and churn";
+    const under = "Gross margin is at or below zero (direct costs at least revenue): check all revenue reaches the ledger";
+    if (ltv === null) missing.ltv = underwater ? under : missing.arpu ?? missing.lifetime ?? "Needs revenue per customer and churn";
     if (c.why.newPaying) missing.newPaying = c.why.newPaying;
     if (cac === null) missing.cac = acquisition <= 0 ? "No acquisition spend recorded this month" : c.why.newPaying ?? "No new paying customers this month";
     if (values.ltvToCac === null) missing.ltvToCac = missing.ltv ?? missing.cac ?? "Needs lifetime value and cost to win";
-    if (values.payback === null) missing.payback = missing.cac ?? missing.arpu ?? "Needs cost to win and revenue per customer";
+    if (values.payback === null) missing.payback = missing.cac ?? missing.arpu ?? (underwater ? under : "Needs cost to win and revenue per customer");
     if (values.breakEven === null && !missing.breakEven) missing.breakEven = missing.arpu ?? "Needs revenue per customer";
     return { month: b.month, values, missing, basis };
   });
@@ -262,6 +278,7 @@ export function unitEconomics(i: UnitInput): UnitEconomics {
       const floor = Math.max(JUMP_MIN, JUMP_TOTAL_SHARE * avgTotal);
       for (const [account, amount] of Object.entries(now.lines)) {
         const average = three.reduce((n, m) => n + (m!.lines[account] ?? 0), 0) / 3;
+        if (isOneOff(i.oneOffs, latest.month, account)) continue;
         if (amount > (1 + JUMP_SHARE) * average && amount - average > floor) jumps.push({ account, label: lineLabel(account), month: latest.month, amount, average: r2(average), floor: r2(floor) });
       }
       jumps.sort((a, b) => (b.amount - b.average) - (a.amount - a.average));
@@ -283,6 +300,7 @@ export function unitEconomics(i: UnitInput): UnitEconomics {
     currency: i.currency, months, latest, prior,
     bothMonths: books.filter((b) => b.revenue > 0 && b.costs > 0).length,
     topLines, jumps, burnStreak,
+    oneOffs: latest ? Object.entries(byMonth.get(latest.month)!.lines).flatMap(([account, amount]) => { const o = isOneOff(i.oneOffs, latest.month, account); return o ? [{ ...o, account: lineLabel(account), amount }] : []; }) : [],
     gaps: latest ? FIELDS.filter((f) => latest.values[f] === null).map((f) => ({ field: f, why: latest.missing[f] ?? "Not measured" })) : [],
   };
 }
@@ -370,7 +388,8 @@ export function unitBrief(u: UnitEconomics, o: { business: string; today: string
     "",
   ];
   const findings = [...u.jumps.map((j) => jumpText(j, cur)), ...(u.burnStreak ? [burnText(u.burnStreak, cur)] : [])];
-  out.push("## Findings", ...(findings.length ? findings.map((x) => `- **${x.title}.** ${x.detail}`) : ["- No cost line jumped and burn isn't well above revenue."]), "");
+  out.push("## Findings", ...(findings.length ? findings.map((x) => `- **${x.title}.** ${x.detail}`) : ["- No cost line jumped and burn isn't well above revenue."]),
+    ...u.oneOffs.map((o) => `- ${o.account} in ${o.month} (${o.amount.toFixed(2)} ${cur}) was a one-off: ${o.reason}. It's in the costs but not counted as a jump.`), "");
   if (u.gaps.length) out.push("## Not measurable yet", ...u.gaps.map((g) => `- ${FIELD_LABEL[g.field]}: ${g.why}.`), "");
   if (L.basis.length) out.push("## How it's worked out", ...[...new Set(L.basis)].map((b) => `- ${b}.`), `- Acquisition spend is Advertising, Partnerships and Commissions in the ledger; cost to win divides it by new paying customers in the month's weeks.`, `- A cost line is flagged when it is more than 50% above its 3-month average and higher by more than ${money(JUMP_MIN)} or 5% of average monthly costs, whichever is bigger.`, "");
   out.push("## Next (Unit economics check)",
@@ -400,7 +419,7 @@ export function unitAnalytics(u: UnitEconomics | null): UnitMetric[] {
   const avg = (f: Field) => (u.prior && u.prior.values[f] !== null ? `; ${priorLabel(u.prior.months)} averaged ${priorCell(u.prior, f, u.currency)}` : "");
   const what: Partial<Record<Field, string>> = {
     revenue: "Income less refunds in the ledger", costs: "Every cost in the ledger", acquisition: "Advertising, Partnerships and Commissions in the ledger",
-    grossMargin: "Revenue less payment fees and cost of sales", netMargin: "Revenue less every cost, over revenue", burn: "Costs less revenue (0 when revenue covers costs)",
+    grossMargin: L.basis.some((b) => b.startsWith("Gross margin has no payment fees")) ? "Revenue less cost of sales; payment fees aren't in the ledger, so it reads a little high" : "Revenue less payment fees and cost of sales", netMargin: "Revenue less every cost, over revenue", burn: "Costs less revenue (0 when revenue covers costs)",
     costPerCustomer: "Costs over paying customers", lifetime: "1 / monthly churn (weekly churn compounded)", breakEven: "Costs over revenue per paying customer",
     arpu: L.basis.some((b) => b.startsWith("Revenue per customer is MRR")) ? "MRR over paying customers" : "Revenue over paying customers",
     ltv: "Revenue per customer times lifetime", ltvToCac: "Lifetime value over cost to win", cac: "Acquisition spend over new paying customers", payback: "Cost to win over revenue per customer",

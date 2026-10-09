@@ -6,7 +6,7 @@
 > first batch. Before building, credit the workflows that already run (step 2): owners usually have more than
 > HQ can see. Never read `.env` files; adapters return totals, never people.
 
-The [Workflows tab](/guides/workflows) lists 52 workflows. A workflow counts as **running** only when HQ has
+The [Workflows tab](/guides/workflows) lists 57 workflows. A workflow counts as **running** only when HQ has
 proof that it delivered something. This guide covers how to build a workflow for your own business and how to
 prove it runs, with recipes for the workflows that most subscription businesses need first.
 
@@ -120,6 +120,26 @@ Most businesses run some of these without HQ knowing. Write one check for each, 
   keyword, the DM sends the link, and the link carries a source tag (for example `utm_source=<series>-ig`).
 - **Numbers:** `tool_users`, `tool_signup_rate`, `keyword_dms`, `dm_to_email_rate`, `email_to_trial_rate`.
 - **Prove it:** the keyword posts and the DMs are already counted by HQ. Add a check that tagged sign-ups are being counted.
+
+### Load test before growth (keep)
+
+- **Build:** `npm run hq -- loadtest setup <slug> --target <customers at once> --cadence 30`, then a harness in the
+  business's own repo from `templates/loadtest/` (the simulated customers, a disposable staging copy, a sampler and
+  the report). `/hq:load-test` walks all of it and asks before creating anything that costs money.
+- **Numbers:** `load_test_users`.
+- **Prove it:** nothing to add. `npm run hq -- loadtest record <slug> <run folder>` keeps each run; the workflow is
+  live while the newest run meets the target and is within the cadence, in part otherwise. A CEO finding opens when
+  a test is due. See [Load testing](/guides/load-test).
+
+### Runbooks, vendors and risks (foundation)
+
+- **Build:** a runbook for each thing that breaks (site down, stale data, a payment problem, a bad deploy), written
+  as an Operations playbook whose title starts with "Runbook" (`npm run hq -- brain write <slug> -`); then a vendor
+  review and a risk register saved as Operations documents:
+  `npm run hq -- save-plan <slug> operations <file> --title "vendor review"` and `--title "risk register"`.
+- **Numbers:** `runbooks`.
+- **Prove it:** nothing to add. HQ reads the vault: live with at least one runbook plus a vendor review and a risk
+  register saved in the last 90 days, in part while any of the three is missing or out of date.
 
 ## Done when
 

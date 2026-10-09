@@ -7,10 +7,13 @@ import ReactMarkdown from "react-markdown";
 
 import { AutoRefresh, CopyCommand, DoneButton, RecheckButton } from "@/components/Controls";
 import { Rich } from "@/components/Rich";
+import { DecisionNotes } from "@/components/DecisionNotes";
 import { ScorecardCard } from "@/components/ScorecardCard";
 import { Tile } from "@/components/Tile";
 import { preferredBusiness } from "@/lib/current";
 import { getStatus } from "@/lib/status";
+import { NOTE_SEVERITIES, readFindingNotes } from "@/lib/finding-notes";
+import { listDecisions } from "@/lib/owner-decisions";
 import { listReviews, readReview } from "@/lib/store";
 import { GRADE_LABEL, GRADE_TONE, PILL, SEVERITY_TONE, readinessBar } from "@/lib/tone";
 
@@ -38,6 +41,12 @@ export default async function CeoPage({ searchParams: query }: { searchParams: P
   const reviews = business ? listReviews(business.slug) : [];
   const review = business ? readReview(business.slug, searchParams.review) : null;
 
+  // The owner's own decisions (owner-<id> findings) carry a notes thread.
+  let ownerNotes: Record<string, NonNullable<ReturnType<typeof listDecisions>[number]["notes"]>> = {};
+  try { ownerNotes = Object.fromEntries((business ? listDecisions(business.slug) : []).map((d) => [`owner-${d.id}`, d.notes ?? []])); } catch { ownerNotes = {}; }
+  let findingNotes: ReturnType<typeof readFindingNotes> = {};
+  try { findingNotes = business ? readFindingNotes(business.slug) : {}; } catch { findingNotes = {}; }
+  const notesFor = (sev: string, id: string) => !id.startsWith("owner-") && (NOTE_SEVERITIES as readonly string[]).includes(sev) && Boolean(business);
   const critical = findings.filter((f) => f.severity === "critical");
   const decisions = findings.filter((f) => f.severity === "decision");
   const deptLabel = (slug: string) => report.departments.find((d) => d.slug === slug)?.label ?? slug;
@@ -161,6 +170,8 @@ export default async function CeoPage({ searchParams: query }: { searchParams: P
                   <span className="text-bb-dim font-mono text-[10.5px] uppercase tracking-[0.1em] mr-1.5">Next</span>
                   <Rich text={f.action} />
                 </p>
+                {ownerNotes[f.id] && <DecisionNotes id={f.id.slice("owner-".length)} notes={ownerNotes[f.id]} />}
+                {notesFor(f.severity, f.id) && <DecisionNotes kind="finding" id={f.id} title={f.title} notes={findingNotes[f.id]?.notes ?? []} />}
               </div>
             ))
           )}

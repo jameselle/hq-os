@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { DEPARTMENTS } from "@/lib/registry";
@@ -17,6 +17,12 @@ const LEAD = [
   { href: "/guides", label: "Guides", glyph: "?" },
 ];
 
+
+/** Pages that live under a department, shown indented beneath it. */
+const SUB: Record<string, { href: string; label: string }> = {
+  competitors: { href: "/competitors/trends", label: "Trend Radar" },
+  sales: { href: "/sales/partners", label: "Partnerships" },
+};
 
 const STORAGE_KEY = "hq.sidenav.collapsed";
 
@@ -138,7 +144,20 @@ export function SideNav({ active, built = {} }: { active: string[]; built?: Reco
 
       <div className="mt-4 mb-2 px-2.5">{!collapsed && <span className="eyebrow text-bb-dim">Departments</span>}</div>
       {NAV.map((item) => (
-        <NavLink key={item.href} item={item} active={isActive(item.href)} collapsed={collapsed} built={built[item.slug] ?? null} />
+        <Fragment key={item.href}>
+          <NavLink item={item} active={isActive(item.href) && !(SUB[item.slug] && isActive(SUB[item.slug].href))} collapsed={collapsed} built={built[item.slug] ?? null} />
+          {SUB[item.slug] && !collapsed && (
+            <Link
+              href={SUB[item.slug].href}
+              className={`ml-6 flex items-center gap-2 rounded-lg px-2.5 py-1 text-[12px] transition-colors border ${
+                isActive(SUB[item.slug].href) ? "bg-bb-blue/10 text-bb-fg border-bb-blue/25" : "text-bb-muted hover:bg-bb-surface hover:text-bb-fg border-transparent"
+              }`}
+            >
+              <span aria-hidden className="text-bb-dim">└</span>
+              <span className="min-w-0 flex-1 truncate">{SUB[item.slug].label}</span>
+            </Link>
+          )}
+        </Fragment>
       ))}
       {!collapsed && Object.keys(built).length > 0 && (
         <p className="mt-2 px-2.5 text-[10.5px] text-bb-dim">

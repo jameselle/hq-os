@@ -282,3 +282,41 @@ test("analytics: an alarm number above zero is attention for the workflow's owne
   assert.equal(got[0].action, "Send the link by hand.");
   assert.deepEqual(find([]), []);
 });
+
+test("playbooks: routing names every pick's owner and contributors; ready, queued, failed runs and verdicts each become a finding", () => {
+  const weakest = { lever: "keep", metric: "paying_churn_rate", label: "Paying churn", value: 0.11, baseline: 0.08, unit: "rate", workflow: "Churn early warning", owner: "email", why: "above the 5.0% line" };
+  const routing = { at: "2026-10-07T00:00:00Z", week: "2026-W41", weakest: { lever: "keep", label: "Paying churn", why: "above the 5.0% line", workflow: "Churn early warning", metric: "paying_churn_rate" },
+    picks: [{ workflow: "Churn early warning", slug: "churn-early-warning", owner: "email", contributors: ["data", "support"], why: "its route", score: 150 }, { workflow: "Cancel flow with saves", slug: "cancel-flow-with-saves", owner: "engineering", contributors: ["design", "legal"], why: "moves paying churn", score: 50 }] };
+  const pb = (over: Record<string, unknown> = {}) => ({ mode: "ask" as const, routing, ready: [], queued: [], failed: [], judged: [], ...over });
+  const all = (p: ReturnType<typeof pb>) => buildFindings(depts(), facts({ scorecard: card({ weakest }), playbooks: p as never }), profile());
+  const w = all(pb()).find((y) => y.id === "weakest-lever")!;
+  assert.match(w.detail, /1\. "Churn early warning", owned by Email & Lifecycle with Data & Analytics, Support & Community/);
+  assert.match(w.detail, /2\. "Cancel flow with saves"/);
+  assert.match(w.action, /queued/);
+  assert.match(all(pb({ mode: "off" })).find((y) => y.id === "weakest-lever")!.action, /playbook mode acme-co ask/);
+
+  const at = "2026-10-07T01:00:00Z";
+  const f = all(pb({ ready: [{ id: "r1", workflow: "Churn early warning", owner: "email", at }], queued: [{ id: "q1", workflow: "Customer proof", owner: "content", at }],
+    failed: [{ id: "f1", workflow: "Launch week", owner: "engineering", why: "no plan.md", at }], judged: [{ id: 4, workflow: "Churn early warning", verdict: "lost", note: "Judged by HQ: churn moved +20%", at }] }));
+  const by = (id: string) => f.find((y) => y.id === id);
+  assert.equal(by("playbook-runs-ready")?.severity, "decision");
+  assert.equal(by("playbook-runs-ready")?.dept, "email");
+  assert.match(by("playbook-runs-queued")!.title, /1 playbook queued/);
+  assert.equal(by("playbook-runs-failed")?.severity, "attention");
+  assert.equal(by("playbook-verdict-4")?.severity, "attention");
+  assert.match(by("playbook-verdict-4")!.detail, /rests this playbook for 8 weeks/);
+  assert.ok(!all(pb({ mode: "auto", queued: [{ id: "q1", workflow: "Customer proof", owner: "content", at }] })).some((y) => y.id === "playbook-runs-queued"), "auto mode runs its own queue");
+});
+
+test("the weakest lever, once marked done, stays hidden only for its week", async () => {
+  const { isoWeekStart, isoWeekOf } = await import("../lib/ceo");
+  assert.equal(isoWeekStart("2026-W41"), "2026-10-05T00:00:00.000Z");
+  assert.equal(isoWeekStart("2027-W01"), "2027-01-04T00:00:00.000Z");
+  assert.equal(isoWeekOf(new Date("2026-10-07T12:00:00Z")), "2026-W41");
+  assert.equal(isoWeekOf(new Date("2027-01-01T12:00:00Z")), "2026-W53");
+  const weakest = { lever: "keep", metric: "paying_churn_rate", label: "Paying churn", value: 0.11, baseline: 0.08, unit: "rate", workflow: "Churn early warning", owner: "email", why: "above the line" };
+  const routing = (week: string) => ({ mode: "ask" as const, ready: [], queued: [], failed: [], judged: [], routing: { at: "x", week, weakest: null, picks: [] } });
+  const shown = (week: string) => buildFindings(depts(), facts({ scorecard: card({ weakest }), playbooks: routing(week) as never }), profile(), { "weakest-lever": "2026-10-06T03:21:05.585Z" }).some((y) => y.id === "weakest-lever");
+  assert.equal(shown("2026-W41"), false, "dismissed this week");
+  assert.equal(shown("2026-W42"), true, "a new week brings it back");
+});

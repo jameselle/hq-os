@@ -10,6 +10,7 @@ import { listDrafts as listBlogDrafts } from "./blog-store";
 import { listCampaigns, vaultHasNote } from "./campaign-store";
 import { campaignReport, type Campaign, type CampaignFacts, type CampaignReport } from "./campaigns";
 import { listExperiments } from "./experiments";
+import { listPartners } from "./partner-store";
 import { loadLedger } from "./ledger-spend";
 import { lifecycleState } from "./lifecycle";
 import { listSocial } from "./social-store";
@@ -56,6 +57,10 @@ export function campaignFacts(slug: string, opts: { readings?: boolean; campaign
   }
   const campaigns = opts.campaigns ?? listCampaigns(slug);
   const noteRefs = [...new Set(campaigns.flatMap((c) => c.links.filter((l) => l.kind === "note").map((l) => l.ref)))];
+  // Partner tags count toward the campaigns their partners serve (lib/partners.ts).
+  const partnerTags: Record<string, string[]> = {};
+  for (const p of safe(() => listPartners(slug), [])) if (p.tracking.tag) for (const id of p.campaigns) (partnerTags[id] ??= []).push(p.tracking.tag);
+  const campaignTags = safe(() => (opts.campaigns ? listCampaigns(slug) : campaigns).map((c) => c.utm), campaigns.map((c) => c.utm));
   return {
     now: now.getTime(), currency: profile.currency, social, blog, readBack: readBackPosts(), lifecycle,
     experiments: safe(() => listExperiments(slug), []).map(({ id, hypothesis, metric, status, baseline, result, startedAt }) => ({ id, hypothesis, metric, status, baseline, result, startedAt })),
@@ -63,6 +68,7 @@ export function campaignFacts(slug: string, opts: { readings?: boolean; campaign
     analytics: { connected: Boolean(an?.connected || an?.demo), observedAt: an?.snapshot?.observedAt ?? null, campaigns: an?.snapshot?.campaigns ?? null },
     readings,
     vaultNotes: noteRefs.filter((r) => vaultHasNote(slug, r)),
+    partnerTags, campaignTags,
   };
 }
 

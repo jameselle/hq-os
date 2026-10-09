@@ -7,7 +7,7 @@ import path from "node:path";
 
 import {
   NOTE_TYPES, PROMOTABLE, TYPE_INFO, access, formatNote, noteFileName, noteMeta, parseNote, reads,
-  type NoteMeta, type NoteType, type Scope,
+  type NoteMeta, type NoteType, type Scope, type SignalFeedItem,
 } from "./brain";
 import { DEPARTMENTS } from "./registry";
 import { getProfile, hqData, listBusinesses, vaultRoot } from "./store";
@@ -268,6 +268,27 @@ export function brainStats(slug: string): BrainStats {
     .map((n) => ({ scope: n.scope, type: n.meta.type, dept: n.meta.dept, title: n.meta.title, day: new Date(n.mtime).toISOString().slice(0, 10) }));
   const candidates = notes.filter((n) => n.scope === "business" && n.meta.type === "lesson" && n.meta.status === "active" && n.meta.evidence.length && !n.meta.promotedTo).length;
   return { counts, perDept, recent, candidates, hqExists: fs.existsSync(hqBrainRoot()) };
+}
+
+/** Every signal note a business holds, newest first, for the Workflows hand-offs table. Signals
+ *  belong to one business, so the HQ brain has none. Bodies are cut at `chars`. */
+export function signalFeed(slug: string, chars = 4000): SignalFeedItem[] {
+  let notes: BrainNote[] = [];
+  try { notes = listNotes("business", businessRoot(slug)); } catch { return []; }
+  return notes
+    .filter((n) => n.meta.type === "signal")
+    .sort((a, b) => (b.meta.created ?? "").localeCompare(a.meta.created ?? "") || b.mtime - a.mtime)
+    .map((n) => ({ n, body: n.body.trim() }))
+    .map(({ n, body }) => ({
+      rel: n.rel,
+      from: n.meta.dept,
+      to: n.meta.to,
+      title: n.meta.title,
+      created: n.meta.created ?? new Date(n.mtime).toISOString().slice(0, 10),
+      status: n.meta.status,
+      evidence: n.meta.evidence,
+      body: body.length > chars ? `${body.slice(0, chars).trimEnd()}…` : body,
+    }));
 }
 
 /** Promotion candidates: active business lessons with evidence, not yet promoted. */

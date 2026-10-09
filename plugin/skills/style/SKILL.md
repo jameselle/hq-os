@@ -90,7 +90,9 @@ For every one, note:
 3. **Hook formulas** that won, with an example each, in our voice.
 4. **Script structure:** the beat sheet with seconds, for a 30 to 60 s post.
 5. **Edit and animation style**, mapped onto our tools: which HyperFrames card types (countdown, slam, keycap,
-   split vs full frame), cutaway cadence, caption style. Propose the `brand.json` changes (caption colours, hook
+   split vs full frame), cutaway cadence, caption style. Say which Studio theme it is closest to (`bold`: loud
+   capitals on dark; `paper`: calm cream page, app windows, words inking in, see `templates/studio/themes/paper`)
+   and what would still differ. Propose the `brand.json` changes (caption colours, hook
    style, speed) and **ask the owner** before changing the business's look.
 6. **What we won't copy:** anything that's someone's signature (their catchphrase, their character, their
    footage, their music), anything off-brand or misleading.

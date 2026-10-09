@@ -47,6 +47,7 @@ const metrics = [
   metric('partner_customers', { base: 23, trend: 0.3, wobble: 0.03, int: true }),
   metric('partner_d90_retention', { base: 0.71, wobble: 0.04 }),
   metric('landing_conversion_rate', { base: 0.041, wobble: 0.1, dp: 4 }),
+  metric('site_visitors', { base: 2400, trend: 0.15, wobble: 0.05, int: true, breakdown: [{ label: 'google.com', value: 1210 }, { label: 'Direct', value: 640 }, { label: 'instagram.com', value: 310 }], period: 'last 4 weeks, top referrers' }),
   metric('tool_users', { base: 610, trend: 0.25, int: true }),
   metric('tool_signup_rate', { base: 0.052, wobble: 0.1, dp: 4 }),
   metric('feature_adoption', { value: 0.64, breakdown: [{ label: 'Roast picker', value: 0.81 }, { label: 'Skip a month', value: 0.37 }, { label: 'Brew guides', value: 0.52 }, { label: 'Gift boxes', value: 0.09 }], period: 'last 4 weeks, share of active customers' }),

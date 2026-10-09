@@ -25,8 +25,9 @@ macOS VM images take about 30 GB of disk each).
 ## 1. Tools
 
 The department tab is http://127.0.0.1:3150/engineering. Seven tools are needed: Git + Git LFS, PostgreSQL,
-Redis 7.4, Temporal, Playwright, Cua Driver and Uptime Kuma. Lume, Sentry (self-hosted), Grafana, Prometheus
-and camofox-browser are optional and never count against readiness. Every server here binds to 127.0.0.1.
+Redis 7.4, Temporal, Playwright, Cua Driver and Uptime Kuma. k6, Lume, Sentry (self-hosted), Grafana, Prometheus,
+camofox-browser, Coolify and OpenHands are optional and never count against readiness. Every server here binds
+to 127.0.0.1.
 
 ### Git + Git LFS
 
@@ -77,6 +78,20 @@ and camofox-browser are optional and never count against readiness. Every server
 - **Set it up:** nothing to install; it runs with `npx playwright`. Download a browser once with
   `npx playwright install chromium`.
 - **How HQ checks it:** `npx` on PATH. Shows "on-demand".
+
+### k6
+
+- **What it's for:** load testing. It simulates many customers at once (API calls, pages, WebSocket streams)
+  against a disposable copy of production, step by step (for example 10, 25, 50, 100), so you know how many
+  customers the product serves before a launch or a paid push finds out for you. `/hq:load-test` drives it.
+- **Needed or optional:** optional. Install it when the business runs its own servers (an API, an app backend,
+  a checkout); a shop on a hosted platform doesn't need it.
+- **Licence or plan:** open source, AGPL-3.0. Running it is free. The disposable copy it tests is a small cloud
+  server for an hour or so (cents), which `/hq:load-test` asks the owner about first.
+- **Set it up:** `/hq:add-tool` for k6: the release from GitHub, checked against its published checksums, linked
+  into `~/.local/bin/k6`. The test itself usually runs from a second cloud server next to the copy, which gets the
+  Linux release the same way.
+- **How HQ checks it:** `k6` on PATH. Shows "installed".
 
 ### Cua Driver
 
@@ -152,6 +167,35 @@ and camofox-browser are optional and never count against readiness. Every server
 - **How HQ checks it:** the folder `~/.local/opt/camofox-browser` (**installed**). Until it's there it shows
   **missing**; it's optional, so that doesn't count.
 
+### Coolify
+
+- **What it's for:** a self-hosted Heroku or Vercel on a Linux server. It's a potential, not installed. It would
+  give the Docker-only tools HQ can't run on a Mac a home (Chatwoot or Zammad for the helpdesk, Documenso or
+  DocuSeal for e-signature, Umami or Plausible for web analytics), each as a one-click setup, and it keeps them up
+  while the Mac is shut.
+- **Needed or optional:** optional, a potential.
+- **Licence or plan:** open source, Apache-2.0. Free to self-host; Coolify Cloud is paid and not used.
+- **Set it up:** only with the owner's yes, because it needs a Linux server reached over SSH, which costs money
+  unless there's a spare box. It runs everything in Docker, so it never goes on the Macs, and never on a server
+  that already runs a business's production work. Read its install script before running it.
+- **How HQ checks it:** the `coolify` command-line tool on this Mac (**installed**), which is how a set-up
+  server is managed from here. Until then it shows **missing**; it's optional, so that doesn't count.
+
+### OpenHands
+
+- **What it's for:** Agent Canvas, a control panel that runs coding agents (its own, or Claude Code, Codex or
+  Gemini) locally, in Docker or on servers, with automations on a schedule or from Slack, GitHub, Linear and
+  Notion events. It's a potential, not installed.
+- **Needed or optional:** optional, a potential. Claude Code, HQ's skills, its launchd jobs and the Workflows
+  tab already cover most of it.
+- **Licence or plan:** open source, MIT. It drives Claude Code with the existing Pro/Max login, so no API key;
+  OpenHands Cloud and Enterprise are paid and not used.
+- **Set it up:** only if agents must run while the Mac is shut, which means a server (see Coolify). Without a
+  sandbox the agent can read every file, which breaks the never-read-`.env` rule; the sandbox needs Docker. It
+  needs Node 24 and uv.
+- **How HQ checks it:** the `agent-canvas` command (**installed**). Until it's there it shows **missing**; it's
+  optional, so that doesn't count.
+
 ## 2. Accounts and connections
 
 None. Everything here is local. Logins created inside a tool (Uptime Kuma's admin) stay with the owner, in
@@ -168,6 +212,9 @@ their password manager. Database passwords stay in each tool's own config or the
 - `/engineering:debug`: debug a problem.
 - `/engineering:testing-strategy`: decide what to test.
 - `/engineering:deploy-checklist`: run through it before you ship.
+- `/hq:load-test`: how many customers at once before it breaks. Plans the simulated customers from the
+  business's plans, builds the harness from `templates/loadtest/`, runs a stepped test on a disposable copy of
+  production (never production), records it with `npm run hq -- loadtest record` and tears the copy down.
 - `/engineering:incident-response`: when it breaks.
 - `/engineering:tech-debt`: decide what to pay down.
 - `/superpowers:systematic-debugging`: find the root cause before fixing.
@@ -194,6 +241,8 @@ their password manager. Database passwords stay in each tool's own config or the
 - [ ] `npm run hq -- services status` shows every `com.hq.*` service here running with its port up.
 - [ ] Uptime Kuma has an admin login and a monitor for every site in the profile.
 - [ ] Cua Driver has its permissions, and its telemetry and update checks are off.
+- [ ] If the business runs its own servers: a load test is set up (`npm run hq -- loadtest setup <slug> --target <users>`)
+      and its latest run is recorded (see [Load testing](/guides/load-test)).
 - [ ] `/hq:dept engineering` has saved this week's plan.
 
 ## Good to know

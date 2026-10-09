@@ -49,6 +49,28 @@ latest written review beside it.
 **Done** on a finding hides it for that business once you've dealt with it, or decided to leave it. A finding
 that comes back means its check is failing again.
 
+## Your open decisions
+
+Every call only you can make sits on the CEO tab as a blue **decision** (orange when it's due within two days): the
+ones HQ raises itself, like plans ready to read, and the ones a review, a department or a Claude session left for you,
+each with why it's yours, how to do it, a recommendation and a date if it has one. From Claude Code:
+
+```bash
+npm run hq -- decision list <slug>                         # what's open
+npm run hq -- decision done <slug> <id> --answer "…"       # you decided: recorded, and filed in the brain
+npm run hq -- decision drop <slug> <id> [--note "…"]       # no longer needed
+npm run hq -- decision show <slug> <id>                    # the whole decision, with its notes
+npm run hq -- decision note <slug> <id> "…"                # Claude answers or updates a note
+```
+
+Each decision has a **notes** thread on the CEO tab: write your thinking or a question under it, and edit or delete your
+own notes. Claude reads them (a note you wrote last shows as waiting for a reply) and answers in the same thread. The
+list and its notes are also in the vault, `CEO/Open decisions.md`.
+
+Red (critical) and amber (attention) findings have the same notes thread: say what's behind one ("that's a one-off
+monitor") or ask about it, and Claude reads and answers it (`npm run hq -- finding notes <slug>`, `finding show`,
+`finding note`). Notes stay after the finding clears, in the vault's `CEO/Notes on findings.md`.
+
 ## Weekly reviews
 
 - **`/hq:ceo`** writes a review: what changed, what needs you, and up to five decisions. It's saved to the

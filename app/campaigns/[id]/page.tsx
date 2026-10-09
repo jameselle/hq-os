@@ -9,6 +9,8 @@ import { formatAnalytics } from "@/lib/analytics-metrics";
 import { getCampaign } from "@/lib/campaign-store";
 import { campaignFacts } from "@/lib/campaign-report";
 import { CHANNEL_LABEL, campaignReport, type Measure } from "@/lib/campaigns";
+import { PartnerCounts, PartnerStatusPill } from "@/components/PartnerParts";
+import { campaignPartners } from "@/lib/partner-report";
 import { preferredBusiness } from "@/lib/current";
 import { DEPARTMENTS } from "@/lib/registry";
 import { resolveCurrent } from "@/lib/store";
@@ -57,6 +59,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     ...c.results.map((x) => ({ at: x.at, kind: "result" as const, text: x.text, numbers: x.numbers ?? [] })),
     ...c.notes.map((x) => ({ at: x.at, kind: x.learning ? ("learning" as const) : ("note" as const), text: x.text, numbers: [] as { label: string; value: number }[] })),
   ].sort((a, b) => b.at.localeCompare(a.at));
+  const cp = campaignPartners(p.slug, c.id);
   const linked = r.social.length + r.blog.length + r.posts.length + r.emails.length + r.experiments.length + r.notes.length;
 
   return (
@@ -180,6 +183,31 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                 )}
               </div>
             )}
+          </div>
+        )}
+      </Section>
+
+      <Section title="Partners" aside={<span className="text-[11.5px] text-bb-dim break-words">link one: <span className="font-mono">npm run hq -- partner link {p.slug} &lt;partner&gt; campaign {c.id}</span></span>}>
+        {!cp.partners.length ? (
+          <p className="card px-4 py-3 text-[12.5px] text-bb-muted">No partners serve this campaign yet. <Link href="/sales/partners" className="text-bb-blue hover:underline">Partnerships</Link></p>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+            <div className="card p-4 space-y-3 min-w-0">
+              <PartnerCounts counts={cp.counts} />
+              <ul className="divide-y divide-bb-border/60 text-[12.5px]">
+                {cp.partners.map((x) => (
+                  <li key={x.id} className="flex flex-wrap items-baseline justify-between gap-2 py-1.5">
+                    <span className="min-w-0 break-words"><Link href={`/sales/partners/${x.id}`} className="hover:text-bb-blue">{x.name}</Link> <span className="text-bb-dim">{x.handle}</span>{x.tracking.tag && <span className="font-mono text-[11px] text-bb-dim"> {x.tracking.tag}</span>}</span>
+                    <PartnerStatusPill status={x.status} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="grid grid-cols-2 gap-2 content-start">
+              <Num label="Partner sign-ups" m={cp.outcome.signups} currency={cur} />
+              <Num label="Partner paying" m={cp.outcome.paying} currency={cur} />
+              <p className="col-span-2 text-[11.5px] text-bb-dim">From {cp.tagged} tagged {cp.tagged === 1 ? "partner" : "partners"}; their tags also count in the campaign&apos;s own numbers above.</p>
+            </div>
           </div>
         )}
       </Section>

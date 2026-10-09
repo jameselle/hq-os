@@ -12,6 +12,7 @@ import { LEVERS, type Lever } from "./workflows";
 import { formatValue } from "./scorecard-metrics";
 import { addMonths, burnText, jumpText } from "./unit-economics";
 import type { DeptStatus, Finding, HostFacts, Severity } from "./types";
+import { decisionFindings } from "./owner-decisions-findings";
 
 export const SEVERITY_RANK: Record<Severity, number> = { critical: 0, attention: 1, decision: 2, info: 3 };
 
@@ -27,6 +28,22 @@ export function backupIsExternal(repository: string | undefined): boolean {
 }
 
 const DAY = 24 * 60 * 60 * 1000;
+
+/** Monday 00:00 UTC of an ISO week ("2026-W41"), or undefined. */
+export function isoWeekStart(week: string | undefined): string | undefined {
+  const m = /^(\d{4})-W(\d{2})$/.exec(week ?? "");
+  if (!m) return undefined;
+  const jan4 = Date.UTC(Number(m[1]), 0, 4);
+  const monday = jan4 - ((new Date(jan4).getUTCDay() + 6) % 7) * DAY + (Number(m[2]) - 1) * 7 * DAY;
+  return new Date(monday).toISOString();
+}
+/** The ISO week of a date, in UTC ("2026-W41"). */
+export function isoWeekOf(d: Date): string {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  t.setUTCDate(t.getUTCDate() + 3 - ((t.getUTCDay() + 6) % 7));
+  const y = t.getUTCFullYear(), first = Date.UTC(y, 0, 4);
+  return `${y}-W${String(1 + Math.round(((t.getTime() - first) / DAY - 3 + ((new Date(first).getUTCDay() + 6) % 7)) / 7)).padStart(2, "0")}`;
+}
 
 export function buildFindings(
   depts: DeptStatus[],
@@ -366,6 +383,21 @@ export function buildFindings(
     }
   }
 
+  // ---- Load testing: due when never run, past its cadence, or the last run fell short of the target ----
+  // `since` reopens it when a newer run falls short again, or when the cadence comes round.
+  const load = profile ? f.loadTest : null;
+  if (profile && load?.due) {
+    out.push({
+      id: "load-test-due",
+      severity: "attention",
+      dept: "engineering",
+      title: `Load test due: can it serve ${load.target} customers at once?`,
+      ...(load.since ? { since: load.since } : {}),
+      detail: load.why,
+      action: `Run \`/hq:load-test\` for ${profile.name}: a stepped test on a disposable copy of production (never production), then \`npm run hq -- loadtest record ${profile.slug} <run folder>\`. Creating the copy costs money, so it asks first.`,
+    });
+  }
+
   // ---- Weekly social plan: a post HQ gave up on is the owner's to fix (it is never retried on its own) ----
   for (const p of profile ? f.social?.failed ?? [] : []) {
     out.push({
@@ -375,6 +407,30 @@ export function buildFindings(
       title: `HQ couldn't post ${p.day}'s ${p.network} ${p.format}`,
       detail: `It failed ${p.attempts} time${p.attempts === 1 ? "" : "s"} and HQ stopped trying${p.error ? `: ${p.error}` : "."} Nothing went out twice: every attempt looked for the post on the account first.`,
       action: `Fix the cause, then \`npm run hq -- social approve ${profile!.slug} ${p.id}\` to let HQ try again (attempts start over), or post it by hand and \`npm run hq -- social posted ${profile!.slug} ${p.id} <link>\`. Content & Social shows the error.`,
+    });
+  }
+
+  // ---- Partner outreach: an email HQ couldn't send in the last day, and follow-ups waiting for the owner ----
+  for (const x of profile ? (f.partners?.failed ?? []).filter((x) => now.getTime() - Date.parse(x.at) < DAY) : []) {
+    out.push({
+      id: `partner-send-failed-${x.partner}-${x.n}`,
+      severity: "attention",
+      dept: "sales",
+      title: `HQ couldn't email ${x.name}`,
+      since: x.at,
+      detail: `Outreach draft ${x.n} failed${x.error ? `: ${x.error}` : "."} HQ never sends a draft twice on its own.`,
+      action: `Fix the cause (the sender connection, the address), then \`npm run hq -- partner retry ${profile!.slug} ${x.partner} ${x.n}\` (HQ looks for the first send before trying again), or send it yourself. The partner's page shows the error.`,
+    });
+  }
+  if (profile && f.partners?.followUps) {
+    const n = f.partners.followUps;
+    out.push({
+      id: "partner-follow-ups",
+      severity: "decision",
+      dept: "sales",
+      title: `${n} partner follow-up${n === 1 ? "" : "s"} ready for your yes`,
+      detail: `Partners who haven't answered in five days get one short follow-up, written by HQ and waiting on the Partnerships board. Nobody gets a second.`,
+      action: "Open Sales & Partnerships, then Partnerships: approve each follow-up (HQ emails the email ones on a weekday between 9am and 5pm), or send DMs and forms yourself and mark them sent.",
     });
   }
 
@@ -441,14 +497,22 @@ export function buildFindings(
     }
     if (card.weakest) {
       const w = card.weakest;
-      const owner = depts.find((d) => d.slug === w.owner)?.label ?? w.owner;
+      const name = (slug: string) => (slug === "ceo" ? "CEO" : depts.find((d) => d.slug === slug)?.label ?? slug);
+      const picks = f.playbooks?.routing?.picks ?? [];
+      const mode = f.playbooks?.mode ?? "off";
       out.push({
         id: "weakest-lever",
         severity: "decision",
-        dept: w.owner,
+        dept: picks[0]?.owner ?? w.owner,
+        // Dated to the routing's week, so "done" hides it for that week and next week's lever comes back.
+        since: isoWeekStart(f.playbooks?.routing?.week) ?? isoWeekStart(isoWeekOf(now)),
         title: `Weakest lever this week: ${LEVERS[w.lever as Lever]?.name ?? w.lever}, ${w.label.toLowerCase()} ${formatValue(w.unit as "rate", w.value, profile.currency)}`,
-        detail: `${w.label} is ${w.why}. The workflow that moves it is "${w.workflow}", owned by ${owner}.`,
-        action: `Tell Claude "run the ${w.workflow} workflow" (Workflows tab). Log what you try with \`npm run hq -- experiment add ${profile.slug} "<hypothesis>" --metric ${w.metric}\`, and check the number next week.`,
+        detail: picks.length
+          ? `${w.label} is ${w.why}. The playbooks that move it: ${picks.map((x, i) => `${i + 1}. "${x.workflow}", owned by ${name(x.owner)} with ${x.contributors.map(name).join(", ")} (${x.why})`).join("; ")}.`
+          : `${w.label} is ${w.why}. The workflow that moves it is "${w.workflow}", owned by ${name(w.owner)}.`,
+        action: mode === "off"
+          ? `Turn playbooks on so HQ queues these for you: \`npm run hq -- playbook mode ${profile.slug} ask\`. Or tell Claude "run the ${picks[0]?.workflow ?? w.workflow} workflow".`
+          : `HQ has queued ${picks.length > 1 ? "them" : "it"} (Workflows, Playbooks tab). Run, read the plan, then apply: applying opens the experiment, and HQ judges it in two weeks.`,
       });
     }
     if (card.mismatch && card.mismatch > 0) {
@@ -486,6 +550,51 @@ export function buildFindings(
       action: "Reinstall the plugin they belong to, or remove them from lib/registry.ts.",
     });
   }
+
+  // ---- The owner's open decisions (lib/owner-decisions.ts): everything a review, a department or Claude left for them ----
+  if (profile && f.ownerDecisions?.length) out.push(...decisionFindings(f.ownerDecisions, now));
+
+  // ---- Playbooks: runs waiting for the owner, runs that failed, and what the last experiments taught ----
+  const pb = f.playbooks;
+  if (profile && pb) {
+    const name = (slug: string) => (slug === "ceo" ? "CEO" : depts.find((d) => d.slug === slug)?.label ?? slug);
+    const newest = (xs: { at: string }[]) => xs.map((x) => x.at).sort().at(-1);
+    if (pb.ready.length) {
+      out.push({
+        id: "playbook-runs-ready", severity: "decision", dept: pb.ready[0].owner, since: newest(pb.ready),
+        title: `${pb.ready.length} playbook plan${pb.ready.length === 1 ? " is" : "s are"} ready for you`,
+        detail: pb.ready.map((r) => `"${r.workflow}" (${name(r.owner)})`).join(", ") + ". Each has a plan and ready-to-use drafts; nothing has gone to customers.",
+        action: `Read each plan on the Workflows tab (Playbooks), then apply it or drop it: \`npm run hq -- playbook apply ${profile.slug} <run-id>\`. Applying opens the experiment HQ judges in two weeks.`,
+      });
+    }
+    if (pb.mode === "ask" && pb.queued.length) {
+      out.push({
+        id: "playbook-runs-queued", severity: "decision", dept: pb.queued[0].owner, since: newest(pb.queued),
+        title: `${pb.queued.length} playbook${pb.queued.length === 1 ? "" : "s"} queued, waiting for your go`,
+        detail: pb.queued.map((r) => `"${r.workflow}" (${name(r.owner)})`).join(", ") + ". Their triggers fired; in ask mode HQ waits for you before doing the work.",
+        action: `Run one from the Workflows tab (Playbooks), or \`npm run hq -- playbook run ${profile.slug} <run-id>\`. Each run writes a plan and drafts, and sends nothing.`,
+      });
+    }
+    if (pb.failed.length) {
+      out.push({
+        id: "playbook-runs-failed", severity: "attention", dept: pb.failed[0].owner, since: newest(pb.failed),
+        title: `${pb.failed.length} playbook run${pb.failed.length === 1 ? "" : "s"} failed this week`,
+        detail: pb.failed.map((r) => `"${r.workflow}": ${r.why.slice(0, 160)}`).join("; "),
+        action: `Read the reason, then rerun it: \`npm run hq -- playbook run ${profile.slug} <run-id>\` (its files are kept in the run folder).`,
+      });
+    }
+    for (const j of pb.judged) {
+      out.push({
+        id: `playbook-verdict-${j.id}`, severity: j.verdict === "lost" ? "attention" : "info", dept: "data", since: j.at,
+        title: `"${j.workflow}" ${j.verdict === "won" ? "worked" : j.verdict === "lost" ? "didn't work" : "was inconclusive"}`,
+        detail: `${j.note}. The lesson is in the brain${j.verdict === "lost" ? "; routing rests this playbook for 8 weeks so nobody reruns it unchanged" : ""}.`,
+        action: j.verdict === "won" ? "Keep it going, and consider making the plan a standing SOP." : j.verdict === "lost" ? "Read the lesson before the next review and try a different playbook for this lever." : "Try a bigger change or give it longer before repeating it.",
+      });
+    }
+  }
+
+  // A finding whose latest note is the owner's says so, for whoever reads it next (Claude answers with `hq finding note`).
+  for (const x of out) if (f.findingNotes?.[x.id]?.notes.at(-1)?.by === "owner") x.detail += " Your latest note is waiting for Claude's reply.";
 
   return out
     // Done hides a finding until evidence newer than the moment it was marked done arrives.

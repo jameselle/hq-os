@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { checkSocial, decideSocial, slideProblem, weekOf, validateSocialConfig, type SocialConfig, type SocialDraft } from "../lib/social";
+import { askedKeyword, checkSocial, decideSocial, keywordDmTool, slideProblem, weekOf, validateSocialConfig, type SocialConfig, type SocialDraft } from "../lib/social";
 import { cardHtml, fontsHref, paletteFrom } from "../lib/social-cards";
 
 const post = (o: Partial<SocialDraft> = {}): SocialDraft => ({
@@ -114,4 +114,28 @@ test("headlines never break after a hyphen, and a single card shows the site", (
   const pin = cardHtml({ title: "Pin", index: 1, total: 1, brand: "Demo", palette: pal, mark: null, w: 1000, h: 1500, site: "https://www.demo.example/" });
   assert.match(pin, /class="site">demo\.example</);
   assert.ok(!/class="site"/.test(card({ title: "Point" })), "carousels show progress, not the site");
+});
+
+test("a comment keyword fails without a keyword-DM tool on that network, and passes with one", () => {
+  const ask = post({ caption: "Comment BREW and we'll DM you the guide." });
+  assert.ok(failed(ask).includes("keyword"), "nothing answers comments for this business");
+  assert.ok(failed(post({ keyword: "BREW" })).includes("keyword"), "the keyword field alone counts as an ask");
+  assert.ok(failed(post({ slides: [{ title: "Want the guide?", body: "Comment the word BREW" }, { title: "Save this" }] })).includes("keyword"));
+  assert.ok(!failed(ask, { keywordDms: ["instagram"] }).includes("keyword"));
+  assert.ok(failed(post({ network: "tiktok", format: "reel", slides: undefined, video: { brief: "x" }, caption: "Comment BREW" }), { keywordDms: ["instagram"] }).includes("keyword"));
+  assert.ok(!failed(post({ caption: "Comment below with your brew ratio. Link in bio." })).includes("keyword"), "\"comment below\" is not a keyword ask");
+  assert.equal(failed(post()).includes("keyword"), false);
+  assert.equal(askedKeyword(post({ caption: 'Comment "BREW" for the link' })), "BREW");
+});
+
+test("keywordDmTool: social.json keywordDms, or Instagram replies that leave keywords to a bot", () => {
+  const base: SocialConfig = { mode: "draft", networks: { instagram: { posting: "hq" }, tiktok: { posting: "hand" } } };
+  assert.equal(keywordDmTool(base, "instagram"), null);
+  assert.equal(keywordDmTool({ ...base, keywordDms: { tool: "comment-dm" } }, "instagram"), "comment-dm");
+  assert.equal(keywordDmTool({ ...base, keywordDms: { tool: "comment-dm" } }, "tiktok"), null, "Instagram only when networks is unset");
+  assert.equal(keywordDmTool({ ...base, keywordDms: { tool: "ManyChat", networks: ["instagram", "tiktok"] } }, "tiktok"), "ManyChat");
+  assert.equal(keywordDmTool({ ...base, replies: { instagram: { keychain: "token", skipKeywords: ["CLIP"] } } }, "instagram"), "comment-dm");
+  assert.equal(keywordDmTool({ ...base, replies: { instagram: { keychain: "token" } } }, "instagram"), null);
+  assert.doesNotThrow(() => validateSocialConfig({ ...base, keywordDms: { tool: "comment-dm", networks: ["instagram"] } }));
+  assert.throws(() => validateSocialConfig({ ...base, keywordDms: { tool: "", networks: ["myspace"] } }), /keywordDms/);
 });

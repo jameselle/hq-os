@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 
-import { access, formatNote, noteMeta, parseNote, reads, receiversFrom, sendersTo } from "../lib/brain";
-import { brainStats, candidates, hqBrainRoot, initBrain, listNotes, promote, readBundle, readingList, writeNote } from "../lib/brain-store";
+import { access, formatNote, noteMeta, parseNote, reads, receiversFrom, sendersTo, signalCounts, signalsFor } from "../lib/brain";
+import { brainStats, candidates, hqBrainRoot, initBrain, listNotes, promote, readBundle, readingList, signalFeed, writeNote } from "../lib/brain-store";
 import { getProfile, scaffoldBusiness, vaultRoot } from "../lib/store";
 import { EDGES, NODES } from "../lib/workflows";
 import { profile, tempData } from "./helpers";
@@ -119,4 +119,25 @@ test("legacy SOPs and CEO decisions are read, in reading order, within the budge
   assert.equal(stats.counts.business.playbook, 1, "replaced notes aren't counted");
   assert.equal(stats.perDept.content.reads, 5);
   assert.ok(stats.hqExists);
+});
+
+test("the signal feed lists a business's signal notes per hand-off, newest first, with long bodies cut", () => {
+  const { p, vault } = setup();
+  const [a, b] = EDGES.filter((e) => e.from === "support");
+  writeNote("business", p.slug, { type: "signal", dept: "support", title: "Stuck users", body: "Three asked.", evidence: ["ticket 1"], to: [a.to, b.to] });
+  writeNote("business", p.slug, { type: "fact", dept: "support", title: "Hours", body: "9 to 5." });
+  fs.mkdirSync(path.join(vault, "Signals"), { recursive: true });
+  fs.writeFileSync(path.join(vault, "Signals", "2020-01-01 Old.md"), formatNote({ type: "signal", dept: "support", title: "Old", status: "replaced", created: "2020-01-01", evidence: [], to: [a.to] }, "x".repeat(50)));
+
+  const feed = signalFeed(p.slug, 20);
+  assert.deepEqual(feed.map((s) => s.title), ["Stuck users", "Old"], "only signals, newest first");
+  assert.deepEqual(feed[0].evidence, ["ticket 1"]);
+  assert.equal(feed[1].status, "replaced");
+  assert.equal(feed[1].body, `${"x".repeat(20)}…`);
+
+  assert.deepEqual(signalsFor(feed, "support", a.to).map((s) => s.title), ["Stuck users", "Old"]);
+  assert.deepEqual(signalsFor(feed, "support", b.to).map((s) => s.title), ["Stuck users"]);
+  assert.deepEqual(signalsFor(feed, a.to, "support"), [], "direction matters");
+  assert.deepEqual(signalCounts(feed), { [`support>${a.to}`]: 2, [`support>${b.to}`]: 1 });
+  assert.deepEqual(signalFeed("no-such-business"), []);
 });

@@ -353,3 +353,28 @@ test("plans: an item can be a trial reel; a trial can't also be pinned (it never
   assert.deepEqual(saved[0].items, [{ v: "a/x.mp4", trial: true }, { v: "a/y.mp4", pinned: true }, { v: "a/z.mp4" }]);
   assert.throws(() => savePlans(root, [{ ...base, items: [{ v: "a/x.mp4", trial: true, pinned: true }] }]), /trial.*pinned|pinned.*trial/);
 });
+
+test("the planner's live view: read it, re-read the accounts once at a time, and none when the host has no live view", async () => {
+  const { root } = fixture();
+  let refreshes = 0;
+  const feed = { updatedAt: "2026-10-07T10:00:00.000Z", stale: false, posts: [{ platform: "instagram", id: "1", url: "https://www.instagram.com/reel/A/", at: "2026-10-07T08:00:00.000Z", views: 12 }] };
+  const server = serveReview({ root, port: 0, live: {
+    feed: (plan) => (plan === "acme-co" ? feed : null),
+    refresh: async (plan) => { refreshes++; await new Promise((r) => setTimeout(r, 30)); return plan === "acme-co" ? { ...feed, posts: [{ ...feed.posts[0], views: 40 }] } : null; },
+  } });
+  const bare = serveReview({ root, port: 0 });
+  await Promise.all([server, bare].map((s) => new Promise((r) => s.once("listening", r))));
+  const port = (server.address() as { port: number }).port, barePort = (bare.address() as { port: number }).port;
+  try {
+    assert.equal(JSON.parse((await request(port, "GET", "/api/live?plan=acme-co")).body).feed.posts[0].views, 12);
+    assert.equal(JSON.parse((await request(port, "GET", "/api/live?plan=other")).body).feed, null);
+    const [a, b] = await Promise.all([request(port, "POST", "/api/live?plan=acme-co", {}), request(port, "POST", "/api/live?plan=acme-co", {})]);
+    assert.equal(JSON.parse(a.body).feed.posts[0].views, 40);
+    assert.equal(JSON.parse(b.body).feed.posts[0].views, 40);
+    assert.equal(refreshes, 1, "a double click re-reads the accounts once");
+    assert.equal((await request(port, "POST", "/api/live?plan=acme-co", undefined, undefined, { "content-type": "text/plain" })).status, 415, "JSON only, like every write");
+    assert.equal(JSON.parse((await request(barePort, "GET", "/api/live?plan=acme-co")).body).feed, null);
+  } finally {
+    server.close(); bare.close();
+  }
+});

@@ -119,3 +119,26 @@ export function formatNote(meta: NoteMeta, body: string, extra: Record<string, s
 
 /** A file name from a title: no path separators or characters Obsidian can't link. */
 export const noteFileName = (title: string) => title.replace(/[\\/:*?"<>|#^[\]]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+
+/** A signal note as the Workflows hand-offs table shows it: who found it, for whom, and what. */
+export type SignalFeedItem = {
+  rel: string;
+  from: Node;
+  to: Node[];
+  title: string;
+  created?: string;
+  status: "active" | "replaced";
+  evidence: string[];
+  body: string;
+};
+
+/** Signal notes one department handed another (a row of the hand-offs table), in the feed's order. */
+export const signalsFor = (feed: SignalFeedItem[], from: Node, to: Node): SignalFeedItem[] =>
+  feed.filter((s) => s.from === from && s.to.includes(to));
+
+/** How many notes sit behind each hand-off, keyed `from>to`. A note sent to three departments counts once for each. */
+export function signalCounts(feed: SignalFeedItem[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const s of feed) for (const t of new Set(s.to)) out[`${s.from}>${t}`] = (out[`${s.from}>${t}`] ?? 0) + 1;
+  return out;
+}

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { acquisitionSpend, applyCosts, loadLedger } from "../lib/ledger-spend";
+import { acquisitionSpend, acquisitionWindow, applyCosts, loadLedger, spreadNote, weeksWindow } from "../lib/ledger-spend";
 import type { Metric, ScorecardSnapshot } from "../lib/scorecard";
 
 const LEDGER = `
@@ -141,4 +141,82 @@ test("loadLedger inlines includes relative to the file, once each", () => {
   const text = loadLedger(path.join(dir, "ledger.beancount"));
   assert.deepEqual(acquisitionSpend(text, "AUD", FROM, TO), { total: 40, postings: 1 });
   assert.equal(loadLedger(path.join(dir, "nope.beancount")), "");
+});
+
+// ---------------------------------------------------------------- monthly imported totals spread by day (2026-10-07)
+
+/** An accounting import, the way lib/finance-costs.ts writes it: one #imported transaction per account per month,
+ *  dated the month's last day. Invented amounts. */
+const IMPORTED = `
+2026-08-31 * "Xero" "Costs from Xero: Advertising & Marketing" #imported
+  Expenses:Advertising:Advertising-Marketing   310.00 AUD
+  Liabilities:Imported:Xero   -310.00 AUD
+2026-09-30 * "Xero" "Costs from Xero: Advertising & Marketing" #imported
+  Expenses:Advertising:Advertising-Marketing   300.00 AUD
+  Liabilities:Imported:Xero   -300.00 AUD
+2026-09-30 * "Xero" "Costs from Xero: Affiliate & Partnerships" #imported
+  Expenses:Partnerships:Affiliate-Partnerships   600.00 AUD
+  Liabilities:Imported:Xero   -600.00 AUD
+2026-09-30 * "Xero" "Costs from Xero: Hosting" #imported
+  Expenses:CostOfSales:Hosting   999.00 AUD
+  Liabilities:Imported:Xero   -999.00 AUD
+`;
+
+test("weeksWindow: the four ISO weeks ending with a week, Monday to Monday", () => {
+  const w = weeksWindow("2026-W40");
+  assert.equal(w.from.toISOString(), "2026-09-07T00:00:00.000Z");
+  assert.equal(w.to.toISOString(), "2026-10-05T00:00:00.000Z");
+  assert.equal(weeksWindow("2026-W01").from.toISOString(), "2025-12-08T00:00:00.000Z");
+});
+
+test("a month's imported total is spread over its days; only the window's days count; partnerships count", () => {
+  // 10 of September's 30 days: (300 + 600) * 10 / 30. The 999 of cost of sales is not acquisition.
+  const w = acquisitionWindow(IMPORTED, "AUD", new Date("2026-09-11T00:00:00Z"), new Date("2026-09-21T00:00:00Z"));
+  assert.equal(w.total, 300);
+  assert.deepEqual(w.spread, ["2026-09"]);
+  assert.deepEqual(w.estimated, []);
+  assert.equal(w.partnerships, true);
+  // Across a month end: 5 days of August (310 / 31 a day) and 5 of September (30 a day).
+  assert.equal(acquisitionWindow(IMPORTED, "AUD", new Date("2026-08-27T00:00:00Z"), new Date("2026-09-06T00:00:00Z")).total, 200);
+  // The old reader put the whole month on the 30th: all or nothing.
+  assert.equal(acquisitionSpend(IMPORTED, "AUD", new Date("2026-09-11T00:00:00Z"), new Date("2026-09-21T00:00:00Z")).total, 0);
+});
+
+test("days after the last imported month are estimated at its daily rate for a while, then left uncovered", () => {
+  // Sep 7 to Oct 5: 24 days of September spread (720) and 4 of October (not imported yet) at 30 a day.
+  const w = acquisitionWindow(IMPORTED, "AUD", new Date("2026-09-07T00:00:00Z"), new Date("2026-10-05T00:00:00Z"));
+  assert.equal(w.total, 840);
+  assert.deepEqual(w.estimated, [{ month: "2026-10", days: 4, basis: "2026-09" }]);
+  assert.equal(spreadNote(w), "Sep spend spread by day; 4 days of Oct at Sep's daily rate, not imported yet");
+  // Two months on, the import is behind: those days count nothing, and the note says so.
+  const late = acquisitionWindow(IMPORTED, "AUD", new Date("2026-11-20T00:00:00Z"), new Date("2026-11-22T00:00:00Z"));
+  assert.equal(late.total, 0);
+  assert.deepEqual(late.uncovered, [{ month: "2026-11", days: 2 }]);
+  assert.match(spreadNote(late), /2 days of Nov not imported, counted as none/);
+});
+
+test("hand-posted spend still counts on its own date, beside spread months; a ledger without imports estimates nothing", () => {
+  const w = acquisitionWindow(LEDGER, "AUD", FROM, TO);
+  assert.deepEqual({ total: w.total, postings: w.postings, spread: w.spread, estimated: w.estimated, partnerships: w.partnerships },
+    { total: 500, postings: 2, spread: [], estimated: [], partnerships: false });
+  // A #imported transaction that isn't on a month's last day (a daily sync) counts on its date, not spread.
+  const daily = '2026-09-10 * "Ads" #imported\n  Expenses:Advertising   45 AUD\n  Assets:Bank\n';
+  assert.deepEqual(acquisitionWindow(daily, "AUD", FROM, TO).spread, []);
+  assert.equal(acquisitionWindow(daily, "AUD", FROM, TO).total, 45);
+});
+
+test("cost to win from a spread window: approximate, says how, and drops the adapter's commissions when the ledger has partnerships", () => {
+  const weeks = [1, 2, 1, 0].map((n, i) => ({ metrics: [m("new_paying", n), m("new_mrr", n * 50)], ...(i === 3 ? { extraSpend: [{ label: "Affiliate commissions", value: 40 }] } : {}) }));
+  const w = acquisitionWindow(IMPORTED, "AUD", new Date("2026-09-07T00:00:00Z"), new Date("2026-10-05T00:00:00Z"));
+  const cost = get(applyCosts(snap(weeks), w), "cost_to_win");
+  assert.equal(cost.value, 210, "840 over 4 new paying customers; the 40 of commissions is already in the partnerships line");
+  assert.equal(cost.quality, "approx");
+  assert.match(cost.note, /AUD 840 on 4 new paying customers in 4 weeks/);
+  assert.match(cost.note, /4 days of Oct at Sep's daily rate/);
+  assert.ok(cost.note.length <= 200);
+  assert.equal(get(applyCosts(snap(weeks), w), "payback_months").value, 4.2);
+  // Without partnerships in the ledger the adapter's commissions still add.
+  const ads = acquisitionWindow(IMPORTED.split("2026-09-30 * \"Xero\" \"Costs from Xero: Affiliate")[0], "AUD", new Date("2026-09-07T00:00:00Z"), new Date("2026-10-05T00:00:00Z"));
+  assert.equal(ads.partnerships, false);
+  assert.equal(get(applyCosts(snap(weeks), ads), "cost_to_win").value, Math.round(((ads.total + 40) / 4) * 100) / 100);
 });

@@ -3,6 +3,8 @@
 // hard limits), and picks the worst. The CEO turns the answer into one finding for the workflow's owner.
 // Client-safe: no node imports.
 import { formatValue, METRICS, type MetricId } from "./scorecard-metrics";
+import { WORKFLOW_ANALYTICS } from "./analytics-metrics";
+import { LOST_REST_DAYS, PLAYBOOKS } from "./playbooks";
 import { WORKFLOWS, type Lever } from "./workflows";
 
 type Direction = "falls" | "rises"; // which way is bad
@@ -55,4 +57,38 @@ export function weakestLever(weeks: Week[], currency = "USD"): Weakest | null {
   if (!best) return null;
   const { score: _score, ...weakest } = best;
   return weakest;
+}
+
+// ---------------------------------------------------------------- routing to playbooks
+
+export type Pick = { workflow: string; slug: string; owner: string; contributors: string[]; why: string; score: number };
+/** A number's reading this week: enough of a board metric (lib/analytics.ts) to see which way it moved. */
+export type Reading = { id: string; status: string; change: number | null; better: "up" | "down"; workflows: string[] };
+/** Enough of an experiment (lib/experiments.ts) to keep lost and in-flight playbooks out. */
+export type Tried = { workflow?: string; status: string; endedAt: string | null };
+
+/** The playbooks the weekly review hands out for the weakest lever: the workflow its route names first, then those
+ *  that share its number, then those whose own numbers moved the wrong way this week. A playbook that lost an
+ *  experiment in the last LOST_REST_DAYS, or has one running, is left out so nobody reruns a failed test. */
+export function routePlaybooks(
+  weakest: Weakest | null,
+  o: { readings?: Reading[]; tried?: Tried[]; skip?: string[]; now?: Date; limit?: number } = {},
+): Pick[] {
+  if (!weakest) return [];
+  const now = o.now ?? new Date(), readings = o.readings ?? [], tried = o.tried ?? [];
+  const resting = new Set(tried.filter((t) => t.workflow && (t.status === "running" ||
+    (t.status === "lost" && t.endedAt && now.getTime() - Date.parse(t.endedAt) < LOST_REST_DAYS * 864e5))).map((t) => t.workflow as string));
+  const scored: Pick[] = [];
+  for (const p of PLAYBOOKS) {
+    if (!p.runnable || !p.levers.includes(weakest.lever) || resting.has(p.title) || o.skip?.includes(p.title)) continue;
+    let score = 0;
+    const why: string[] = [];
+    if (p.title === weakest.workflow) { score += 100; why.push(`its route for ${weakest.label.toLowerCase()}`); }
+    if ((WORKFLOW_ANALYTICS[p.title] ?? []).includes(weakest.metric as never)) { score += 50; if (p.title !== weakest.workflow) why.push(`moves ${weakest.label.toLowerCase()}`); }
+    const worse = readings.filter((r) => r.status === "measured" && r.change !== null && r.change !== 0 && r.workflows.includes(p.title) &&
+      (r.better === "up" ? r.change < 0 : r.change > 0));
+    if (worse.length) { score += 20 * worse.length; why.push(`${worse.length === 1 ? "one" : worse.length} of its numbers moved the wrong way this week`); }
+    if (score) scored.push({ workflow: p.title, slug: p.slug, owner: p.owner, contributors: p.contributors, why: why.join("; "), score });
+  }
+  return scored.sort((a, b) => b.score - a.score || a.workflow.localeCompare(b.workflow)).slice(0, o.limit ?? 3);
 }

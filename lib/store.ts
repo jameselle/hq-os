@@ -109,6 +109,8 @@ export function vaultRoot(profile: Profile): string {
 
 const deptLabel = (slug: string) => DEPARTMENTS.find((d) => d.slug === slug)?.label ?? slug;
 const safeName = (s: string) => s.replace(/[\\/:*?"<>|]/g, "-");
+/** A department's folder in a business's vault ("Departments/<label>"). */
+export const deptVaultDir = (profile: Profile, dept: string) => path.join(vaultRoot(profile), "Departments", safeName(deptLabel(dept)));
 
 // ---------- time ----------
 

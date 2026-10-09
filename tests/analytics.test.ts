@@ -62,6 +62,28 @@ test("validator refuses personal-data shapes in notes, periods and labels", () =
   }
 });
 
+test("posts: each account's real posts with views, links on the platform's own hosts only", () => {
+  const ok = snap({ posts: [
+    { platform: "instagram", id: "10000000000000001", url: "https://www.instagram.com/reel/DemoReel01/", at: "2026-10-07T08:17:41.000Z", views: 312, trial: true, thumb: "https://scontent-syd2-1.cdninstagram.com/v/t51/1_n.jpg?stp=dst-jpg&_nc_ohc=AbC123xyz&oh=00_AfX9&oe=6710" },
+    { platform: "youtube", id: "DemoShort01", url: "https://www.youtube.com/shorts/DemoShort01", at: "2026-10-05T08:35:00.000Z", views: null, thumb: "https://i.ytimg.com/vi/DemoShort01/hq720.jpg" },
+    { platform: "tiktok", id: "7000000000000000001", url: "https://www.tiktok.com/@demo/video/7000000000000000001", at: "2026-10-05T08:36:00.000Z", views: 389 },
+  ] });
+  assert.equal(analyticsProblem(ok, "AUD"), null);
+  const bad = (p: Record<string, unknown>) => analyticsProblem(snap({ posts: [{ ...ok.posts![0], ...p } as never] }), "AUD");
+  assert.equal(bad({ platform: "myspace" }), "posts[0].platform");
+  assert.equal(bad({ url: "https://evil.example/reel/x" }), "posts[0].url");
+  assert.equal(bad({ url: "http://www.instagram.com/reel/x/" }), "posts[0].url");
+  assert.equal(bad({ thumb: "https://evil.example/a.jpg" }), "posts[0].thumb");
+  assert.equal(bad({ views: -1 }), "posts[0].views");
+  assert.equal(bad({ at: "yesterday" }), "posts[0].at");
+  assert.equal(bad({ id: "a b" }), "posts[0].id");
+  assert.equal(bad({ trial: "yes" }), "posts[0].trial");
+  const r = rebuildAnalytics({ ...ok, posts: ok.posts!.map((p) => ({ ...p, caption: "private words" }) as never) });
+  assert.equal(r.posts!.length, 3);
+  assert.equal("caption" in r.posts![0], false, "unknown post fields are dropped");
+  assert.equal(r.posts![1].views, null);
+});
+
 test("rebuild drops unknown fields", () => {
   const s = snap() as AnalyticsSnapshot & { secret?: string };
   s.secret = "x"; (s.metrics[0] as { extra?: number }).extra = 1;
@@ -184,4 +206,20 @@ test("alarm numbers are counts where down is better, and only a measured reading
   const got = analyticsAlarms([m(2), { ...m(5), id: "keyword_dms", def: ANALYTICS.keyword_dms }]);
   assert.deepEqual(got.map((a) => [a.id, a.value, a.workflow, a.owner]), [["keyword_dm_misses", 2, "Comment-keyword funnel", "email"]]);
   assert.deepEqual(analyticsAlarms([m(0), m(null, "missing")]), []);
+});
+
+test("keyword posts don't apply to a business whose social plan has no keyword-DM tool", async () => {
+  const { writeSocialConfig } = await import("../lib/social-store");
+  tempData();
+  const p = profile({ model: "subscription" });
+  scaffoldBusiness(p);
+  const now = new Date("2026-10-05T03:00:00Z");
+  writeSocialConfig(p.slug, { mode: "draft", networks: { instagram: { posting: "hq" } } });
+  let k = analyticsBoard(p.slug, now).metrics.find((m) => m.id === "keyword_posts")!;
+  assert.equal(k.status, "na");
+  assert.match(k.note, /Not applicable/);
+  writeSocialConfig(p.slug, { mode: "draft", networks: { instagram: { posting: "hq" } }, keywordDms: { tool: "comment-dm" } });
+  k = analyticsBoard(p.slug, now).metrics.find((m) => m.id === "keyword_posts")!;
+  assert.equal(k.status, "missing");
+  assert.match(k.note, /No published post asks/);
 });

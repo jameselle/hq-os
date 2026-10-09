@@ -15,7 +15,7 @@ export function SupportBoard({ business }: { business: Profile }) {
         <div className="eyebrow mb-1">Support · {business.name}</div>
         <h2 id="support-h" className="text-xl font-semibold">Customers waiting, and what they ask about</h2>
         <p className="text-[12.5px] text-bb-muted max-w-[80ch]">
-          {s ? `Read ${new Date(s.observedAt).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: business.timezone })}${stale ? " (over a day ago)" : ""} from ${s.channels?.join(" and ") ?? "the business's support"}. Themes come from the customer's first message, read inside the business's own database; no message text reaches HQ.`
+          {s ? `Read ${new Date(s.observedAt).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: business.timezone })}${stale ? " (over a day ago)" : ""} from ${s.channels?.join(" and ") ?? "the business's support"}. Themes come from the customer's first message, read where it lives (the business's own database, or the mailbox reader on this Mac); no message text reaches HQ.`
             : connected ? `Connected, but not read yet: npm run hq -- support refresh ${business.slug}.` : "No support connection yet: add a read-only support adapter (docs/guides/support-desk.md)."}
         </p>
       </div>
@@ -31,7 +31,7 @@ export function SupportBoard({ business }: { business: Profile }) {
                 {s.waiting.map((w) => (
                   <li key={w.ref} className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-[12.5px]">
                     <span><span className="font-medium">{w.theme}</span> <span className="text-bb-muted">· {w.channel}{w.openedFrom ? `, from ${w.openedFrom}` : ""}</span></span>
-                    <span className="font-mono text-[11px] text-bb-dim">{w.ref} · waiting {ago(w.lastAt)}</span>
+                    <span className="font-mono text-[11px] text-bb-dim">{w.ref} · waiting {ago(w.lastAt)}{w.answerAt && <> · <a href={w.answerAt} target="_blank" rel="noreferrer" className="font-sans text-bb-blue hover:underline">answer</a></>}</span>
                   </li>
                 ))}
               </ul>

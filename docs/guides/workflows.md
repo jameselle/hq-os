@@ -20,27 +20,32 @@ customers *and* spots upgrades; Market & Competitors feeds the product roadmap, 
 
 ## What's on the tab
 
-- **The web:** every hand-off between departments, coloured by lever. Click a department to see what it sends
-  and receives.
+The page has a tab per section (the address keeps it, such as `/workflows?tab=web`):
+
+- **Running now:** the workflows that already run for this business, with the record that proves it.
+- **Playbooks:** this week's routing, plans waiting for you, queued and applied runs. See [Playbooks](/guides/playbooks).
+- **All workflows:** the catalogue. Each workflow has one **owner**, its contributors, a **trigger**, ordered
+  **steps** and the **metric** it moves. Departments your business skips are greyed out.
+- **Who feeds whom:** every hand-off between departments, coloured by lever, and the same list as a table. Click a
+  department to see what it sends and receives; click a row of the table to read what was actually handed over.
 - **Loops:** chains of hand-offs that repeat every week, such as the insight loop
   (complaints and rival moves → product → content → the right email segment).
-- **The workflow catalogue:** each workflow has one **owner**, its contributors, a **trigger**, ordered
-  **steps** and the **metric** it moves. Departments your business skips are greyed out.
+- **The brain** and **Build order** (where this business stands on each step).
+
+Each department's own page shows its **growth levers**: the workflows it owns and helps with, per lever.
 
 ## How to use it each week
 
-1. The CEO tab does the first step for you: the finding **"Weakest lever this week"** compares each headline number
-   on the [scorecard](/guides/scorecard) with its own 4-week average (and a few hard limits, such as weekly churn above
-   5%), picks the worst, and names the workflow that moves it and that workflow's owner.
-2. Tell Claude: **"run the <workflow> workflow"**. It names the owner, then works each step with the
-   department's tools and skills, asking you before anything customer-facing ships.
-3. Log what you're trying, so next week's review can see it worked or not:
-   `npm run hq -- experiment add <slug> "<hypothesis>" --metric <metric id> --baseline <this week's value>`.
-   Close it when you know: `npm run hq -- experiment close <slug> <id> won|lost|inconclusive --result <value>`.
-   The log is mirrored to the business's vault (`Departments/Data & Analytics/Experiments.md`).
+1. The CEO tab's finding **"Weakest lever this week"** compares each headline number on the
+   [scorecard](/guides/scorecard) with its own 4-week average (and a few hard limits, such as weekly churn above 5%),
+   picks the worst, and names up to three playbooks that move it, each with its owner and contributors.
+2. With playbooks on, HQ has already queued them. Run one on the Playbooks tab (or tell Claude **"run the <workflow>
+   workflow"**), read its plan, and apply it. Applying logs the experiment for you; HQ judges it two weeks later.
+3. To log a change you made by hand: `npm run hq -- experiment add <slug> "<hypothesis>" --metric <metric id>
+   --baseline <this week's value>`, and close it with `npm run hq -- experiment close <slug> <id> won|lost|inconclusive
+   --result <value>`. The log is mirrored to the vault (`Departments/Data & Analytics/Experiments.md`).
 4. To build a workflow that isn't running yet, or to get HQ to see one that already runs, follow
    [Set up a workflow end to end](/guides/workflow-setup).
-5. Next week, check the metric on the scorecard. A routed lever that recovers drops off the CEO tab by itself.
 
 ## Done when
 

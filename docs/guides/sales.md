@@ -60,10 +60,11 @@ The department needs **one** CRM: Twenty or EspoCRM. Start with Twenty.
 ## 2. Accounts and connections
 
 - **The CRM login** belongs to the owner, created in step 3 above. HQ stores no CRM password.
-- **Twenty's API:** HQ doesn't hold a Twenty API key today, and the sales skills work from what you paste or export.
-  If you later connect one, the owner creates the key inside Twenty and stores it in the Keychain with
-  `security add-generic-password -a hq -s hq-<business>-twenty -w` (it prompts in their own Terminal); it is never
-  pasted into chat or written to a file.
+- **Twenty's API (optional):** HQ works without one. To copy the partner pipeline into Twenty, the owner creates
+  an API key inside Twenty (Settings, APIs and webhooks) and stores it in the Keychain with
+  `security add-generic-password -a hq -s hq-twenty-api -w` (it prompts in their own Terminal; a business with its
+  own workspace uses `hq-twenty-api-<business slug>`). It is never pasted into chat or written to a file. Then
+  `npm run hq -- partner sync <slug>` copies partners one way; see [Partnerships](/guides/partners).
 - No Composio connection is needed for sales. Outreach on social channels goes through the Content department's
   routes (see [Content](/guides/content)).
 
@@ -78,7 +79,24 @@ The department needs **one** CRM: Twenty or EspoCRM. Start with Twenty.
 - `/small-business:proposal-builder`: write a proposal.
 - `/sales:pipeline-review`: review the pipeline.
 - `/sales:forecast`: forecast what the pipeline will bring in.
+- `/hq:partners`: find and screen partners from public sources, draft outreach for the owner to send, and write
+  the weekly pipeline brief.
 - `/hq:dept sales`: plan this department's week from the CEO's latest review.
+
+## Partnerships
+
+The department's partner pipeline is the **Partnerships** board (side nav, under Sales & Partnerships, or
+`/sales/partners`): creators, tipsters, podcasts, newsletters, media and affiliates from prospect to live, each with
+fit, a compliance screen, the campaign it serves and its own tag. HQ writes outreach drafts; the owner sends them.
+For example, Demo Coffee lines up home brewing creators for its cold brew month:
+
+```bash
+npm run hq -- partner add demo-coffee partners.json
+npm run hq -- partner link demo-coffee demo-brew-tips campaign cold-brew-month-2026-11-02
+npm run hq -- partner report demo-coffee
+```
+
+The full guide, with the data model, the rules and the optional Twenty sync: [Partnerships](/guides/partners).
 
 ## 4. Check it's working
 
@@ -98,7 +116,7 @@ The department needs **one** CRM: Twenty or EspoCRM. Start with Twenty.
 - [ ] The four `com.hq.twenty*` services are running (for Twenty).
 - [ ] The owner has created the workspace and their own login, and can sign in.
 - [ ] The pipeline stages match how the business actually sells (the owner has looked at them).
-- [ ] All nine sales skills show as ready on the department tab.
+- [ ] All ten sales skills show as ready on the department tab.
 
 ## Good to know
 

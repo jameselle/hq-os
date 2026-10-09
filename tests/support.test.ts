@@ -64,3 +64,41 @@ test("rival changes: marking one seen is validated and stored owner-only", async
   assert.equal((fs.statSync(f).mode & 0o777).toString(8), "600");
   assert.equal(JSON.parse(fs.readFileSync(f, "utf8"))["0b8f6c2e-1a2b-4c3d-8e9f-0123456789ab"], "2026-10-05T00:00:00Z");
 });
+
+test("several sources merge into one board; a failing source is named in blind, not fatal", async () => {
+  const { mergeSupport } = await import("../lib/support");
+  const mail: SupportSnapshot = { version: 1, observedAt: "2026-10-05T06:00:00Z", answerAt: "https://mail.example.com/#search/support", channels: ["Support email"], blind: ["Personal addresses"],
+    waiting: [{ ref: "e-0a1b2c3d", channel: "Email", theme: "Billing and payments", openedFrom: "a new email", openedAt: "2026-10-03T00:00:00Z", lastAt: "2026-10-03T00:00:00Z", unread: 1 }],
+    themes: { "Billing and payments": 2, Other: 1 }, weekly: [{ week: "2026-W40", opened: 3, answered: 1, medianReplyHours: 10 }] };
+  const m = mergeSupport([snap(), mail]);
+  assert.equal(supportProblem(m), null);
+  assert.equal(m.answerAt, "https://example.com/admin/support");
+  assert.deepEqual(m.channels, ["In-app chat", "Support email"]);
+  assert.deepEqual(m.waiting.map((w) => [w.ref, w.answerAt]), [["e-0a1b2c3d", "https://mail.example.com/#search/support"], ["s-1a2b3c4d", undefined]]);
+  assert.deepEqual(m.themes, { "Feature request": 4, "Bug or broken": 2, Other: 4, "Billing and payments": 2 });
+  assert.deepEqual(m.weekly[0], { week: "2026-W40", opened: 8, answered: 5, medianReplyHours: 4 });
+  assert.equal(m.observedAt, "2026-10-05T00:00:00Z");
+
+  tempData();
+  const p = profile({ model: "subscription" });
+  scaffoldBusiness(p);
+  const dir = businessDir(p.slug);
+  const ok = path.join(dir, "a.mjs"), bad = path.join(dir, "b.mjs");
+  fs.writeFileSync(ok, `process.stdin.resume();process.stdin.on('end',()=>process.stdout.write(${JSON.stringify(JSON.stringify(mail))}));`);
+  fs.writeFileSync(bad, `process.exit(1)`);
+  fs.writeFileSync(path.join(dir, "support-connection.json"), JSON.stringify({ commands: [[process.execPath, ok], [process.execPath, bad]] }));
+  const s = await runSupport(p.slug);
+  assert.equal(s.waiting.length, 1);
+  assert.ok(s.blind!.some((b) => /support source 2 \(b\.mjs\) couldn't be read/.test(b)));
+  fs.writeFileSync(path.join(dir, "support-connection.json"), JSON.stringify({ commands: [[process.execPath, bad], [process.execPath, bad]] }));
+  await assert.rejects(runSupport(p.slug), /Every support source failed/);
+  fs.writeFileSync(path.join(dir, "support-connection.json"), JSON.stringify({ commands: [[process.execPath, bad]] }));
+  await assert.rejects(runSupport(p.slug), /Private adapter failed/);
+  fs.writeFileSync(path.join(dir, "support-connection.json"), JSON.stringify({ commands: [] }));
+  await assert.rejects(runSupport(p.slug), /Invalid support connection/);
+});
+
+test("a waiting row's own link is validated like answerAt", () => {
+  assert.equal(supportProblem(snap({ waiting: [{ ...snap().waiting[0], answerAt: "https://x.io/a?id=1" }] })), "waiting[0].answerAt");
+  assert.equal(rebuildSupport(snap({ waiting: [{ ...snap().waiting[0], answerAt: "https://x.io/a" }] })).waiting[0].answerAt, "https://x.io/a");
+});

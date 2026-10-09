@@ -5,7 +5,12 @@ import { AnalyticsBoard } from "@/components/AnalyticsBoard";
 import { FinanceBoard } from "@/components/FinanceBoard";
 import { UnitEconomicsBoard } from "@/components/UnitEconomicsBoard";
 import { SupportBoard } from "@/components/SupportBoard";
+import { PartnersSummary } from "@/components/PartnersSummary";
 import { ScorecardCard } from "@/components/ScorecardCard";
+import { DeptLevers } from "@/components/DeptLevers";
+import { DecisionNotes } from "@/components/DecisionNotes";
+import { NOTE_SEVERITIES, readFindingNotes } from "@/lib/finding-notes";
+import { listDecisions } from "@/lib/owner-decisions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
@@ -47,6 +52,11 @@ export default async function DepartmentPage({ params, embedded=false }: { param
   const findings = report.findings
     .filter((f) => f.dept === d.slug)
     .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
+  let ownerNotes: Record<string, NonNullable<ReturnType<typeof listDecisions>[number]["notes"]>> = {};
+  try { ownerNotes = Object.fromEntries((business ? listDecisions(business.slug) : []).map((x) => [`owner-${x.id}`, x.notes ?? []])); } catch { ownerNotes = {}; }
+  let findingNotes: ReturnType<typeof readFindingNotes> = {};
+  try { findingNotes = business ? readFindingNotes(business.slug) : {}; } catch { findingNotes = {}; }
+  const notesFor = (sev: string, id: string) => !id.startsWith("owner-") && (NOTE_SEVERITIES as readonly string[]).includes(sev) && Boolean(business);
   const running = d.tools.filter((t) => t.state === "running");
   const firstSkill = d.skills.find((s) => s.ready);
 
@@ -152,10 +162,14 @@ export default async function DepartmentPage({ params, embedded=false }: { param
                 <span className="text-bb-dim font-mono text-[10.5px] uppercase tracking-[0.1em] mr-1.5">Next</span>
                 <Rich text={f.action} />
               </p>
+              {ownerNotes[f.id] && <DecisionNotes id={f.id.slice("owner-".length)} notes={ownerNotes[f.id]} />}
+                {notesFor(f.severity, f.id) && <DecisionNotes kind="finding" id={f.id} title={f.title} notes={findingNotes[f.id]?.notes ?? []} />}
             </div>
           ))}
         </section>
       )}
+
+      <DeptLevers dept={d.slug} label={d.label} slug={business?.slug ?? null} />
 
       {d.slug === "data" && business && <ScorecardCard business={business} />}
 
@@ -166,6 +180,8 @@ export default async function DepartmentPage({ params, embedded=false }: { param
       {d.slug === "finance" && business && !embedded && <UnitEconomicsBoard business={business} />}
 
       {d.slug === "support" && business && !embedded && <SupportBoard business={business} />}
+
+      {d.slug === "sales" && business && !embedded && <PartnersSummary business={business} />}
 
       {showPublishing && (
         <section className="card p-4 min-w-0">
@@ -238,6 +254,7 @@ export default async function DepartmentPage({ params, embedded=false }: { param
         <section className="card p-4 min-w-0">
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
             <h2 className="text-[15px] font-semibold">
+              <Link href="/competitors/trends" className="text-bb-teal mr-4 hover:underline">Open Trend Radar ↗</Link>
               Competitors <span className="text-bb-muted font-normal">({business.competitors?.length ?? 0})</span>
             </h2>
             <span className="text-[10.5px] text-bb-dim font-mono">

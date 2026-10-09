@@ -33,6 +33,15 @@ export type SocialConfig = {
   fonts?: { heading?: string; body?: string };
   /** Opt-in comment replies (lib/social-replies.ts): HQ drafts replies to new comments; only approved ones post. */
   replies?: { instagram?: InstagramReplies };
+  /** The comment-to-DM tool (comment-dm, ManyChat) that answers a comment keyword on this business's accounts, and
+   *  the networks it answers on (Instagram when unset). Without one, a post never asks people to comment a keyword:
+   *  nothing would answer them (keywordDmTool, the "keyword" check). */
+  keywordDms?: { tool: string; networks?: Network[] };
+  /** Carousels on these networks go out as a slideshow Reel with music instead: Instagram's API can't put music on a
+   *  carousel (Meta's Audio API attaches sound to Reels only, and the Composio tool can't send it), so HQ renders the
+   *  slides as 9:16 frames and lays a track under them. `music` is a folder under the business's social folder holding
+   *  the tracks and tracks.json (each track's licence must allow commercial use). lib/social-slideshow.ts. */
+  slideshow?: { networks: Network[]; music: string };
 };
 
 /** Where the Instagram token lives and which comments to leave alone. The token is read from the login Keychain at
@@ -101,6 +110,9 @@ export type SocialDraft = {
   postId?: string;
   /** Every time HQ tried to post it. Written BEFORE any call to the platform, so a retry knows to look first. */
   attempts?: PublishAttempt[];
+  /** A carousel that goes out as a slideshow Reel (social.json slideshow): the video HQ made from its slides and the
+   *  track under it. */
+  reel?: { path: string; track: string; trackFile: string; seconds: number };
 };
 
 export type PublishAttempt = { at: string; run: string; result?: "posted" | "found" | "error"; error?: string };
@@ -149,8 +161,30 @@ export function slideProblem(sl: Slide): string {
   return "";
 }
 
-/** `campaigns`: the business's campaigns that aren't done, id → tag, so a post that names one is checked against it. */
-export type SocialContext = { regulated: RegulatedFlag[]; banned?: string[]; sites: string[]; posting?: Posting; campaigns?: Record<string, string> };
+/** "Comment REVIEW", "comment the word REVIEW", "Comment \"REVIEW\"": a capitalised keyword after "comment", so
+ *  "comment below" isn't one. The same shape the analytics and workflow evidence count. */
+export const COMMENT_KEYWORD = /\b[Cc]omment\s+(?:the\s+word\s+)?["'\u201c\u2018]?([A-Z][A-Z0-9]{2,})\b/;
+
+/** The keyword a post asks people to comment, from its `keyword` field or its words, or null. */
+export function askedKeyword(d: Pick<SocialDraft, "keyword" | "caption" | "slides">): string | null {
+  if (d.keyword?.trim()) return d.keyword.trim();
+  const text = [d.caption, ...(d.slides ?? []).flatMap((s) => [s.title, s.body ?? ""])].join("\n");
+  return COMMENT_KEYWORD.exec(text)?.[1] ?? null;
+}
+
+/** The tool that answers a comment keyword on this network for the business, or null when nothing does. `keywordDms`
+ *  in social.json says so outright; Instagram comment replies with `skipKeywords` mean a comment-to-DM bot already owns
+ *  those words on the account, so that counts too. */
+export function keywordDmTool(c: Pick<SocialConfig, "keywordDms" | "replies">, network: Network): string | null {
+  const k = c.keywordDms;
+  if (k?.tool && (k.networks ?? ["instagram"]).includes(network)) return k.tool;
+  if (network === "instagram" && c.replies?.instagram?.skipKeywords?.length) return c.replies.instagram.service ?? "comment-dm";
+  return null;
+}
+
+/** `campaigns`: the business's campaigns that aren't done, id → tag, so a post that names one is checked against it.
+ *  `keywordDms`: the networks where a comment-to-DM tool answers keywords (keywordDmTool); none when unset. */
+export type SocialContext = { regulated: RegulatedFlag[]; banned?: string[]; sites: string[]; posting?: Posting; campaigns?: Record<string, string>; keywordDms?: Network[] };
 
 /** Every check a post must pass before it can go out. Each one says why it failed. */
 export function checkSocial(d: SocialDraft, ctx: SocialContext): BlogCheck[] {
@@ -182,6 +216,12 @@ export function checkSocial(d: SocialDraft, ctx: SocialContext): BlogCheck[] {
     if (tag && d.link && own.includes(hostOf(d.link)))
       add("campaign-tag", "The link carries the campaign's tag", linkHasTag(d.link, tag), linkHasTag(d.link, tag) ? tag : `add ?${socialLinkParams(tag, d.network)}`);
   }
+  const kw = askedKeyword(d);
+  if (kw) {
+    const answered = (ctx.keywordDms ?? []).includes(d.network);
+    add("keyword", "Asks for a comment keyword only where a DM tool answers it", answered,
+      answered ? `${kw}: answered by the business's comment-to-DM tool` : `asks for ${kw}, but nothing answers comment keywords for this business on ${d.network}: use "link in bio" (or set keywordDms in social.json once a tool answers)`);
+  }
   const banned = [...ctx.regulated.flatMap((f) => BANNED[f] ?? []), ...(ctx.banned ?? [])]
     .filter((w) => new RegExp(`(^|[^a-z])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z]|$)`, "i").test(text));
   add("claims", "No banned claims, inducements or names for this business", banned.length === 0, banned.length ? `uses ${[...new Set(banned)].map((w) => `"${w}"`).join(", ")}` : "none");
@@ -205,6 +245,11 @@ export function autoPostProblem(d: SocialDraft): string {
   if (VIDEO_FORMATS.includes(d.format)) return d.video?.path ? "" : "it needs a video, and none is recorded yet";
   // Cards are rendered by the same hourly run before it posts; the publisher refuses a post whose cards are missing.
   return "";
+}
+
+/** Whether this carousel goes out as a slideshow Reel with music (social.json slideshow) rather than a carousel. */
+export function asSlideshow(c: SocialConfig | null | undefined, d: Pick<SocialDraft, "format" | "network">): boolean {
+  return d.format === "carousel" && !!c?.slideshow?.networks?.includes(d.network);
 }
 
 /** What to do with a post now. A failed check always waits; week one always waits for the owner; a post HQ
@@ -246,8 +291,16 @@ export function validateSocialConfig(x: unknown): SocialConfig {
     if (!["hq", "hand", "elsewhere"].includes(v?.posting as string)) throw Error(`social.json: ${n}.posting must be hq, hand or elsewhere`);
   }
   if (c.maxAttempts !== undefined && !(Number.isInteger(c.maxAttempts) && c.maxAttempts >= 1 && c.maxAttempts <= 5)) throw Error("social.json: maxAttempts must be a whole number from 1 to 5");
+  const sl = c.slideshow;
+  if (sl !== undefined && !(sl && Array.isArray(sl.networks) && sl.networks.length && sl.networks.every((n) => n === "instagram")
+    && typeof sl.music === "string" && /^[\w-]+(\/[\w-]+)*$/.test(sl.music)))
+    throw Error("social.json: slideshow must be { networks: [\"instagram\"], music: \"music\" } (a folder inside the social folder)");
   const ig = c.replies?.instagram;
   if (c.replies !== undefined && (typeof c.replies !== "object" || c.replies === null)) throw Error("social.json: replies must be an object");
+  const k = c.keywordDms;
+  if (k !== undefined && !(k && typeof k.tool === "string" && /^[A-Za-z0-9][\w .-]{0,39}$/.test(k.tool)
+    && (k.networks === undefined || (Array.isArray(k.networks) && k.networks.every((n) => (NETWORKS as readonly string[]).includes(n))))))
+    throw Error("social.json: keywordDms must be { tool: \"comment-dm\", networks?: [\"instagram\"] }");
   if (ig !== undefined) {
     // Names only: these go to `security` as arguments, so nothing that could be read as an option or a path.
     const name = /^[A-Za-z0-9][\w.@:-]{0,99}$/;

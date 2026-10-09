@@ -4,6 +4,8 @@
 // planned headless mode) can be added later without touching the skills.
 // Client-safe: no node imports.
 
+import { THEMES, type Theme } from "./brand";
+
 export const FORMATS = {
   vertical: { w: 1080, h: 1920, use: "Reels, TikTok, Shorts" },
   square: { w: 1080, h: 1080, use: "feed posts" },
@@ -30,6 +32,8 @@ export type Cutaway = {
   /** false: no sound effect into this cutaway, e.g. when its first word is the keyword ask and a whoosh would
    *  mask it ("Comment HQ" heard as "Come on HQ"). Default: follows the spec / brand `sfx`. */
   sfx?: boolean;
+  /** false: no captions while this cutaway is up, for a card that shows the spoken words itself. */
+  captions?: boolean;
 };
 
 export type EditSpec = {
@@ -47,8 +51,9 @@ export type EditSpec = {
   /** Remove pauses longer than this many seconds inside segments (0 = keep all). */
   tightenPauses?: number;
   captions?: boolean;
-  /** Big text on screen for the first seconds: the hook. */
-  hook?: { text: string; seconds?: number; highlight?: string };
+  /** Big text on screen for the first seconds: the hook. `top`: where its first line starts, as a fraction of the
+   *  height (default: just inside the 3:4 profile-grid crop), for a face framed high; fine when the post has its own cover. */
+  hook?: { text: string; seconds?: number; highlight?: string; top?: number };
   /** Screen footage over the voice (see Cutaway). */
   cutaways?: Cutaway[];
   /** Vertical centre of the face, 0 (top) .. 1 (bottom), for the bottom half during cutaways. Default 0.5. */
@@ -68,6 +73,11 @@ export type EditSpec = {
   punch?: boolean | { zoom?: number };
   /** Sound effects on cutaways (see Brand.sfx). */
   sfx?: boolean;
+  /** This video's look, over the business's (see THEMES in brand.ts), e.g. "paper" with the paper card kit. */
+  theme?: Theme;
+  /** Keyword slams: big capitals over the picture for a moment, landing on the spoken word `on` (searched in
+   *  order, each after the one before). `seconds` default 1.3. Talking-head looks (theme "street"). */
+  slams?: { text: string; on: string; seconds?: number }[];
 };
 
 export type SpecResult = { ok: true; spec: EditSpec } | { ok: false; errors: string[] };
@@ -94,6 +104,7 @@ export function validateSpec(raw: unknown): SpecResult {
   if (s.tightenPauses !== undefined && !(s.tightenPauses >= 0)) errors.push("tightenPauses: seconds >= 0");
   if (s.hook !== undefined && (typeof s.hook.text !== "string" || !s.hook.text.trim())) errors.push("hook.text: required when hook is set");
   else if (s.hook !== undefined && /[\u2013\u2014]/.test(s.hook.text)) errors.push("hook.text: no em or en dashes (use a comma, colon or full stop)");
+  if (s.hook?.top !== undefined && !(typeof s.hook.top === "number" && s.hook.top >= 0 && s.hook.top <= 0.5)) errors.push("hook.top: a fraction of the height, 0 to 0.5");
   if (s.music !== undefined && (typeof s.music.file !== "string" || !s.music.file.startsWith("/"))) errors.push("music.file: absolute path");
   if (s.faceY !== undefined && !(s.faceY >= 0 && s.faceY <= 1)) errors.push("faceY: 0..1");
   if (s.captionText !== undefined && s.captionText !== "heard" && s.captionText !== "source") errors.push('captionText: "heard" or "source"');
@@ -102,6 +113,17 @@ export function validateSpec(raw: unknown): SpecResult {
   if (s.punch !== undefined && typeof s.punch !== "boolean" && !(typeof s.punch === "object" && (s.punch.zoom === undefined || (s.punch.zoom >= 1.05 && s.punch.zoom <= 1.4))))
     errors.push("punch: true, false, or { zoom: 1.05 to 1.4 }");
   if (s.sfx !== undefined && typeof s.sfx !== "boolean") errors.push("sfx: true or false");
+  if (s.slams !== undefined) {
+    if (!Array.isArray(s.slams)) errors.push("slams: a list");
+    else
+      s.slams.forEach((m, i) => {
+        if (typeof m?.text !== "string" || !m.text.trim() || m.text.length > 40) errors.push(`slams[${i}].text: 1 to 40 characters`);
+        else if (/[\u2013\u2014]/.test(m.text)) errors.push(`slams[${i}].text: no em or en dashes`);
+        if (typeof m?.on !== "string" || !m.on.trim() || /\s/.test(m.on.trim())) errors.push(`slams[${i}].on: one spoken word`);
+        if (m?.seconds !== undefined && !(m.seconds >= 0.4 && m.seconds <= 4)) errors.push(`slams[${i}].seconds: 0.4 to 4`);
+      });
+  }
+  if (s.theme !== undefined && !(typeof s.theme === "string" && s.theme in THEMES)) errors.push(`theme: one of ${Object.keys(THEMES).join(", ")}`);
   if (s.cutaways !== undefined) {
     if (!Array.isArray(s.cutaways)) errors.push("cutaways: a list");
     else
@@ -113,6 +135,7 @@ export function validateSpec(raw: unknown): SpecResult {
         if (c?.pan !== undefined && !(box(c.pan.from) && box(c.pan.to))) errors.push(`cutaways[${i}].pan: { from: [x, y, width], to: [x, y, width] }`);
         if (c?.full !== undefined && typeof c.full !== "boolean") errors.push(`cutaways[${i}].full: true or false`);
         if (c?.sfx !== undefined && typeof c.sfx !== "boolean") errors.push(`cutaways[${i}].sfx: true or false`);
+        if (c?.captions !== undefined && typeof c.captions !== "boolean") errors.push(`cutaways[${i}].captions: true or false`);
       });
   }
   return errors.length ? { ok: false, errors } : { ok: true, spec: s };

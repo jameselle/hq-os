@@ -12,7 +12,7 @@ import { claudeBin } from "./blog-writer";
 import { captionProblems, type ChannelSpec } from "./publishing";
 import { altText, attemptsAllowed, buildPayload, dueNow, fullCaption, instagramCells, newRun, pinterestCells, resultsFromStream, slotsCell, workbenchPrompt, type CellResult } from "./social-publish";
 import { INSIGHTS_EVERY_H, insightsCell, summariseInsights, type InsightsFile } from "./social-insights";
-import { checkSocial, type SocialConfig } from "./social";
+import { asSlideshow, checkSocial, weekOf, type SocialConfig } from "./social";
 import { findSocial, listSocial, markPosted, mediaPath, readSocialConfig, saveSocial, setSocialStatus, socialContext, socialDir, socialLog, type SocialFile } from "./social-store";
 import { businessDir, getProfile, listBusinesses, logPost } from "./store";
 
@@ -92,7 +92,8 @@ export function postingAccount(channels: Record<string, ChannelSpec> | undefined
   return { account: spec.account, handle: spec.handle };
 }
 
-export type Plan = { d: SocialFile; c: SocialConfig; account: string; handle?: string; board?: string; files: { abs: string; mimetype: string }[] };
+/** `format` is what the post goes out as: a carousel set up as a slideshow goes out as a reel. */
+export type Plan = { d: SocialFile; c: SocialConfig; account: string; handle?: string; board?: string; format: string; files: { abs: string; mimetype: string }[] };
 
 function plan(slug: string, id: string): Plan | string {
   const p = getProfile(slug), c = readSocialConfig(slug);
@@ -105,7 +106,12 @@ function plan(slug: string, id: string): Plan | string {
   const board = d.network === "pinterest" ? d.board ?? c.networks.pinterest?.board : undefined;
   if (d.network === "pinterest" && !board) return `no Pinterest board: set networks.pinterest.board (a board id) in social.json, or "board" on the post`;
   let files: Plan["files"];
-  if (d.format === "reel") {
+  if (asSlideshow(c, d)) {
+    // Never falls back to a silent carousel: the owner asked for music on these.
+    const v = d.reel?.path ? mediaPath(slug, d.reel.path, ".mp4") : null;
+    if (!v) return `the slideshow Reel isn't made yet${d.error?.startsWith("slideshow") ? ` (${d.error})` : " (social check makes it from the slides, with music)"}`;
+    files = [{ abs: v, mimetype: "video/mp4" }];
+  } else if (d.format === "reel") {
     const v = d.video?.path ? path.resolve(businessDir(slug), d.video.path) : "";
     if (!v || !fs.existsSync(v) || !/\.(mp4|mov)$/i.test(v)) return "the reel's video file isn't there";
     files = [{ abs: v, mimetype: /\.mov$/i.test(v) ? "video/quicktime" : "video/mp4" }];
@@ -114,7 +120,7 @@ function plan(slug: string, id: string): Plan | string {
     if (!abs.length || abs.some((x) => !x)) return "the post's cards aren't rendered (run social check)";
     files = abs.map((x) => ({ abs: x!, mimetype: "image/jpeg" }));
   }
-  return { d, c, account, handle: h || undefined, board, files };
+  return { d, c, account, handle: h || undefined, board, format: asSlideshow(c, d) ? "reel" : d.format, files };
 }
 
 /** Why this post may not go out right now, checked afresh just before any call: only approved posts, every check
@@ -135,7 +141,7 @@ export function prePostProblem(slug: string, pl: Plan, mode: PublishMode): strin
 
 function describe(pl: Plan): string {
   const d = pl.d, cap = fullCaption(d);
-  return `${pl.account}${pl.handle ? ` (@${pl.handle})` : ""}${pl.board ? `, board ${pl.board}` : ""}: ${pl.files.length} ${d.format === "reel" ? "video" : pl.files.length === 1 ? "image" : "images"}, caption ${cap.length} characters${d.link && d.network === "pinterest" ? `, link ${d.link}` : ""}`;
+  return `${pl.account}${pl.handle ? ` (@${pl.handle})` : ""}${pl.board ? `, board ${pl.board}` : ""}: ${pl.format !== d.format && d.reel ? `slideshow Reel (${d.reel.seconds} s, music: ${d.reel.track})` : `${pl.files.length} ${d.format === "reel" ? "video" : pl.files.length === 1 ? "image" : "images"}`}, caption ${cap.length} characters${d.link && d.network === "pinterest" ? `, link ${d.link}` : ""}`;
 }
 
 /** Puts one post out (or, with mode container/check, proves it could). Records the attempt before any call. */
@@ -184,7 +190,7 @@ export async function publishOne(slug: string, id: string, deps: PublishDeps, mo
     }
     // 3. The post itself: look first, then make it.
     const payload = buildPayload({
-      run, network: d.network as "instagram" | "pinterest", format: d.format, account: pl.account, handle: pl.handle,
+      run, network: d.network as "instagram" | "pinterest", format: pl.format, account: pl.account, handle: pl.handle,
       caption: fullCaption(d), title: d.title, link: d.link, alt: altText(d, 500), board: pl.board,
       media: media.map(({ file: _f, ...m }) => m), mode, day: d.day, retry: (d.attempts?.length ?? 0) > 1,
     });
@@ -207,7 +213,7 @@ export async function publishOne(slug: string, id: string, deps: PublishDeps, mo
     if (mode !== "publish") return { ...base(d), status: "found", detail: `already on the account: ${url}`, url };
     markPosted(slug, id, url, { postId: String(res.id ?? ""), by: "hq" });
     try {
-      logPost(slug, { at: deps.now().toISOString(), platform: d.network, via: "composio", account: pl.account, url, postId: String(res.id ?? ""), caption: fullCaption(d), status: "published", note: res.status === "found" ? "Found already live on the account; HQ recorded it instead of posting again." : `Posted by HQ on its day (${d.id}).` });
+      logPost(slug, { at: deps.now().toISOString(), platform: d.network, via: "composio", account: pl.account, url, postId: String(res.id ?? ""), caption: fullCaption(d), status: "published", note: res.status === "found" ? "Found already live on the account; HQ recorded it instead of posting again." : `Posted by HQ on its day (${d.id})${pl.format !== d.format && d.reel ? `, as a slideshow Reel with ${d.reel.track}` : ""}.` });
     } catch { /* the post is live and recorded on the draft; the log is secondary */ }
     return { ...base(d), status: res.status, detail: url, url };
   }
@@ -232,11 +238,14 @@ export async function publishOne(slug: string, id: string, deps: PublishDeps, mo
 
 // ---------------------------------------------------------------- the day's posts
 
-/** Every post on an "hq" network in the last two weeks, with whether it's due and why. */
+/** Every post on an "hq" network in this week and last week, with whether it's due and why. Weeks are picked by
+ *  date, not by folder count: drafts written ahead for later weeks (a campaign's) must not push this week out. */
 export function publishQueue(slug: string, now: Date, opts: { id?: string } = {}) {
   const p = getProfile(slug), c = readSocialConfig(slug);
   if (!p || !c) return [];
-  return listSocial(slug, 2)
+  const all = listSocial(slug, 26), current = weekOf(now, p.timezone);
+  const weeks = [...new Set(all.map((d) => d.week))].filter((w) => w <= current).sort().reverse().slice(0, 2);
+  return all.filter((d) => weeks.includes(d.week))
     .filter((d) => c.networks[d.network]?.posting === "hq" && (!opts.id || d.id === opts.id || d.file === opts.id))
     .map((d) => {
       const due = dueNow(opts.id ? { ...c, postHour: 0 } : c, d, now, p.timezone);

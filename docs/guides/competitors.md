@@ -188,3 +188,7 @@ finding read. With nothing new it writes a short no-change brief. Every run goes
 - Don't mark "changed this week" as done with `npm run hq -- done`: a finding marked done stays hidden, so later
   changes would no longer show.
 - Video downloads for study go in the business's research folder and are deleted once the teardown is written.
+
+### Find competitor accounts
+
+Trend Radar → **Find competitors** uses the installed **Codex** research runtime to search the public web from a seed Instagram or TikTok account. It uses the signed-in account’s existing usage allowance, with read-only permissions and shell/connected apps disabled. Review sourced suggestions, select accounts and click **Watch selected**. No new API key is required. If the runtime is unavailable or its usage limit is reached, HQ reports a failed discovery and preserves previous results.

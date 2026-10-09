@@ -3,6 +3,7 @@
 // Numbers come only from what HQ holds (lib/campaign-report.ts); anything unmeasured says so, never zero.
 import Link from "next/link";
 
+import { CampaignFlow } from "@/components/CampaignFlow";
 import { Channels, LEVER_LABEL, LEVER_TONE, MeasureValue, PrimaryLine, StatusPill, dates } from "@/components/CampaignParts";
 import { Tile } from "@/components/Tile";
 import { readCampaigns } from "@/lib/campaign-store";
@@ -15,7 +16,8 @@ import { PILL } from "@/lib/tone";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Campaigns · HQ" };
 
-export default async function CampaignsPage() {
+export default async function CampaignsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const tab = (await searchParams).tab === "how" ? "how" : "list";
   const p = resolveCurrent(await preferredBusiness());
   const reports = p ? campaignReports(p.slug) : [];
   const invalid = p ? readCampaigns(p.slug).invalid : [];
@@ -37,7 +39,16 @@ export default async function CampaignsPage() {
         </p>
       </header>
 
-      {!p ? <p className="card px-4 py-3 text-[12.5px] text-bb-muted">Choose a business.</p> : (
+      <nav aria-label="Campaign views" className="flex gap-1 overflow-x-auto border-b border-bb-border pb-px">
+        {(["list", "how"] as const).map((t) => (
+          <Link key={t} href={t === "list" ? "/campaigns" : "/campaigns?tab=how"} aria-current={tab === t ? "page" : undefined}
+            className={`shrink-0 px-4 py-3 text-sm border-b-2 ${tab === t ? "border-bb-teal text-bb-fg" : "border-transparent text-bb-muted hover:text-bb-fg"}`}>
+            {t === "list" ? "Campaigns" : "How it works"}
+          </Link>
+        ))}
+      </nav>
+
+      {tab === "how" ? <CampaignFlow /> : !p ? <p className="card px-4 py-3 text-[12.5px] text-bb-muted">Choose a business.</p> : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <Tile label="Live" value={String(count("live"))} hint={`${count("planned")} planned · ${count("paused")} paused · ${count("done")} done`} />

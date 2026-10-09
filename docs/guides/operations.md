@@ -141,16 +141,31 @@ projects tool when there's more work than a weekly plan holds.
 - `/hq:new-business`: connect a business to HQ (profile, data folder, vault, first review).
 - `/hq:add-tool`: add a free tool to a department properly: licence check, install without Homebrew or
   Docker, service, live check, test.
+- `/hq:playbook`: run one playbook (a workflow HQ can start on its own) and read, apply or drop its plan.
+  HQ queues them daily from signals, schedules and the CEO's routing; see [Playbooks](/guides/playbooks).
 - `/operations:status-report`: a weekly status report from what happened.
 - `/operations:runbook`: write a step-by-step runbook.
 - `/operations:process-doc`: document a process (save it in the vault under `Departments/Operations/SOPs/`).
 - `/operations:process-optimization`: find waste in a process.
 - `/operations:risk-assessment`: rate risks and mitigations.
-- `/operations:vendor-review`: assess a vendor before signing up.
+- `/operations:vendor-review`: assess a vendor before signing up, or review the ones you pay for.
 - `/productivity:task-management`: keep the task list honest.
 - `/small-business:monday-brief`: a start-of-week brief.
 - `/small-business:business-pulse`: a health check across the business.
 - `/session-wrap-up`: commit work and write the session up at the end of a working session.
+
+### Runbooks, vendors and risks
+
+The workflow of the same name is how HQ knows Operations' own documents exist and are current:
+
+- **Runbooks:** one per thing that breaks, saved as an Operations playbook whose title starts with "Runbook"
+  (`npm run hq -- brain write <slug> -` with `{"type":"playbook","dept":"operations","title":"Runbook: site is down",…}`).
+- **Vendor review and risk register:** saved as Operations documents with a title, so documents saved on the same
+  day don't overwrite each other in the vault:
+  `npm run hq -- save-plan <slug> operations <file> --title "vendor review"` (and `--title "risk register"`,
+  `--title "status report"`). Save the week's plan last, at least a minute after the others (files in the data
+  folder are named by the minute, so two saves in one minute keep only the second): the department tab shows the newest one.
+- It reads **live** with at least one runbook and a vendor review and a risk register from the last 90 days.
 
 ## 4. Check it's working
 

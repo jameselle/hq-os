@@ -324,3 +324,19 @@ test("insights: the read is kept for the adapter, with a followers line per read
   assert.match((await refreshInsights("demo-coffee", fakeDeps(() => [], calls))).detail, /no Instagram account pinned/);
   assert.equal(calls.workbench, before);
 });
+
+test("drafts written ahead for later weeks don't push this week's posts out of the publish queue", async () => {
+  const id = await setup();
+  const { socialDir } = await import("../lib/social-store");
+  const { publishQueue } = await import("../lib/social-publisher");
+  for (const w of ["2026-W43", "2026-W44"]) {
+    const dir = path.join(socialDir("demo-coffee"), "drafts", w);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${w}-instagram-1.json`), JSON.stringify(post({ id: `${w}-instagram-1`, day: w === "2026-W43" ? "2026-10-21" : "2026-10-28" })));
+  }
+  const q = publishQueue("demo-coffee", later);
+  const mine = q.find((x) => x.d.id === id);
+  assert.ok(mine, "this week's post is still in the queue");
+  assert.equal(mine!.due, true);
+  assert.ok(!q.some((x) => x.d.week === "2026-W44"), "weeks after this one aren't read");
+});

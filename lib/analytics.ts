@@ -13,16 +13,20 @@ import { listCampaigns } from "./campaign-store";
 import type { CampaignOutcome } from "./campaigns";
 import { listDrafts as listBlogDrafts, readBlogConfig } from "./blog-store";
 import { listSocial, readSocialConfig } from "./social-store";
+import { NETWORKS, keywordDmTool } from "./social";
 import { listExperiments } from "./experiments";
 import { lifecycleState } from "./lifecycle";
+import { OPS_REVIEW_DAYS, opsRecords } from "./ops-records";
 import { execAdapter, readConnection, writePrivateJson } from "./private-adapter";
 import { looksPrivate, scorecardState } from "./scorecard";
-import { acquisitionSpend, loadLedger } from "./ledger-spend";
+import { acquisitionWindow, loadLedger, spreadNote } from "./ledger-spend";
 import { unitAnalytics } from "./unit-economics";
 import { loadUnitEconomics } from "./unit-economics-store";
 import { businessDir, getProfile, hqRoot, ledgerPath, listReviews, type PublishedPost } from "./store";
 import { workflowChecksState } from "./workflow-checks";
 import { WORKFLOWS } from "./workflows";
+import { newest } from "./load-test";
+import { listLoadRuns, readLoadConfig } from "./load-test-store";
 
 export type AQuality = "exact" | "approx" | "missing" | "na";
 export type ARow = { label: string; value: number };
@@ -30,10 +34,27 @@ export type APoint = { week: string; value: number | null };
 /** One metric as an adapter reports it. `value` is the current reading (null exactly when missing or na);
  *  `weeks` its weekly history (any order, unique weeks); `breakdown` a split of the current period. */
 export type AnalyticsMetric = { id: AnalyticsId; value: number | null; quality: AQuality; note: string; weeks?: APoint[]; breakdown?: ARow[]; period?: string };
-/** `campaigns` (optional): outcomes per campaign tag (utm_campaign), counts and money only (lib/campaigns.ts). */
-export type AnalyticsSnapshot = { version: 1; observedAt: string; currency: string; metrics: AnalyticsMetric[]; campaigns?: CampaignOutcome[] };
+/** One post as it stands on its platform now: the Studio planner's live view (`lib/studio/planner-live.ts`).
+ *  `trial`: an Instagram trial reel (shown to non-followers, off the grid). `views` null when the platform gave none. */
+export type AnalyticsPost = { platform: PostPlatform; id: string; url: string; at: string; views: number | null; trial?: boolean; thumb?: string };
+export type PostPlatform = "instagram" | "tiktok" | "youtube" | "x" | "facebook" | "linkedin";
+/** `campaigns` (optional): outcomes per campaign tag (utm_campaign), counts and money only (lib/campaigns.ts).
+ *  `posts` (optional): every post on the business's connected accounts, newest first, with its views now. */
+export type AnalyticsSnapshot = { version: 1; observedAt: string; currency: string; metrics: AnalyticsMetric[]; campaigns?: CampaignOutcome[]; posts?: AnalyticsPost[] };
 
-export const ALIMITS = { metrics: 150, weeks: 26, breakdown: 20, text: 200, staleHours: 36, campaigns: 100 };
+export const ALIMITS = { metrics: 150, weeks: 26, breakdown: 20, text: 200, staleHours: 36, campaigns: 100, posts: 500 };
+
+// A post's link must be on its platform's own site and its thumbnail on the platform's image hosts: a snapshot can
+// carry no other URL (the privacy check refuses links in text, so posts get these narrower rules instead).
+const POST_HOSTS: Record<PostPlatform, RegExp> = {
+  instagram: /^(www\.)?instagram\.com$/, tiktok: /^(www\.)?tiktok\.com$/, youtube: /^((www|m)\.)?youtube\.com$|^youtu\.be$/,
+  x: /^(www\.)?(x|twitter)\.com$/, facebook: /^(www\.|m\.)?facebook\.com$|^fb\.watch$/, linkedin: /^(www\.)?linkedin\.com$/,
+};
+const THUMB_HOSTS = /(^|\.)(cdninstagram\.com|fbcdn\.net|tiktokcdn(-[a-z]+)?\.com|ytimg\.com|twimg\.com|licdn\.com)$/;
+const httpsOn = (u: unknown, host: RegExp, max: number) => {
+  if (typeof u !== "string" || u.length > max) return false;
+  try { const x = new URL(u); return x.protocol === "https:" && host.test(x.hostname) && !x.username && !x.password; } catch { return false; }
+};
 
 const WEEK = /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
@@ -83,6 +104,22 @@ export function analyticsProblem(v: unknown, currency: string): string | null {
     if (!Array.isArray(x.campaigns) || x.campaigns.length > ALIMITS.campaigns) return "campaigns";
     for (let i = 0; i < x.campaigns.length; i++) { const p = campaignRowProblem(x.campaigns[i], `campaigns[${i}]`); if (p) return p; }
   }
+  if (x.posts !== undefined) {
+    if (!Array.isArray(x.posts) || x.posts.length > ALIMITS.posts) return "posts";
+    for (let i = 0; i < x.posts.length; i++) { const p = postProblem(x.posts[i], `posts[${i}]`); if (p) return p; }
+  }
+  return null;
+}
+
+function postProblem(p: any, at: string): string | null {
+  if (!p || typeof p !== "object") return at;
+  if (!Object.hasOwn(POST_HOSTS, p.platform)) return `${at}.platform`;
+  if (typeof p.id !== "string" || !/^[\w.-]{1,100}$/.test(p.id)) return `${at}.id`;
+  if (!httpsOn(p.url, POST_HOSTS[p.platform as PostPlatform], 300)) return `${at}.url`;
+  if (typeof p.at !== "string" || !ISO.test(p.at) || !Number.isFinite(Date.parse(p.at))) return `${at}.at`;
+  if (p.views !== null && !(finite(p.views) && p.views >= 0)) return `${at}.views`;
+  if (p.trial !== undefined && typeof p.trial !== "boolean") return `${at}.trial`;
+  if (p.thumb !== undefined && !httpsOn(p.thumb, THUMB_HOSTS, 2000)) return `${at}.thumb`;
   return null;
 }
 
@@ -110,6 +147,10 @@ export function rebuildAnalytics(s: AnalyticsSnapshot): AnalyticsSnapshot {
       utm: r.utm.toLowerCase(), ...(r.id !== undefined ? { id: r.id } : {}),
       ...Object.fromEntries((["visits", "signups", "paying", "revenue"] as const).filter((k) => r[k] !== undefined).map((k) => [k, r[k]])),
       ...(r.period !== undefined ? { period: r.period } : {}),
+    })) } : {}),
+    ...(s.posts ? { posts: s.posts.map((p) => ({
+      platform: p.platform, id: p.id, url: p.url, at: new Date(p.at).toISOString(), views: p.views,
+      ...(p.trial !== undefined ? { trial: p.trial } : {}), ...(p.thumb !== undefined ? { thumb: p.thumb } : {}),
     })) } : {}),
   };
 }
@@ -231,7 +272,13 @@ export function hqMetrics(slug: string, now = Date.now(), extras: Extras = {}): 
   out.push(kw.length
     ? m("keyword_posts", last7(kw.map((p) => p.at), now), `Keywords: ${[...new Set(kw.map((p) => (p.caption ?? "").match(KEYWORD)![1]))].slice(0, 6).join(", ")}`,
       { weeks: weeklyCounts(kw.map((p) => p.at), 12, now, tz), breakdown: tally(kw.filter((p) => recent(p.at)).map((p) => (p.caption ?? "").match(KEYWORD)![1])), period: "last 4 weeks" })
-    : m("keyword_posts", null, "No published post asks for a comment keyword yet"));
+    : (() => {
+      // No keyword-DM tool on any network: the business's posts don't ask for keywords, so the number doesn't apply.
+      const c = readSocialConfig(slug);
+      return c && !NETWORKS.some((n) => keywordDmTool(c, n))
+        ? m("keyword_posts", null, "Not applicable: no comment-to-DM tool answers keywords for this business (keywordDms in social.json), so its posts don't ask for one", { quality: "na" })
+        : m("keyword_posts", null, "No published post asks for a comment keyword yet");
+    })());
 
   const jobs = studioJobTimes(slug);
   out.push(jobs.length
@@ -269,6 +316,19 @@ export function hqMetrics(slug: string, now = Date.now(), extras: Extras = {}): 
     ? m("vault_notes", notes.reduce((n, r) => n + r.value, 0), "Facts, decisions, lessons, playbooks and signals in the business's vault", { breakdown: notes, period: "now" })
     : m("vault_notes", null, "The business's vault has no brain notes yet"));
 
+  let ops: ReturnType<typeof opsRecords> = null;
+  try { ops = opsRecords(slug, new Date(now)); } catch { /* no vault */ }
+  out.push(ops?.runbooks
+    ? m("runbooks", ops.runbooks, `Vendor review ${ops.vendorReview?.day ?? `none in ${OPS_REVIEW_DAYS} days`}; risk register ${ops.riskRegister?.day ?? `none in ${OPS_REVIEW_DAYS} days`}`)
+    : m("runbooks", null, "No runbook in the vault yet (a playbook titled \"Runbook: ...\")"));
+
+  try {
+    const cfg = readLoadConfig(slug); const last = newest(listLoadRuns(slug));
+    out.push(cfg && last
+      ? m("load_test_users", last.maxPassing ?? 0, `Latest run ${last.at.slice(0, 10)}${last.firstFail ? `, failed at ${last.firstFail.users}` : ", every step passed"}; target ${cfg.targetUsers}`, { period: "latest run" })
+      : m("load_test_users", null, cfg ? "Set up, but no load test recorded yet (npm run hq -- loadtest record)" : "No load test set up (npm run hq -- loadtest setup)"));
+  } catch { out.push(m("load_test_users", null, "The load test records could not be read")); }
+
   if (openFindings) out.push(m("open_findings", openFindings.total, "The CEO's open findings for this business and this Mac", { breakdown: openFindings.bySeverity, period: "now" }));
   else out.push(m("open_findings", null, "Counted at each refresh (npm run hq -- analytics refresh)"));
 
@@ -297,7 +357,8 @@ export function hqMetrics(slug: string, now = Date.now(), extras: Extras = {}): 
   if (competitors) out.push(m("competitor_changes", competitors.weeks.slice(-4).reduce((n, w) => n + w.value, 0), `Changes the watcher saw on ${competitors.watches} rival pages, last 4 weeks`,
     { weeks: competitors.weeks, breakdown: competitors.byCompetitor, period: "last 4 weeks, by rival" }));
 
-  // Acquisition spend from the business's ledger (Expenses:Advertising / Expenses:Commissions), per week.
+  // Acquisition spend from the business's ledger (Expenses:Advertising / Partnerships / Commissions), per week; monthly
+  // imported totals are spread over their month's days (lib/ledger-spend.ts acquisitionWindow).
   try {
     const ledger = loadLedger(ledgerPath(slug));
     if (ledger.trim()) {
@@ -305,13 +366,16 @@ export function hqMetrics(slug: string, now = Date.now(), extras: Extras = {}): 
       let postings = 0;
       for (let d = 0; d < 7 * 13; d++) {
         const day = new Date(now - d * DAY); const from = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
-        const r = acquisitionSpend(ledger, profile.currency, from, new Date(from.getTime() + DAY));
+        const r = acquisitionWindow(ledger, profile.currency, from, new Date(from.getTime() + DAY));
         const w = isoWeek(from.getTime() + 12 * 3600e3, tz);
-        if (r.postings && by.has(w)) { by.set(w, Math.round((by.get(w)! + r.total) * 100) / 100); postings += r.postings; }
+        const counted = r.postings + r.estimated.length;
+        if (counted && by.has(w)) { by.set(w, Math.round((by.get(w)! + r.total) * 100) / 100); postings += counted; }
       }
       if (postings) {
-        const r28 = acquisitionSpend(ledger, profile.currency, new Date(now - 28 * DAY), new Date(now + DAY));
-        out.push(m("ad_spend", r28.total, "Advertising and commissions in the ledger, last 4 weeks", { weeks: weeks.map((week) => ({ week, value: by.get(week)! })) }));
+        const r28 = acquisitionWindow(ledger, profile.currency, new Date(now - 28 * DAY), new Date(now + DAY));
+        const how = spreadNote(r28);
+        out.push(m("ad_spend", r28.total, `Advertising, partnerships and commissions in the ledger, last 4 weeks${how ? `; ${how}` : ""}`.slice(0, 200),
+          { ...(how ? { quality: "approx" as const } : {}), weeks: weeks.map((week) => ({ week, value: by.get(week)! })) }));
       }
     }
   } catch { /* no ledger */ }
@@ -500,10 +564,11 @@ export function analyticsBoard(slug: string, now: Date = new Date()): Board {
       return finish({ ...base, status: "measured", value: x.value, quality: x.quality, note: x.note, points: mergePoints(26, kept(id), x.weeks ?? []), breakdown: x.breakdown ?? [], period: x.period ?? null, from: "hq" });
     }
     if (a) return fromAdapter(a);
-    const na = !recurring && RECURRING_ONLY.includes(id);
     const hx = hq.get(id);
+    // Not applicable: a subscription-only number on a business that doesn't bill that way, or HQ's own reading says so.
+    const na = (!recurring && RECURRING_ONLY.includes(id)) || hx?.quality === "na";
     return finish({ ...base, status: na ? "na" : "missing", value: null, quality: na ? "na" : "missing",
-      note: na ? `Needs recurring billing; this business is ${profile.model}` : hx?.note ?? (def.source === "adapter" ? (s.connected || s.demo ? "Not reported by the analytics adapter" : "No analytics adapter connected") : "Not reported by the scorecard adapter"),
+      note: !recurring && RECURRING_ONLY.includes(id) ? `Needs recurring billing; this business is ${profile.model}` : hx?.note ?? (def.source === "adapter" ? (s.connected || s.demo ? "Not reported by the analytics adapter" : "No analytics adapter connected") : "Not reported by the scorecard adapter"),
       points: [], breakdown: [], period: null, from: null });
   });
 

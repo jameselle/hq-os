@@ -13,6 +13,8 @@ export type Verdict = "won" | "lost" | "inconclusive";
 export type Experiment = {
   id: number; hypothesis: string; metric: AnalyticsId; lever: string; baseline: number | null;
   startedAt: string; status: "running" | Verdict; result: number | null; endedAt: string | null; note: string;
+  /** Set when a playbook run started it (lib/playbook-store.ts): the workflow, the run's id, and when HQ judges it. */
+  workflow?: string; run?: string; reviewAt?: string;
 };
 
 const file = (slug: string) => {
@@ -28,13 +30,14 @@ function save(slug: string, xs: Experiment[]) {
   fs.renameSync(tmp, f);
 }
 
-export function addExperiment(slug: string, x: { hypothesis: string; metric: AnalyticsId; baseline?: number | null }, now = new Date()): Experiment {
+export function addExperiment(slug: string, x: { hypothesis: string; metric: AnalyticsId; baseline?: number | null; workflow?: string; run?: string; reviewAt?: string }, now = new Date()): Experiment {
   if (!Object.hasOwn(ANALYTICS, x.metric)) throw Error(`unknown metric ${x.metric}: use one of ${Object.keys(ANALYTICS).join(", ")}`);
   if (!x.hypothesis?.trim()) throw Error("a hypothesis is required");
   const xs = listExperiments(slug);
   const e: Experiment = {
     id: (xs.at(-1)?.id ?? 0) + 1, hypothesis: x.hypothesis.trim().slice(0, 300), metric: x.metric, lever: ANALYTICS[x.metric].lever,
     baseline: x.baseline ?? null, startedAt: now.toISOString(), status: "running", result: null, endedAt: null, note: "",
+    ...(x.workflow ? { workflow: x.workflow } : {}), ...(x.run ? { run: x.run } : {}), ...(x.reviewAt ? { reviewAt: x.reviewAt } : {}),
   };
   save(slug, [...xs, e]);
   return e;

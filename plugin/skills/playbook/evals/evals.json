@@ -1,0 +1,28 @@
+{
+  "skill_name": "playbook",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Headless run: a run folder with inputs.json for \"Churn early warning\", routed by the CEO because paying churn is above the line.",
+      "expected_output": "plan.md with every step, a Legal check where customers are reached, the owner's call and how we'll know; drafts without dashes; result.json with a hypothesis.",
+      "files": [],
+      "expectations": [
+        "Read inputs.json before anything else",
+        "Wrote plan.md with ## Steps, ## The owner's call and ## How we'll know",
+        "Wrote result.json with summary, hypothesis, ownerActions and deliverables",
+        "Wrote nothing outside the run folder and sent or posted nothing"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/hq:playbook what's waiting for me?",
+      "expected_output": "Runs `playbook show <slug>` and walks the owner through ready runs, offering apply or drop.",
+      "files": [],
+      "expectations": [
+        "Ran `npm run hq -- playbook show <slug>`",
+        "Read a ready run's plan.md with the owner before applying",
+        "Applied or dropped only on the owner's word"
+      ]
+    }
+  ]
+}

@@ -131,11 +131,14 @@ test("writes the costs file whole, includes it once, opens accounts before the l
   assert.doesNotMatch(text, /Expenses:Commissions/);
   assert.equal(s.months.length, 3);
   assert.deepEqual(s.months.map((m) => m.total), [175, 260, 1440.5]);
-  assert.deepEqual(s.totals, { Advertising: 180, Operating: 1640.5, Partnerships: 55 });
-  // The scorecard counts the imported advertising, not the affiliates (it already counts in-product commissions).
+  // Cost of Sales lines land in Expenses:CostOfSales (gross margin), the rest of the non-marketing lines in Operating.
+  assert.deepEqual(s.totals, { Advertising: 180, CostOfSales: 470, Operating: 1170.5, Partnerships: 55 });
+  assert.match(text, /^2026-09-30 \* "Xero" "Costs from Xero: Hosting & Infrastructure" #imported\n  Expenses:CostOfSales:Hosting-Infrastructure /m);
+  // Cost to win counts the imported advertising and the affiliates, like unit economics (since 2026-10-07); the
+  // scorecard then leaves out the adapter's own affiliate commissions so they aren't counted twice.
   const all = loadLedger(ledgerPath(p.slug));
-  assert.equal(acquisitionSpend(all, "AUD", new Date("2026-09-01"), new Date("2026-10-01")).total, 120);
-  assert.deepEqual(moneyByMonth(all, "AUD").find((m) => m.month === "2026-09")!.byCost, { Advertising: 120, Operating: 1290.5, Partnerships: 30 });
+  assert.equal(acquisitionSpend(all, "AUD", new Date("2026-09-01"), new Date("2026-10-01")).total, 150);
+  assert.deepEqual(moneyByMonth(all, "AUD").find((m) => m.month === "2026-09")!.byCost, { Advertising: 120, CostOfSales: 240, Operating: 1050.5, Partnerships: 30 });
   assert.equal(importedCosts(p.slug, "AUD")[0].source, "xero");
   // Rewritten whole: a narrower import leaves nothing of the earlier one behind.
   importCosts(p.slug, demoImport(), { since: "2026-09" }, undefined, now);
@@ -233,4 +236,38 @@ test("adjustments take a cost out of its month before any share, and say why in 
   assert.throws(() => applyAdjustments(demoImport().months, [{ ...adj[0], reason: " " }]), /reason/);
   assert.deepEqual(applyAdjustments(demoImport().months, [{ ...adj[0], month: "2020-01" }]), applyAdjustments(demoImport().months, []), "a month outside the import changes nothing");
   assert.match(costsText(demoImport(), { observedAt: "2026-10-06T00:00:00Z", adjustments: adj }), /; Taken out of Software & Subscriptions in 2026-09: 50\.50 AUD \(Annual plan for another business\)\./);
+});
+
+test("section-aware: Cost of Sales lines go to Expenses:CostOfSales, marketing and affiliates stay acquisition wherever they sit", () => {
+  assert.equal(costCategory("Hosting & Infrastructure", "Cost of Sales"), "CostOfSales");
+  assert.equal(costCategory("Coffee Beans", "Cost of Goods Sold"), "CostOfSales");
+  assert.equal(costAccount("Sports Data Feeds", "Cost of Sales"), "Expenses:CostOfSales:Sports-Data-Feeds");
+  assert.equal(costCategory("Hosting & Infrastructure", "Operating Expenses"), "Operating");
+  assert.equal(costCategory("Hosting & Infrastructure"), "Operating", "no section (an old generic file) keeps the old mapping");
+  assert.equal(costCategory("Advertising & Marketing", "Cost of Sales"), "Advertising");
+  assert.equal(costCategory("Affiliate commissions", "Cost of Sales"), "Partnerships");
+  const sep = parseXeroReport(toolResponse())[2];
+  assert.equal(sep.lines.find((l) => l.account === "Coffee Beans")!.section, "Cost of Sales");
+});
+
+test("an imported Cost of Sales line gives unit economics a gross margin", async () => {
+  const { booksByMonth } = await import("../lib/unit-economics");
+  const p = business();
+  importCosts(p.slug, demoImport(), {}, () => null);
+  fs.appendFileSync(ledgerPath(p.slug), '\n2026-09-15 * "Sales"\n  Income:Sales   -900.00 AUD\n  Assets:Bank:Operating   900.00 AUD\n');
+  const sep = booksByMonth(loadLedger(ledgerPath(p.slug)), "AUD").find((m) => m.month === "2026-09")!;
+  assert.equal(sep.direct, 240, "beans and cost-of-sales hosting are direct costs");
+  assert.equal(sep.acquisition, 150);
+  assert.equal(sep.revenue, 900);
+});
+
+test("a yearly charge can be spread: out of its month, a share into each month it covers that the import holds", () => {
+  const months = ["2026-02", "2026-03", "2026-04"].map((month) => ({ month, lines: [{ account: "Sports Data", section: "Cost of Sales", amount: month === "2026-02" ? 1300 : 100 }] }));
+  const spread = [{ month: "2026-02", account: "Sports Data", amount: 1200, reason: "Yearly feed plan", spreadMonths: 12 }];
+  const out = applyAdjustments(months, spread);
+  assert.deepEqual(out.map((m) => m.lines[0].amount), [200, 200, 200], "1,200 out of Feb, 100 into Feb, Mar and Apr; later months fill in as they're imported");
+  const later = applyAdjustments([...months, { month: "2026-05", lines: [] }], spread);
+  assert.deepEqual(later.find((m) => m.month === "2026-05")!.lines, [{ account: "Sports Data", section: "Cost of Sales", amount: 100 }], "a covered month with no line gets one");
+  assert.throws(() => applyAdjustments(months, [{ ...spread[0], spreadMonths: 1 }]), /spreadMonths/);
+  assert.match(costsText({ version: 1, source: "xero", currency: "AUD", months }, { observedAt: "2026-10-06T00:00:00Z", adjustments: spread }), /; Spread over 12 months from 2026-02: 1200\.00 AUD of Sports Data, 100\.00 a month \(Yearly feed plan\)\./);
 });

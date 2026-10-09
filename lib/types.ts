@@ -145,4 +145,17 @@ export type HostFacts = {
     unit?: { latest: string; jumps: import("./unit-economics").CostJump[]; burn: import("./unit-economics").BurnStreak | null } | null } | null;
   /** The weekly social plan: posts HQ tried to put out and gave up on (status failed), newest day first. */
   social?: { failed: { id: string; network: string; format: string; day: string; error?: string; attempts: number }[] } | null;
+  /** Load testing (lib/load-test.ts): whether a test is due (never run, past its cadence, or short of the target), and why. */
+  loadTest?: { due: boolean; why: string; since?: string; target: number } | null;
+  /** Notes on attention and critical findings, by finding id (lib/finding-notes.ts). */
+  findingNotes?: import("./finding-notes").FindingNotes | null;
+  /** The owner's open decisions for this business (lib/owner-decisions.ts), raised by reviews, departments or Claude. */
+  ownerDecisions?: import("./owner-decisions-findings").OwnerDecision[] | null;
+  /** Playbooks (lib/playbook-store.ts): the mode, this week's routing, runs waiting for the owner, recent failures and verdicts. */
+  playbooks?: { mode: "off" | "ask" | "auto"; routing: import("./playbook-store").Routing | null;
+    ready: { id: string; workflow: string; owner: string; at: string }[]; queued: { id: string; workflow: string; owner: string; at: string }[];
+    failed: { id: string; workflow: string; owner: string; why: string; at: string }[];
+    judged: { id: number; workflow: string; verdict: string; note: string; at: string }[] } | null;
+  /** Partner outreach: email drafts HQ tried to send and couldn't (with when), and follow-ups waiting for the owner. */
+  partners?: { failed: { partner: string; name: string; n: number; at: string; error: string }[]; followUps: number } | null;
 };

@@ -3,7 +3,7 @@
 //   npm run hq -- <command> [args]
 //
 // Businesses   new-business <profile.json> · list · use <slug> · remove-business <slug> --yes
-// Writing      save-review <slug> <file.md|-> · save-plan <slug> <dept> <file.md|-> · done <slug|-> <finding-id> [--undo]
+// Writing      save-review <slug> <file.md|-> · save-plan <slug> <dept> <file.md|-> [--title <words>] · done <slug|-> <finding-id> [--undo]
 // Backups      backup init [repository] · backup run · backup restore-test · backup snapshots · backup restore <id|latest> <new-folder>
 // Services     services init · services add-defaults · services install · services status · services start · services stop · services uninstall
 // Publishing   connections save <file.json|-> · connections show · publishing <slug> · log-post <slug> <post.json|->
@@ -11,16 +11,35 @@
 // Competitors  competitors sync <slug> · competitors changes <slug> [--days N] [--json] · competitors log <slug> <name> <file|-> · competitors recheck <slug>
 //              competitors tick <slug|--all> [--force] [--wait <seconds>]   (the weekly brief, headless; job com.hq.competitors)
 // Brain        brain init · brain read <slug> <dept> [--chars N] · brain write <slug|hq> <note.json|-> · brain promote <slug> <note> [--title T] [--body file] · brain show <slug>
+// Finance      finance one-off <slug> <YYYY-MM> "<account>" "<reason>"   (a one-off cost: in the numbers, not flagged as a jump)
 // Tools        support refresh <slug|--all> · support show|digest <slug> · finance init <slug> · finance sync <slug|--all> · finance show <slug> · finance unit-economics <slug> [--save] · finance import-costs <slug> <file|-> [--from xero|json] [--share N] [--since YYYY-MM] [--currency XXX] · finance costs <slug> · finance costs refresh <slug|--all> [--force] [--dry-run] · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug> · analytics refresh <slug|--all> · analytics show <slug> [--missing] [--dept <dept>] · workflows check <slug|--all>
 // Lifecycle    lifecycle show <slug> [flow] [--cached] · lifecycle explain <slug> <flow> · lifecycle approve|reject <slug> <message> [--yes --before <ISO>] · lifecycle notes <slug> [--all]
 //              lifecycle test <slug> <message> · lifecycle mode <slug> <flow> off|draft|auto [--yes]
 // Blog         blog setup <slug> --site <url> [--hour 6] [--sc-account A --sc-site S] · blog inputs|write|check|show|publish <slug> [--dry-run] · blog approve|reject|reopen <slug> <draft> · blog note <slug> <draft> "…" · blog mode <slug> off|draft|auto · blog tick <slug|--all>
 // Social       social setup <slug> --networks instagram:hq,x:hand,… [--weekday 1 --hour 7] · social inputs|write|check|show <slug> · social approve|reject|reopen <slug> <id> · social note <slug> <id> "…" · social posted <slug> <id> <url> · social mode <slug> off|draft|auto · social publish <slug|--all> [--id <id>] [--dry-run [--at <ISO>]] [--container] · social insights <slug|--all> [--dry-run] · social tick <slug|--all>
 //              social replies <slug> [--list | --fetch [--dry-run] | --draft | --approve <comment id> [--text "…"] | --reject <comment id> | --post [--dry-run]]   (opt-in comment replies; only approved ones post)
+// Playbooks    playbook show <slug> · playbook explain <slug> <workflow-slug> · playbook queue <slug> <workflow-slug> · playbook run <slug> <run-id> [--again]
+//              playbook apply <slug> <run-id> [--note "…"] · playbook drop <slug> <run-id> [--note "…"] · playbook mode <slug> off|ask|auto [--per-day N]
+//              playbook skip <slug> "<workflow title>" [--remove] · playbook rule <slug> "<house rule>" [--remove] · playbook review <slug> · playbook tick <slug|--all> [--dry-run]   (daily in com.hq.scorecard)
+//              signals write <slug|--all> [--dry-run]   (the weekly Data, Content and Engineering hand-offs; also part of playbook tick)
+// Decisions    decision add <slug> <file.json|-> (one or a list) · decision list <slug> [--all] · decision show <slug> <id> · decision done <slug> <id> --answer "…" · decision drop <slug> <id> [--note "…"]
+//              decision note <slug> <id> "…" [--by owner] · decision note-edit <slug> <id> <n> "…" [--by owner] · decision note-rm <slug> <id> <n> [--by owner]   (notes; the owner adds theirs on the CEO tab)
+//              (the owner's open decisions, shown on the CEO tab; done files the answer in the brain)
+// Findings     finding notes <slug> [--all] · finding show <slug> <finding-id> · finding note <slug> <finding-id> "…" [--by owner]
+//              finding note-edit|note-rm <slug> <finding-id> <n> ["…"] [--by owner]   (notes on attention and critical findings)
 // Experiments  experiment add <slug> "<hypothesis>" --metric <id> [--baseline N] · experiment close <slug> <id> won|lost|inconclusive [--result N] [--note "…"] · experiment list <slug>
 // Campaigns    campaign add <slug> <file.json|-> · campaign list <slug> · campaign show <slug> <id> · campaign report <slug> <id> [--save] [--json]
 //              campaign status <slug> <id> planned|live|paused|done · campaign link <slug> <id> social|blog|email|experiment|post|note <ref> [--remove]
 //              campaign note <slug> <id> "…" [--learning]
+// Partners     partner add <slug> <file.json|-> [--update] (one partner or a list) · partner list <slug> [--status X] [--campaign <id>] · partner show <slug> <id>
+//              partner status <slug> <id> <status> [--note "…"] · partner link <slug> <id> campaign <campaign-id> [--remove] · partner note <slug> <id> "…"
+//              partner draft <slug> <id> <file.json|-> [--channel dm|email|form|comment|other] · partner approve <slug> <id> <n> [--ack-check] · partner unapprove <slug> <id> <n>
+//              partner approve-all <slug> --campaign <id> (every email draft of the campaign's partners) · partner sent <slug> <id> <n> (the owner sent it)
+//              partner send <slug> [--id <partner>] [--dry-run] [--test-to <own address> [--n N]] · partner retry <slug> <id> <n> · partner optout <slug> <id> [--note "…"]
+//              partner footer <slug> [--id <partner>] · partner outreach <slug> [--set <file.json|->] · partner tick <slug|--all>   (follow-ups, then approved emails; hourly from com.hq.social)
+//              partner report <slug> [--json] · partner sync <slug> [--dry-run]   (optional one-way sync to Twenty; needs the Keychain item hq-twenty-api)
+// Load tests   loadtest setup <slug> --target <users> [--cadence 30] [--primary <endpoint>] [--repo <path>] [--provision|--run|--teardown "<command>"] [--runs-dir <path>] [--staging "<one line>"]
+//              loadtest record <slug> <report.json|run folder> [--label "…"] · loadtest show <slug> [--json] · loadtest due <slug|--all>   (HQ never runs a test itself: /hq:load-test)
 // Health       doctor
 //
 // Never reads .env files. Secrets it creates (the restic password) go straight
@@ -46,7 +65,7 @@ import { costsConnected, readCostsConnection, readRefreshState, realRefreshDeps,
 import { digestWritten, runSupport, supportConnected, supportDigest, supportState, writeSupportDigest } from "../lib/support";
 import { loadLedger } from "../lib/ledger-spend";
 import { unitBrief } from "../lib/unit-economics";
-import { loadUnitEconomics } from "../lib/unit-economics-store";
+import { addOneOff, loadUnitEconomics } from "../lib/unit-economics-store";
 import { listNotes as listLifecycleNotes } from "../lib/lifecycle-notes";
 import { decide, decisionText, type BlogConfig } from "../lib/blog";
 import { addNote as addBlogNote, checkDrafts, draftToday, listDrafts, log as blogLog, publishReady, readBlogConfig, setStatus as setBlogStatus, writeBlogConfig, blogDir } from "../lib/blog-store";
@@ -66,10 +85,23 @@ import { flowOfMessage, flowPage, namingProblems } from "../lib/lifecycle-names"
 import { explainFlow, flowStatus, lifecycleStatus, timeLabel } from "../lib/lifecycle-status";
 import { workflowSlug, workflowsFor } from "../lib/workflows";
 import { addExperiment, closeExperiment, experimentsMarkdown, listExperiments, type Verdict } from "../lib/experiments";
+import { PLAYBOOKS, playbookBySlug, triggerLabel } from "../lib/playbooks";
+import { applyRun, dropRun, getRun, listRuns, mirrorRuns, queueRun, readConfig as readPlaybookConfig, readPlan, readRouting, reviewExperiments, writeConfig as writePlaybookConfig, type Mode } from "../lib/playbook-store";
+import { executeRun } from "../lib/playbook-runner";
+import { tickAll } from "../lib/playbook-tick";
+import { writeWeeklySignals } from "../lib/signal-writers";
+import { addFindingNote, changeFindingNote, readFindingNotes } from "../lib/finding-notes";
+import { addDecisionNote, addDecisions, awaitingReply, changeDecisionNote, decide as decideOwner, dropDecision, listDecisions } from "../lib/owner-decisions";
 import { addCampaign, addCampaignResult, getCampaign, linkCampaign, listCampaigns, noteCampaign, readCampaigns, setCampaignStatus, unlinkCampaign } from "../lib/campaign-store";
 import { campaignFacts } from "../lib/campaign-report";
 import { CAMPAIGN_STATUSES, CHANNEL_LABEL, LINK_KINDS, STATUS_LABEL, campaignReport, measuredNumbers, type CampaignStatus, type LinkKind, type Measure } from "../lib/campaigns";
 import { ANALYTICS, formatAnalytics as fmtA } from "../lib/analytics-metrics";
+import { addDraft, addFooters, addPartners, approveDraft, approveEmailDrafts, getPartner, linkPartnerCampaign, markSentByOwner, notePartner, optOut, outreachConfigOrNull, readPartners, retryDraft, setCrmIds, setPartnerStatus, unapproveDraft, writeOutreachConfig } from "../lib/partner-store";
+import { acquireOutreachLock, offlineSendDeps, outreachBusinesses, partnerTick, realSendDeps, runProblem, sendDue, sendTest, type SendOutcome } from "../lib/partner-sender";
+import { capOf, sentToday } from "../lib/partner-outreach";
+import { partnersView } from "../lib/partner-report";
+import { DRAFT_CHANNELS, PARTNER_STATUSES, PLATFORM_LABEL, STAGES, STATUS_LABEL as PARTNER_STATUS_LABEL, TYPE_LABEL, followersLabel, lastAction, measureText, partnerLink, partnerOutcome, type DraftChannel, type PartnerStatus } from "../lib/partners";
+import { TWENTY_KEYCHAIN, TWENTY_STAGE, syncTwenty, twentyKeyService, twentyRecords } from "../lib/twenty-sync";
 import { formatValue, scorecardRows } from "../lib/scorecard-metrics";
 import { validateProfile } from "../lib/profile";
 import { PLATFORMS, captionProblems, channelStatuses, resolveRoute } from "../lib/publishing";
@@ -100,6 +132,8 @@ import {
   vaultRoot,
   writeConfig,
 } from "../lib/store";
+import { loadMarkdown, loadTestDue, type LoadTestConfig } from "../lib/load-test";
+import { listLoadRuns, readLoadConfig, recordLoadRun, writeLoadConfig } from "../lib/load-test-store";
 
 const HOME = os.homedir();
 const LOCAL_BIN = path.join(HOME, ".local", "bin");
@@ -357,6 +391,7 @@ type Service = {
   keepAlive: boolean;
   /** launchd StartCalendarInterval, for jobs rather than daemons. */
   schedule?: { Hour?: number; Minute?: number; Weekday?: number };
+  intervalSeconds?: number;
   port?: number;
   /** How the nightly backup captures this service's live data (lib/backup.ts). */
   backup?: ServiceBackup;
@@ -382,6 +417,7 @@ function defaultServices(): Service[] {
   const opt = (...p: string[]) => path.join(HOME, ".local", "opt", ...p);
   const vardir = (...p: string[]) => path.join(HOME, ".local", "var", ...p);
   const services: Service[] = [
+    { label: "com.hq.trends", description: "Trend Radar public observations every 15 minutes for enabled businesses", program: [node, "run", "trends", "--", "--all"], cwd: hqRoot(), keepAlive: false, intervalSeconds: 900 },
     { label: "com.hq.web", description: "HQ site on 127.0.0.1:3150", program: [node, "start"], cwd: hqRoot(), keepAlive: true, port: 3150 },
     { label: "com.hq.review", description: "Studio review page on 127.0.0.1:8794: watch renders, note what looks wrong", program: [node, "run", "studio", "--", "review"], cwd: hqRoot(), keepAlive: true, port: 8794 },
     {
@@ -394,8 +430,8 @@ function defaultServices(): Service[] {
     },
     {
       label: "com.hq.scorecard",
-      description: "Daily finance sync, scorecard, analytics and support refresh for every business",
-      program: ["/bin/sh", "-c", `${node} run hq -- finance sync --all; ${node} run hq -- scorecard refresh --all; ${node} run hq -- analytics refresh --all; ${node} run hq -- support refresh --all`],
+      description: "Daily finance sync, scorecard, analytics and support refresh for every business, then the playbook tick (signals, routing, queue, verdicts)",
+      program: ["/bin/sh", "-c", `${node} run hq -- finance sync --all; ${node} run hq -- scorecard refresh --all; ${node} run hq -- analytics refresh --all; ${node} run hq -- support refresh --all; ${node} run hq -- playbook tick --all`],
       cwd: hqRoot(),
       keepAlive: false,
       schedule: { Hour: 6, Minute: 0 },
@@ -418,7 +454,7 @@ function defaultServices(): Service[] {
     },
     {
       label: "com.hq.social",
-      description: "Hourly: each business's weekly social drafts on its planning day, checks and card renders, then HQ posts what's due and reads the account's numbers once a day",
+      description: "Hourly: each business's weekly social drafts on its planning day, checks and card renders, then HQ posts what's due and reads the account's numbers once a day; then partner follow-ups and approved partner emails",
       program: [node, "run", "hq", "--", "social", "tick", "--all"],
       cwd: hqRoot(),
       keepAlive: false,
@@ -605,7 +641,7 @@ function plist(s: Service): string {
     : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Generated by hq (${xml(s.description)}). Edit $HQ_DATA/services.json, then: npm run hq -- services install -->
+<!-- Generated by HQ. Service definitions live in HQ_DATA/services.json. -->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>${xml(s.label)}</string>
@@ -626,7 +662,7 @@ ${Object.entries(s.env ?? {})
   <key>KeepAlive</key><${s.keepAlive}/>
   <key>ThrottleInterval</key><integer>15</integer>
   <key>ProcessType</key><string>${s.keepAlive ? "Standard" : "Background"}</string>
-${schedule}  <key>StandardOutPath</key><string>${xml(log)}</string>
+${s.intervalSeconds ? `  <key>StartInterval</key><integer>${s.intervalSeconds}</integer>\n` : ""}${schedule}  <key>StandardOutPath</key><string>${xml(log)}</string>
   <key>StandardErrorPath</key><string>${xml(log)}</string>
 </dict>
 </plist>
@@ -1214,6 +1250,8 @@ async function cmdSocial(pos: string[], args: string[], flag: (f: string) => boo
   if (sub === "tick") {
     const slugs = flag("--all") ? listBusinesses().profiles.map((p) => p.slug).filter((s) => readSocialConfig(s)) : [pos[1] ?? die("social tick <slug|--all>")];
     for (const s of slugs) await socialTick(s);
+    // The hourly com.hq.social run also writes partner follow-ups and emails approved partner drafts.
+    if (flag("--all")) await partnerTickAll();
     return;
   }
   if (sub === "insights") {
@@ -1362,6 +1400,278 @@ function cmdCampaign(pos: string[], args: string[], flag: (f: string) => boolean
   }
 }
 
+// ---------------------------------------------------------------- partners
+
+const sendLine = (o: SendOutcome) => `${o.partner}${o.n ? ` draft ${o.n}` : ""}: ${o.status}. ${o.detail}`;
+
+/** Follow-ups and approved emails for every business with partners (the hourly social tick runs this too). */
+async function partnerTickAll(slugs?: string[]) {
+  for (const s of outreachBusinesses(slugs ?? listBusinesses().profiles.map((p) => p.slug))) {
+    try { for (const l of await partnerTick(s, realSendDeps)) console.log(`${s}: partners: ${l}`); }
+    catch (e) { console.error(`${s}: partners: ${(e as Error).message}`); }
+  }
+}
+
+function cmdLoadTest(args: string[]) {
+  const VALUE = new Set(["--target", "--cadence", "--primary", "--repo", "--provision", "--run", "--teardown", "--runs-dir", "--staging", "--label"]);
+  const pos = args.filter((a, i) => !a.startsWith("--") && !VALUE.has(args[i - 1]));
+  const valueOf = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
+  const [sub, slug] = pos;
+  const usage = "loadtest: setup | record | show | due (npm run hq -- help lists the arguments)";
+  if (sub === "due") {
+    const slugs = args.includes("--all") ? listBusinesses().profiles.map((p) => p.slug) : [slug ?? die(usage)];
+    for (const s of slugs) {
+      const cfg = readLoadConfig(s);
+      if (!cfg) { if (!args.includes("--all")) console.log(`${s}: no load test set up`); continue; }
+      const d = loadTestDue(cfg, listLoadRuns(s), new Date());
+      console.log(`${s}: ${d.due ? "DUE" : "ok"}  ${d.why}`);
+    }
+    return;
+  }
+  const p = getProfile(slug ?? "") ?? die(`no such business: ${slug ?? ""}\n${usage}`);
+  if (sub === "setup") {
+    const old = readLoadConfig(p.slug);
+    const int = (f: string, d?: number) => { const v = valueOf(f); if (v === undefined) return d; const n = Number(v); return Number.isInteger(n) ? n : die(`${f} must be a whole number`); };
+    const commands = { ...old?.commands } as NonNullable<LoadTestConfig["commands"]>;
+    for (const k of ["provision", "run", "teardown"] as const) { const v = valueOf(`--${k}`); if (v !== undefined) commands[k] = v; }
+    const cfg: LoadTestConfig = {
+      version: 1,
+      targetUsers: int("--target", old?.targetUsers) ?? die("loadtest setup needs --target <customers at once>"),
+      cadenceDays: int("--cadence", old?.cadenceDays ?? 30)!,
+      ...((valueOf("--primary") ?? old?.primary) ? { primary: valueOf("--primary") ?? old?.primary } : {}),
+      ...((valueOf("--repo") ?? old?.repo) ? { repo: valueOf("--repo") ?? old?.repo } : {}),
+      ...((valueOf("--runs-dir") ?? old?.runsDir) ? { runsDir: valueOf("--runs-dir") ?? old?.runsDir } : {}),
+      ...((valueOf("--staging") ?? old?.staging) ? { staging: valueOf("--staging") ?? old?.staging } : {}),
+      ...(Object.keys(commands).length ? { commands } : {}),
+    };
+    writeLoadConfig(p.slug, cfg);
+    console.log(`load test set up for ${p.slug}: target ${cfg.targetUsers} customers at once, every ${cfg.cadenceDays} days`);
+    return;
+  }
+  if (sub === "record") {
+    const file = pos[2] ?? die("loadtest record <slug> <report.json|run folder> [--label \"…\"]");
+    const run = recordLoadRun(p.slug, path.resolve(file), { label: valueOf("--label") ?? null });
+    console.log(`recorded ${run.at.slice(0, 16)}: ${run.maxPassing ?? 0} customers at once passed (target ${run.target})${run.firstFail ? `; failed at ${run.firstFail.users}: ${run.firstFail.reason}` : "; every step passed"}`);
+    return;
+  }
+  if (sub === "show") {
+    const cfg = readLoadConfig(p.slug); const runs = listLoadRuns(p.slug);
+    if (args.includes("--json")) { console.log(JSON.stringify({ config: cfg, runs }, null, 2)); return; }
+    if (!cfg) { console.log(`${p.slug}: no load test set up (npm run hq -- loadtest setup ${p.slug} --target <users>)`); return; }
+    console.log(loadMarkdown(cfg, runs, new Date()));
+    return;
+  }
+  return die(usage);
+}
+
+async function cmdPartner(args: string[]) {
+  const VALUE = new Set(["--status", "--campaign", "--note", "--channel", "--id", "--test-to", "--n", "--set"]);
+  const pos = args.filter((a, i) => !a.startsWith("--") && !VALUE.has(args[i - 1]));
+  const valueOf = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
+  const flag = (f: string) => args.includes(f);
+  const sub = pos[0];
+  const SUBS = ["add", "list", "show", "status", "link", "note", "draft", "approve", "unapprove", "approve-all", "sent", "send", "retry", "optout", "footer", "outreach", "tick", "report", "sync"];
+  const usage = `partner: ${SUBS.join(" | ")} (npm run hq -- help lists the arguments)`;
+  if (!sub || !SUBS.includes(sub)) return die(usage);
+  if (sub === "tick" && flag("--all")) return partnerTickAll();
+  const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1] ?? "(none given)"}`);
+  const money = (v: number) => fmtA("money", v, p.currency);
+  const fail = (e: unknown) => die(e instanceof Error ? e.message : String(e));
+
+  if (sub === "tick") return partnerTickAll([p.slug]);
+  if (sub === "outreach") {
+    if (valueOf("--set")) {
+      let c: unknown;
+      try { c = JSON.parse(readInput(valueOf("--set"))); } catch (e) { return die(`not JSON: ${(e as Error).message}`); }
+      try { writeOutreachConfig(p.slug, c as never); } catch (e) { return fail(e); }
+    }
+    const { config: c, problem } = outreachConfigOrNull(p.slug);
+    if (problem) return die(problem);
+    if (!c) return console.log(`${p.name}: no sender connected, so HQ sends nothing (drafts, approvals and follow-ups still work).
+To turn it on: connect a sender in Composio (Resend with the business's domain verified, or Gmail), then: npm run hq -- partner outreach ${p.slug} --set outreach.json`);
+    const now = new Date();
+    console.log(`${p.name}: HQ emails approved drafts via ${c.sender.via} (${c.sender.account}) from ${c.sender.from}${c.sender.replyTo ? `, replies to ${c.sender.replyTo}` : ""}`);
+    console.log(`  today       ${sentToday(readPartners(p.slug).partners, now, p.timezone)} of ${capOf(c)} sent`);
+    console.log(`  right now   ${runProblem(p.slug, c, now) || "sending is open"}`);
+    return;
+  }
+  if (sub === "send") {
+    const testTo = valueOf("--test-to");
+    if (testTo) {
+      const r = await sendTest(p.slug, testTo, flag("--dry-run") ? offlineSendDeps() : realSendDeps, { id: valueOf("--id"), n: valueOf("--n") ? Number(valueOf("--n")) : undefined, dryRun: flag("--dry-run") });
+      console.log(sendLine(r));
+      if (r.status === "failed" || r.status === "held") process.exit(1);
+      return;
+    }
+    const id = valueOf("--id") ? getPartner(p.slug, valueOf("--id")!).id : undefined;
+    if (flag("--dry-run")) {
+      const res = await sendDue(p.slug, offlineSendDeps(), { dryRun: true, id });
+      if (!res.length) console.log(`${p.name}: no approved email drafts`);
+      for (const o of res) console.log(sendLine(o));
+      return;
+    }
+    const lock = acquireOutreachLock(p.slug);
+    if (!lock) return console.log(`${p.slug}: an outreach run is already going`);
+    try {
+      const res = await sendDue(p.slug, realSendDeps, { id, beforeEach: lock.touch });
+      if (!res.length) console.log(`${p.name}: no approved email drafts`);
+      for (const o of res) console.log(sendLine(o));
+      if (res.some((o) => o.status === "failed")) process.exit(1);
+    } finally { lock.release(); }
+    return;
+  }
+  if (sub === "approve-all") {
+    const camp = valueOf("--campaign") ?? die("partner approve-all <slug> --campaign <campaign id>");
+    try {
+      const r = approveEmailDrafts(p.slug, camp);
+      for (const x of r.approved) console.log(`approved  ${x.partner} draft ${x.n}`);
+      for (const x of r.skipped) console.log(`skipped   ${x.partner} draft ${x.n}: ${x.why}`);
+      return console.log(`${r.approved.length} email ${r.approved.length === 1 ? "draft" : "drafts"} approved; HQ sends them on weekdays between 9am and 5pm, at most the daily cap`);
+    } catch (e) { return fail(e); }
+  }
+  if (sub === "footer") {
+    try {
+      const r = addFooters(p.slug, { id: valueOf("--id") });
+      for (const x of r) console.log(`footer added  ${x.partner} draft ${x.n}${x.reopened ? " (was approved: back to draft, since its words changed)" : ""}`);
+      return console.log(`${r.length} email ${r.length === 1 ? "draft" : "drafts"} now carry the footer`);
+    } catch (e) { return fail(e); }
+  }
+
+  if (sub === "add") {
+    let input: unknown;
+    try { input = JSON.parse(readInput(pos[2])); } catch (e) { return die(`not JSON: ${(e as Error).message}`); }
+    try {
+      const r = addPartners(p.slug, input as never, { update: flag("--update") });
+      for (const x of r.added) console.log(`added    ${x.id.padEnd(40)} ${PARTNER_STATUS_LABEL[x.status].padEnd(12)} ${x.name}${x.tracking.tag ? `  tag ${x.tracking.tag}` : ""}`);
+      for (const x of r.updated) console.log(`updated  ${x.id.padEnd(40)} ${PARTNER_STATUS_LABEL[x.status].padEnd(12)} ${x.name}`);
+      return console.log(`${r.added.length} added, ${r.updated.length} updated for ${p.name}`);
+    } catch (e) { return fail(e); }
+  }
+  if (sub === "list") {
+    const { partners, invalid } = readPartners(p.slug);
+    const st = valueOf("--status"), camp = valueOf("--campaign");
+    if (st && !(PARTNER_STATUSES as readonly string[]).includes(st)) return die(`--status is one of ${PARTNER_STATUSES.join(", ")}`);
+    const xs = partners.filter((x) => (!st || x.status === st) && (!camp || x.campaigns.some((c) => c === camp || c.startsWith(camp))));
+    if (!partners.length) console.log(`${p.name} has no partners yet: npm run hq -- partner add ${p.slug} <file.json>`);
+    for (const x of xs) console.log(`${PARTNER_STATUS_LABEL[x.status].padEnd(12)} ${x.id.padEnd(40)} ${followersLabel(x.audience.followers).padStart(9)}  fit ${x.fit.level.padEnd(6)} ${x.compliance.status.padEnd(5)}  ${x.name}`);
+    for (const x of invalid) console.log(`! ${x.file}: ${x.problems.join("; ")}`);
+    return;
+  }
+  if (sub === "report") {
+    const v = partnersView(p.slug);
+    if (flag("--json")) return console.log(JSON.stringify(v.report, null, 2));
+    const r = v.report;
+    console.log(`${p.name} · partner pipeline (${r.total} in all, ${r.open} open)`);
+    for (const st of STAGES) console.log(`  ${st.label.padEnd(10)} ${st.statuses.map((s) => `${PARTNER_STATUS_LABEL[s].toLowerCase()} ${r.counts[s]}`).join(" · ")}`);
+    console.log(`  compliance  ${r.needsCheck} open ${r.needsCheck === 1 ? "partner needs" : "partners need"} a check · ${r.avoid} to avoid`);
+    console.log(`  outreach    ${r.waiting} ${r.waiting === 1 ? "draft" : "drafts"} not sent yet · ${r.followUps} ${r.followUps === 1 ? "follow-up" : "follow-ups"} ready · ${r.failed} failed (HQ emails approved email drafts only; the owner sends DMs and forms)`);
+    console.log(`  sign-ups    ${measureText(r.totals.signups, p.currency)}`);
+    console.log(`  paying      ${measureText(r.totals.paying, p.currency)}`);
+    for (const { partner: x, outcome: o } of r.live) console.log(`  ${PARTNER_STATUS_LABEL[x.status].toLowerCase().padEnd(11)} ${x.name} (${x.handle})${x.tracking.tag ? ` tag ${x.tracking.tag}` : " no tag"}: sign-ups ${o.signups.value ?? "not measured yet"}, paying ${o.paying.value ?? "not measured yet"}`);
+    if (r.missing.length) { console.log("  not measured yet:"); for (const m of r.missing) console.log(`    - ${m}`); }
+    for (const x of v.invalid) console.log(`  ! ${x.file}: ${x.problems.join("; ")}`);
+    return;
+  }
+  if (sub === "sync") {
+    const { partners } = readPartners(p.slug);
+    if (flag("--dry-run")) {
+      console.log(`Twenty sync, dry run: ${partners.length} ${partners.length === 1 ? "partner" : "partners"} for ${p.name}; nothing is sent`);
+      for (const x of partners) {
+        const rec = twentyRecords(x, p);
+        console.log(`  ${x.id}: company "${rec.company.name}", person ${x.handle}, opportunity stage ${TWENTY_STAGE[x.status] ?? "(unchanged)"}${x.crm?.twenty?.opportunityId ? " (update)" : " (create)"}`);
+      }
+      return;
+    }
+    try {
+      const results = await syncTwenty(p.slug, partners, p, (id, ids) => setCrmIds(p.slug, id, ids));
+      if (results === null) {
+        console.log(`Twenty sync is off for ${p.name}: no Keychain item ${TWENTY_KEYCHAIN} (or ${TWENTY_KEYCHAIN}-${p.slug}). Everything works from the partner files.`);
+        console.log("To turn it on: create an API key in Twenty (Settings, APIs and webhooks), then in Terminal:");
+        console.log(`  security add-generic-password -a hq -s ${TWENTY_KEYCHAIN} -w`);
+        return;
+      }
+      const bad = results.filter((x) => x.error);
+      for (const x of results) console.log(`  ${x.partner}: ${x.error ? `failed: ${x.error}` : `${x.created.length ? `created ${x.created.join(", ")}` : ""}${x.created.length && x.updated.length ? "; " : ""}${x.updated.length ? `updated ${x.updated.join(", ")}` : ""}`}`);
+      console.log(`Twenty (${twentyKeyService(p.slug)}): ${results.length - bad.length} of ${results.length} partners synced`);
+      if (bad.length) process.exit(1);
+      return;
+    } catch (e) { return fail(e); }
+  }
+
+  const id = pos[2] ?? die(usage);
+  try {
+    const x = getPartner(p.slug, id);
+    if (sub === "status") {
+      const st = pos[3] as PartnerStatus;
+      if (!(PARTNER_STATUSES as readonly string[]).includes(st)) return die(`partner status <slug> <id> ${PARTNER_STATUSES.join("|")} [--note "…"]`);
+      const { partner, warnings } = setPartnerStatus(p.slug, x.id, st, valueOf("--note"));
+      console.log(`${partner.name}: ${PARTNER_STATUS_LABEL[partner.status]}`);
+      for (const w of warnings) console.log(`  warning: ${w}`);
+      return;
+    }
+    if (sub === "link") {
+      if (pos[3] !== "campaign" || !pos[4]) return die("partner link <slug> <id> campaign <campaign-id> [--remove]");
+      const y = linkPartnerCampaign(p.slug, x.id, pos[4], { remove: flag("--remove") });
+      return console.log(`${y.name}: ${flag("--remove") ? "unlinked from" : "linked to"} ${pos[4]} (${y.campaigns.length} ${y.campaigns.length === 1 ? "campaign" : "campaigns"})${y.tracking.tag ? `, tag ${y.tracking.tag}` : ""}`);
+    }
+    if (sub === "note") {
+      const text = pos.slice(3).join(" ");
+      if (!text.trim()) return die("partner note <slug> <id> \"…\"");
+      const y = notePartner(p.slug, x.id, text);
+      return console.log(`${y.name}: note saved (${y.notes.length} in all)`);
+    }
+    if (sub === "draft") {
+      const raw = readInput(pos[3]);
+      let d: { channel?: DraftChannel; subject?: string; body: string; status?: string };
+      // JSON ({ channel, subject?, body }) or plain text as the body. Text that starts like JSON must be JSON, so a
+      // broken object is refused rather than saved as the message.
+      if (/^\s*[{[]/.test(raw)) {
+        try { d = JSON.parse(raw); } catch (e) { return die(`the draft looks like JSON but isn't valid (${(e as Error).message}); use \\n for line breaks inside "body", or pipe plain text`); }
+        if (typeof d !== "object" || d === null || Array.isArray(d)) return die("the draft must be one object: {\"channel\":\"dm\",\"body\":\"…\"}");
+      } else d = { body: raw };
+      const ch = valueOf("--channel");
+      if (ch) { if (!(DRAFT_CHANNELS as readonly string[]).includes(ch)) return die(`--channel is one of ${DRAFT_CHANNELS.join(", ")}`); d.channel = ch as DraftChannel; }
+      const y = addDraft(p.slug, x.id, d);
+      const n = y.drafts.at(-1)!;
+      return console.log(`${y.name}: draft ${n.n} saved (${n.channel}). ${n.channel === "email" && y.contact?.route === "email" ? `Once approved (partner approve ${p.slug} ${y.id} ${n.n}), HQ emails it` : `The owner sends it; then: npm run hq -- partner sent ${p.slug} ${y.id} ${n.n}`}`);
+    }
+    if (sub === "optout") {
+      const y = optOut(p.slug, x.id, valueOf("--note"));
+      return console.log(`${y.name}: opted out. Declined for good; HQ never drafts or sends to them again`);
+    }
+    if (sub === "approve" || sub === "sent" || sub === "unapprove" || sub === "retry") {
+      const n = Number(pos[3]);
+      if (!Number.isInteger(n) || n < 1) return die(`partner ${sub} <slug> <id> <draft number>`);
+      const y = sub === "approve" ? approveDraft(p.slug, x.id, n, new Date(), { ackCheck: flag("--ack-check") })
+        : sub === "unapprove" ? unapproveDraft(p.slug, x.id, n)
+        : sub === "retry" ? retryDraft(p.slug, x.id, n)
+        : markSentByOwner(p.slug, x.id, n);
+      const d = y.drafts.find((z) => z.n === n)!;
+      const what = sub === "approve" ? `approved${d.channel === "email" && y.contact?.route === "email" ? " (HQ emails it on a weekday between 9am and 5pm once a sender is connected)" : " (the owner sends it)"}`
+        : sub === "unapprove" ? "back to draft" : sub === "retry" ? "set to retry: HQ looks for the first send before trying again" : "marked sent by the owner";
+      return console.log(`${y.name}: draft ${n} ${what} · status ${PARTNER_STATUS_LABEL[y.status]}`);
+    }
+    // show
+    const o = partnerOutcome(x, partnersView(p.slug).analytics);
+    console.log(`${x.name}  [${PARTNER_STATUS_LABEL[x.status]}]  ${x.id}`);
+    console.log(`  where       ${PLATFORM_LABEL[x.platform]} ${x.handle}${x.url ? ` ${x.url}` : ""}${x.country ? ` · ${x.country}` : ""}`);
+    console.log(`  type        ${TYPE_LABEL[x.type]} · followers ${followersLabel(x.audience.followers)}${x.audience.followers !== null ? ` (${x.audience.source}, ${x.audience.at})` : ""}`);
+    console.log(`  fit         ${x.fit.level}: ${x.fit.reason}`);
+    console.log(`  compliance  ${x.compliance.status}${x.compliance.notes ? `: ${x.compliance.notes}` : ""}`);
+    if (x.contact) console.log(`  contact     ${x.contact.route}${x.contact.detail ? ` ${x.contact.detail}` : ""}`);
+    console.log(`  campaigns   ${x.campaigns.join(", ") || "none"}`);
+    console.log(`  tag         ${x.tracking.tag ?? "none"}${x.tracking.link ? ` · link ${x.tracking.link}` : p.sites?.[0] && x.tracking.tag ? ` · e.g. ${partnerLink(p.sites[0], x.tracking.tag, x.platform)}` : ""}`);
+    if (x.deal) console.log(`  deal        ${x.deal.terms || "(no terms)"}${x.deal.commission !== undefined ? ` · commission ${money(x.deal.commission)} per paying customer` : ""}${x.deal.fee !== undefined ? ` · fee ${money(x.deal.fee)}` : ""}`);
+    console.log(`  sign-ups    ${measureText(o.signups, p.currency)}`);
+    console.log(`  paying      ${measureText(o.paying, p.currency)}`);
+    console.log(`  last        ${lastAction(x).at.slice(0, 10)} ${lastAction(x).text}`);
+    for (const h of x.history) console.log(`  history     ${h.at.slice(0, 10)} ${PARTNER_STATUS_LABEL[h.status]}${h.note ? `: ${h.note}` : ""}`);
+    if (x.doNotContact) console.log(`  opted out   ${x.doNotContact.at.slice(0, 10)}: never contact again${x.doNotContact.note ? ` (${x.doNotContact.note})` : ""}`);
+    for (const d of x.drafts) console.log(`  draft ${String(d.n).padEnd(5)} ${d.status.padEnd(13)} ${d.channel}${d.followUpOf ? ` (follow-up to ${d.followUpOf})` : ""}${d.subject ? ` · ${d.subject}` : ""} · ${d.body.replace(/\s+/g, " ").slice(0, 80)}${d.messageId ? ` · message ${d.messageId}` : ""}${d.error ? ` · error: ${d.error}` : ""}`);
+    for (const n of x.notes) console.log(`  note        ${n.at.slice(0, 10)} ${n.text}`);
+  } catch (e) { return fail(e); }
+}
+
 // ---------------------------------------------------------------- finance: running costs from an accounting system
 
 function printCosts(name: string, currency: string, s: CostsSummary) {
@@ -1425,6 +1735,91 @@ async function cmdFinanceCosts(args: string[]) {
 
 // ---------------------------------------------------------------- main
 
+async function cmdPlaybook(args: string[]) {
+  const VALUE = new Set(["--note", "--per-day"]);
+  const pos = args.filter((a, i) => !a.startsWith("--") && !VALUE.has(args[i - 1]));
+  const opt = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
+  const sub = pos[0];
+  if (sub === "tick") {
+    const r = await tickAll(args.includes("--all") ? "all" : [(getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`)).slug], { dryRun: args.includes("--dry-run"), say: (l) => console.log(l) });
+    let failed = 0;
+    for (const t of r) {
+      const w = t.signals.filter((x) => x.status === "written").length, bad = t.signals.filter((x) => x.status === "failed");
+      console.log(`${t.error ? "failed" : "ok"} ${t.slug} · mode ${t.mode} · signals ${w} new${bad.length ? `, ${bad.length} failed (${bad.map((b) => b.why).join("; ").slice(0, 160)})` : ""} · weakest ${t.routing.weakest ? `${t.routing.weakest.lever} (${t.routing.weakest.label})` : "none"} · picks ${t.routing.picks.map((x) => x.workflow).join(", ") || "none"} · queued ${t.queued.length} · ran ${t.ran.length} · judged ${t.judged.length}${t.error ? ` · ${t.error}` : ""}`);
+      if (t.error) failed++;
+    }
+    if (failed) process.exit(1);
+    return;
+  }
+  const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+  switch (sub) {
+    case "show": {
+      const c = readPlaybookConfig(p.slug), rt = readRouting(p.slug), runs = listRuns(p.slug);
+      console.log(`${p.name} · playbooks ${c.mode}${c.mode === "auto" ? ` (${c.perDay} a day)` : ""}${c.skip.length ? ` · never runs: ${c.skip.join(", ")}` : ""}`);
+      for (const r of c.rules) console.log(`  house rule: ${r}`);
+      if (rt) {
+        console.log(`\nrouting ${rt.week}: ${rt.weakest ? `weakest lever ${rt.weakest.lever}, ${rt.weakest.label.toLowerCase()} ${rt.weakest.why}` : "no weak lever"}`);
+        for (const x of rt.picks) console.log(`  ${x.workflow} · owner ${x.owner} · with ${x.contributors.join(", ")} · ${x.why}`);
+      } else console.log("\nno routing yet: npm run hq -- playbook tick " + p.slug);
+      console.log(`\nruns (${runs.length})`);
+      for (const r of runs.slice(0, 30)) console.log(`  ${r.id.padEnd(58)} ${r.status.padEnd(8)} ${r.verdict ? `${r.verdict} · ` : ""}${r.reason.kind}${r.summary ? ` · ${r.summary.slice(0, 90)}` : r.why ? ` · ${r.why.slice(0, 90)}` : ""}`);
+      return;
+    }
+    case "explain": {
+      const b = playbookBySlug(pos[2] ?? "") ?? die(`no such playbook: ${pos[2]} (one of ${PLAYBOOKS.map((x) => x.slug).join(", ")})`);
+      console.log(`${b.title}\nowner ${b.owner} · with ${b.contributors.join(", ")} · levers ${b.levers.join(", ")}\nstarts on: ${b.triggers.map(triggerLabel).join("; ")}${b.runnable ? "" : " (HQ never starts it alone)"}\nmoves: ${b.metricText}${b.metric ? ` (${b.metric})` : ""}\n${b.customerFacing ? `reaches customers: Legal checks it${b.addedGuard ? " (step added by HQ)" : ""}` : "internal"}${readPlaybookConfig(p.slug).skip.includes(b.title) ? "\nthis business never runs it automatically" : ""}\n`);
+      b.steps.forEach(([d, s], i) => console.log(`  ${i + 1}. ${d}: ${s}`));
+      return;
+    }
+    case "queue": {
+      const b = playbookBySlug(pos[2] ?? "") ?? die(`no such playbook: ${pos[2]}`);
+      const r = queueRun(p.slug, b, { kind: "owner" });
+      if (!r) return die(`${b.title} already has a run today`);
+      mirrorRuns(p.slug);
+      return console.log(`queued ${r.id}: npm run hq -- playbook run ${p.slug} ${r.id}`);
+    }
+    case "run": {
+      const id = pos[2] ?? die("missing run id");
+      console.log(`running ${getRun(p.slug, id).workflow} headless (up to 25 minutes)…`);
+      const r = await executeRun(p.slug, id, { again: args.includes("--again") });
+      console.log(r.status === "ready" ? `ready: ${r.summary}\nplan: ${path.join(businessDir(p.slug), "playbooks", "runs", r.id, "plan.md")}${r.costUsd ? ` · $${r.costUsd.toFixed(2)}` : ""}` : `${r.status}: ${r.why}`);
+      if (r.status !== "ready") process.exit(1);
+      return;
+    }
+    case "plan": return console.log(readPlan(p.slug, pos[2] ?? die("missing run id")) ?? "no plan yet");
+    case "apply": {
+      const r = applyRun(p.slug, pos[2] ?? die("missing run id"), { note: opt("--note") });
+      mirrorRuns(p.slug);
+      return console.log(`applied ${r.id}${r.experiment ? `: experiment ${r.experiment} on ${r.metric} from ${r.baseline ?? "unmeasured"}, judged in 14 days` : " (no number to judge it by)"}`);
+    }
+    case "drop": { const r = dropRun(p.slug, pos[2] ?? die("missing run id"), opt("--note")); mirrorRuns(p.slug); return console.log(`dropped ${r.id}`); }
+    case "mode": {
+      const mode = pos[2] as Mode;
+      if (!["off", "ask", "auto"].includes(mode)) return die("playbook mode <slug> off|ask|auto [--per-day N]");
+      const c = writePlaybookConfig(p.slug, { mode, ...(opt("--per-day") ? { perDay: Number(opt("--per-day")) } : {}) });
+      return console.log(`${p.name}: playbooks ${c.mode}${c.mode === "auto" ? `, up to ${c.perDay} runs a day` : c.mode === "ask" ? ": HQ queues, you say run" : ""}`);
+    }
+    case "skip": {
+      const title = pos[2] ?? die("missing workflow title");
+      if (!PLAYBOOKS.some((x) => x.title === title)) return die(`no workflow titled "${title}"`);
+      const skip = new Set(readPlaybookConfig(p.slug).skip);
+      if (args.includes("--remove")) skip.delete(title); else skip.add(title);
+      return console.log(`never runs automatically: ${[...writePlaybookConfig(p.slug, { skip: [...skip] }).skip].join(", ") || "nothing"}`);
+    }
+    case "rule": {
+      const text = pos[2] ?? die('playbook rule <slug> "<rule>" [--remove]');
+      const rules = readPlaybookConfig(p.slug).rules.filter((r) => r !== text);
+      const next = writePlaybookConfig(p.slug, { rules: args.includes("--remove") ? rules : [...rules, text] });
+      return console.log(next.rules.length ? `house rules for every run:\n${next.rules.map((r) => `  - ${r}`).join("\n")}` : "no house rules");
+    }
+    case "review": {
+      const closed = reviewExperiments(p.slug);
+      return console.log(closed.length ? closed.map((e) => `experiment ${e.id} (${e.workflow}): ${e.status}, ${e.note}`).join("\n") : "nothing due for judging");
+    }
+    default: return die("playbook: show | explain | queue | run | plan | apply | drop | mode | skip | rule | review | tick");
+  }
+}
+
 async function main() {
   const [cmd, ...args] = process.argv.slice(2);
   const flag = (f: string) => args.includes(f);
@@ -1444,8 +1839,13 @@ async function main() {
       return console.log(`saved review\n  ${file}\n  ${note}`);
     }
     case "save-plan": {
-      const p = getProfile(pos[0] ?? "") ?? die(`no such business: ${pos[0]}`);
-      const { file, note } = savePlan(p.slug, pos[1] ?? die("missing department slug"), readInput(pos[2]));
+      // --title ends the vault note's name ("<date> ... <Department> <title>.md"), so several documents saved on one day
+      // (a vendor review, a risk register, the week's plan) don't overwrite each other. Default: "plan".
+      const t = args.indexOf("--title");
+      const title = t >= 0 ? (args[t + 1] ?? die("--title needs words")).trim() || die("--title needs words") : undefined;
+      const rest = args.filter((a, i) => !a.startsWith("--") && !(t >= 0 && i === t + 1));
+      const p = getProfile(rest[0] ?? "") ?? die(`no such business: ${rest[0]}`);
+      const { file, note } = savePlan(p.slug, rest[1] ?? die("missing department slug"), readInput(rest[2]), new Date(), title);
       return console.log(`saved plan\n  ${file}\n  ${note}`);
     }
     case "done":
@@ -1591,6 +1991,12 @@ async function main() {
       return die(usage);
     }
     case "finance": {
+      if (pos[0] === "one-off") {
+        // finance one-off <slug> <YYYY-MM> "<account or label>" "<reason>": kept in the numbers, not flagged as a jump.
+        const b = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
+        const list = addOneOff(b.slug, { month: pos[2] ?? "", account: pos[3] ?? "", reason: pos[4] ?? "" });
+        return console.log(`one-offs for ${b.name}:\n${list.map((o) => `  ${o.month} ${o.account}: ${o.reason}`).join("\n")}`);
+      }
       if (pos[0] === "import-costs" || pos[0] === "costs") return cmdFinanceCosts(args);
       if (pos[0] === "sync") {
         const slugs = flag("--all") ? listBusinesses().profiles.filter((p) => financeConnected(p.slug)).map((p) => p.slug) : [pos[1] ?? die("finance sync <slug> | --all")];
@@ -1781,6 +2187,85 @@ async function main() {
     }
     case "campaign":
       return cmdCampaign(pos, args, flag);
+    case "partner":
+      return cmdPartner(args);
+    case "playbook":
+      return cmdPlaybook(args);
+    case "finding": {
+      const VALUE = new Set(["--by"]);
+      const p2 = args.filter((a, i) => !a.startsWith("--") && !VALUE.has(args[i - 1]));
+      const b = getProfile(p2[1] ?? "") ?? die(`no such business: ${p2[1]}`);
+      const by = (() => { const i = args.indexOf("--by"); return i >= 0 && args[i + 1] === "owner" ? "owner" as const : "claude" as const; })();
+      // The findings open right now, from the running site (lib/status.ts is server-only).
+      const open = async (): Promise<{ id: string; severity: string; title: string; detail: string; action: string }[]> => {
+        try {
+          const r = await fetch(`http://127.0.0.1:3150/api/status?business=${encodeURIComponent(b.slug)}`, { signal: AbortSignal.timeout(30000) });
+          const s = await r.json() as { business?: { slug?: string }; findings?: { id: string; severity: string; title: string; detail: string; action: string }[] };
+          return s.business?.slug === b.slug ? s.findings ?? [] : [];
+        } catch { return []; }
+      };
+      const all = readFindingNotes(b.slug);
+      if (p2[0] === "notes") {
+        const now = await open();
+        const ids = new Set([...Object.keys(all), ...(flag("--all") ? now.filter((f) => ["critical", "attention"].includes(f.severity)).map((f) => f.id) : [])]);
+        if (!ids.size) return console.log("no notes on findings");
+        for (const id of ids) {
+          const cur = now.find((f) => f.id === id), notes = all[id]?.notes ?? [];
+          console.log(`${(cur ? cur.severity : "cleared").padEnd(10)} ${id.padEnd(52)} ${notes.length} note${notes.length === 1 ? "" : "s"}${notes.at(-1)?.by === "owner" ? ", OWNER WAITING FOR A REPLY" : ""}  ${cur?.title ?? all[id]?.title ?? ""}`);
+        }
+        return;
+      }
+      const id = p2[2] ?? die("missing finding id");
+      if (p2[0] === "show") {
+        const cur = (await open()).find((f) => f.id === id);
+        console.log(cur ? `${cur.severity}: ${cur.title}\n\n${cur.detail}\nNext: ${cur.action}` : `${all[id]?.title ?? id}\n(not open right now: cleared, or the site isn't running)`);
+        const notes = all[id]?.notes ?? [];
+        if (notes.length) console.log(`\nNotes:\n${notes.map((n, i) => `  ${i + 1}. ${n.by === "owner" ? "Owner" : "Claude"}, ${n.at.slice(0, 16).replace("T", " ")}${n.editedAt ? " (edited)" : ""}: ${n.text}`).join("\n")}`);
+        if (notes.at(-1)?.by === "owner") console.log(`\nThe owner's latest note is waiting for a reply: npm run hq -- finding note ${b.slug} ${id} "…"`);
+        return;
+      }
+      if (p2[0] === "note") { const cur = (await open()).find((f) => f.id === id); addFindingNote(b.slug, id, p2[3] ?? die("missing note text"), by, cur?.title); return console.log(`note added to ${id} (${by})`); }
+      if (p2[0] === "note-edit") { changeFindingNote(b.slug, id, Number(p2[3]), by, p2[4] ?? die("missing note text")); return console.log(`note ${p2[3]} on ${id} updated`); }
+      if (p2[0] === "note-rm") { changeFindingNote(b.slug, id, Number(p2[3]), by, null); return console.log(`note ${p2[3]} on ${id} removed`); }
+      return die("finding: notes | show | note | note-edit | note-rm");
+    }
+    case "decision": {
+      const VALUE = new Set(["--answer", "--note", "--by"]);
+      const p2 = args.filter((a, i) => !a.startsWith("--") && !VALUE.has(args[i - 1]));
+      const opt = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
+      const b = getProfile(p2[1] ?? "") ?? die(`no such business: ${p2[1]}`);
+      if (p2[0] === "add") {
+        const raw = JSON.parse(readInput(p2[2]));
+        for (const d of addDecisions(b.slug, Array.isArray(raw) ? raw : [raw])) console.log(`open  ${d.id}${d.due ? `  (by ${d.due})` : ""}  ${d.title}`);
+        return;
+      }
+      if (p2[0] === "list") {
+        const xs = listDecisions(b.slug).filter((d) => flag("--all") || d.status === "open");
+        if (!xs.length) return console.log("no open decisions");
+        for (const d of xs) console.log(`${d.status.padEnd(8)} ${d.id.padEnd(44)} ${(d.due ?? "").padEnd(10)} ${d.dept.padEnd(12)} ${d.title}${d.answer ? `  → ${d.answer}` : ""}${d.notes?.length ? `  [${d.notes.length} note${d.notes.length === 1 ? "" : "s"}${awaitingReply(d) ? ", OWNER WAITING FOR A REPLY" : ""}]` : ""}`);
+        return;
+      }
+      const by = opt("--by") === "owner" ? "owner" : "claude";
+      if (p2[0] === "show") {
+        const d = listDecisions(b.slug).find((x) => x.id === p2[2]) ?? die(`no decision ${p2[2]}`);
+        console.log(`${d.title}\n${d.status}${d.due ? ` · due ${d.due}` : ""} · ${d.dept}${d.answer ? ` · answer: ${d.answer}` : ""}\n\nWhy: ${d.why}\nHow: ${d.how}${d.recommend ? `\nRecommended: ${d.recommend}` : ""}`);
+        if (d.notes?.length) console.log(`\nNotes:\n${d.notes.map((n, i) => `  ${i + 1}. ${n.by === "owner" ? "Owner" : "Claude"}, ${n.at.slice(0, 16).replace("T", " ")}${n.editedAt ? " (edited)" : ""}: ${n.text}`).join("\n")}`);
+        if (awaitingReply(d)) console.log(`\nThe owner's latest note is waiting for a reply: npm run hq -- decision note ${b.slug} ${d.id} "…"`);
+        return;
+      }
+      if (p2[0] === "note") { addDecisionNote(b.slug, p2[2] ?? die("missing decision id"), p2[3] ?? die("missing note text"), by); return console.log(`note added to ${p2[2]} (${by})`); }
+      if (p2[0] === "note-edit") { changeDecisionNote(b.slug, p2[2] ?? die("missing decision id"), Number(p2[3]), by, p2[4] ?? die("missing note text")); return console.log(`note ${p2[3]} on ${p2[2]} updated`); }
+      if (p2[0] === "note-rm") { changeDecisionNote(b.slug, p2[2] ?? die("missing decision id"), Number(p2[3]), by, null); return console.log(`note ${p2[3]} on ${p2[2]} removed`); }
+      if (p2[0] === "done") { const d = decideOwner(b.slug, p2[2] ?? die("missing decision id"), opt("--answer") ?? ""); return console.log(`decided ${d.id}: ${d.answer}`); }
+      if (p2[0] === "drop") { const d = dropDecision(b.slug, p2[2] ?? die("missing decision id"), opt("--note")); return console.log(`dropped ${d.id}`); }
+      return die("decision: add | list | show | done | drop | note | note-edit | note-rm");
+    }
+    case "signals": {
+      if (pos[0] !== "write") return die("signals write <slug|--all> [--dry-run]");
+      const slugs = flag("--all") ? listBusinesses().profiles.map((x) => x.slug) : [(getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`)).slug];
+      for (const slug of slugs) for (const o of await writeWeeklySignals(slug, new Date(), { dryRun: flag("--dry-run") })) console.log(`${slug} · ${o.status.padEnd(7)} · ${o.title} → ${o.to.join(", ")}${o.why ? ` · ${o.why}` : ""}`);
+      return;
+    }
     case "experiment": {
       const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1]}`);
       const valueOf = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : undefined; };
@@ -1806,6 +2291,8 @@ async function main() {
       return cmdBlog(pos, args, flag);
     case "social":
       return cmdSocial(pos, args, flag);
+    case "loadtest":
+      return cmdLoadTest(args);
     case "doctor":
       return cmdDoctor();
     default: {

@@ -9,13 +9,18 @@ import path from "node:path";
 import { listDrafts as listBlogDrafts } from "./blog-store";
 import { listSocial } from "./social-store";
 import { campaignReports } from "./campaign-report";
+import { listPartners } from "./partner-store";
+import { isAppearance } from "./partners";
 
 import { lifecycleState } from "./lifecycle";
+import { OPS_REVIEW_DAYS, opsRecords, type OpsDoc } from "./ops-records";
 import { workflowChecksState, type WorkflowCheck } from "./workflow-checks";
 import { scorecardState } from "./scorecard";
 import { businessDir, getProfile, listReviews, type PublishedPost } from "./store";
 import { addMonths, monthName } from "./unit-economics";
 import { unitEvidenceFacts } from "./unit-economics-store";
+import { loadEvidence, type LoadRun, type LoadTestConfig } from "./load-test";
+import { listLoadRuns, readLoadConfig } from "./load-test-store";
 
 export type Evidence = {
   /** live: the workflow runs end to end. partial: some steps run (named in proof), the rest are still to build. */
@@ -48,6 +53,14 @@ export type EvidenceFacts = {
   /** Unit economics (lib/unit-economics.ts): closed months with both income and costs, the newest month with costs,
    *  the current month, and when HQ last worked the numbers out (analytics refresh) or saved the monthly brief. */
   unitEconomics?: { bothMonths: number; latest: string | null; thisMonth: string; computedAt: string | null; briefAt: string | null } | null;
+  /** Partners (lib/partners.ts): each one's status, whether its links carry a tracking tag, and whether it's a podcast
+   *  appearance. Counts only reach the proof text, never names. */
+  partners?: { status: string; tagged: boolean; appearance: boolean; updatedAt?: string }[] | null;
+  /** Operations' records in the vault (lib/ops-records.ts): runbooks, and the newest vendor review and risk register
+   *  saved within the last 90 days (ISO times, null when none is current). */
+  ops?: { runbooks: number; lastRunbook?: string; vendorReview: OpsDoc | null; riskRegister: OpsDoc | null } | null;
+  /** Load tests (lib/load-test.ts): the business's target and cadence, and every recorded run, judged at `now`. */
+  loadTest?: { config: LoadTestConfig; runs: LoadRun[]; now: string } | null;
   /** Pass/fail checks from the business's workflow-checks adapter (lib/workflow-checks.ts). */
   checks?: { observedAt: string; stale: boolean; workflows: { title: string; checks: WorkflowCheck[] }[] } | null;
 };
@@ -160,6 +173,26 @@ export function evidenceFrom(f: EvidenceFacts): Record<string, Evidence> {
     ], last: latest(cs.map((c) => c.updatedAt)) };
   }
 
+  // Partners: live once a partner is live with a tracking tag (its sign-ups can be counted); in part while partners are
+  // being found, screened or talked to. Podcast appearances are the same rule over podcast partners.
+  const ps = f.partners ?? [];
+  const STAGE_WORDS: [string, string, string][] = [["prospect", "prospect", "prospects"], ["shortlisted", "shortlisted", "shortlisted"], ["contacted", "contacted", "contacted"], ["replied", "replied", "replied"], ["negotiating", "negotiating", "negotiating"], ["live", "live without a tag", "live without a tag"], ["paused", "paused", "paused"]];
+  const partnerEvidence = (title: string, xs: typeof ps, what: string) => {
+    const tagged = xs.filter((p) => p.status === "live" && p.tagged);
+    const open = xs.filter((p) => !["declined", "ended"].includes(p.status) && !(p.status === "live" && p.tagged));
+    const stages = STAGE_WORDS.map(([s, one, many]) => { const n = open.filter((p) => p.status === s).length; return n ? `${n} ${n === 1 ? one : many}` : ""; }).filter(Boolean);
+    const last = latest(xs.map((p) => p.updatedAt));
+    if (tagged.length) {
+      const proof = [`${plural(tagged.length, what)} live with a tracking tag on ${tagged.length === 1 ? "its" : "their"} links`];
+      if (stages.length) proof.push(`More in the pipeline: ${list(stages)}`);
+      out[title] = { state: "live", proof, last };
+    } else if (open.length) {
+      out[title] = { state: "partial", proof: [`${plural(open.length, what)} in the pipeline: ${list(stages)}`, `No ${what} is live with a tracking tag yet`], last };
+    }
+  };
+  partnerEvidence("Partner program", ps, "partner");
+  partnerEvidence("Podcast and creator appearances", ps.filter((p) => p.appearance), "podcast");
+
   // Unit economics: live with 3 or more months of income and costs, costs no older than the month before last, and the
   // numbers worked out this month (the daily analytics refresh, or a saved brief).
   const ue = f.unitEconomics;
@@ -184,6 +217,30 @@ export function evidenceFrom(f: EvidenceFacts): Record<string, Evidence> {
     }
   }
 
+  // Runbooks, vendors and risks: live with at least one runbook in the vault plus a vendor review and a risk register
+  // saved in the last 90 days; in part while any of the three is missing or out of date.
+  const ops = f.ops;
+  if (ops && (ops.runbooks || ops.vendorReview || ops.riskRegister)) {
+    const have = [
+      ops.runbooks ? `${plural(ops.runbooks, "runbook")} in the business's vault` : "",
+      ops.vendorReview ? `Vendor review saved ${ops.vendorReview.day}` : "",
+      ops.riskRegister ? `Risk register saved ${ops.riskRegister.day}` : "",
+    ].filter(Boolean);
+    const not = [
+      ops.runbooks ? "" : "Not yet: no runbook (a playbook titled \"Runbook: ...\") in the vault",
+      ops.vendorReview ? "" : `Not yet: no vendor review in the last ${OPS_REVIEW_DAYS} days`,
+      ops.riskRegister ? "" : `Not yet: no risk register in the last ${OPS_REVIEW_DAYS} days`,
+    ].filter(Boolean);
+    out["Runbooks, vendors and risks"] = {
+      state: not.length ? "partial" : "live",
+      proof: [...have, ...not],
+      last: latest([ops.lastRunbook, ops.vendorReview?.at, ops.riskRegister?.at]),
+    };
+  }
+
+  // Load tests: live when the newest recorded run meets the target and is within the cadence.
+  if (f.loadTest) out["Load test before growth"] = loadEvidence(f.loadTest.config, f.loadTest.runs, new Date(f.loadTest.now));
+
   // Checks prove workflows that send nothing (pages, measurement). Live only when every check passed recently.
   const ck = f.checks;
   if (ck) {
@@ -205,6 +262,13 @@ function campaignFacts(slug: string): EvidenceFacts["campaigns"] {
   try {
     const rs = campaignReports(slug, { readings: false });
     return rs.length ? rs.map((r) => ({ name: r.campaign.name, status: r.campaign.status, out: r.out, updatedAt: r.campaign.updatedAt })) : null;
+  } catch { return null; }
+}
+
+function partnerFacts(slug: string): EvidenceFacts["partners"] {
+  try {
+    const ps = listPartners(slug);
+    return ps.length ? ps.map((p) => ({ status: p.status, tagged: Boolean(p.tracking.tag), appearance: isAppearance(p), updatedAt: p.updatedAt })) : null;
   } catch { return null; }
 }
 
@@ -300,7 +364,10 @@ export function workflowEvidence(slug: string, now: Date = new Date()): { demo: 
     blog: blogFacts(slug),
     social: socialFacts(slug),
     campaigns: campaignFacts(slug),
+    partners: partnerFacts(slug),
     unitEconomics: (() => { try { return unitEvidenceFacts(slug, now); } catch { return null; } })(),
+    ops: (() => { try { return opsRecords(slug, now); } catch { return null; } })(),
+    loadTest: (() => { try { const config = readLoadConfig(slug); return config ? { config, runs: listLoadRuns(slug), now: now.toISOString() } : null; } catch { return null; } })(),
   };
   return { demo: facts.demo, evidence: evidenceFrom(facts) };
 }

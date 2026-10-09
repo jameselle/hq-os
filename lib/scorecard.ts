@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {businessDir, getProfile, hqRoot, ledgerPath} from './store';
 import {execAdapter, readConnection, writePrivateJson} from './private-adapter';
-import {acquisitionSpend, applyCosts, loadLedger} from './ledger-spend';
+import {acquisitionWindow, applyCosts, loadLedger, weeksWindow} from './ledger-spend';
 
 export {METRICS} from './scorecard-metrics';
 export type {Quality, Unit, MetricId, Row, Metric, Week, ScorecardSnapshot} from './scorecard-metrics';
@@ -153,8 +153,10 @@ export async function runScorecard(slug: string, now: Date = new Date()): Promis
     const problem = scorecardProblem(value, profile.currency);
     if (problem) throw Error(`Invalid scorecard snapshot at ${problem}`);
     const ledger = loadLedger(ledgerPath(slug));
-    const spend = acquisitionSpend(ledger, profile.currency, new Date(now.getTime() - 28 * 86400e3), now).total;
-    const clean = applyCosts(rebuildScorecard(value as ScorecardSnapshot), spend);
+    const rebuilt = rebuildScorecard(value as ScorecardSnapshot);
+    // The spend window is the 4 weeks ending with the newest reported week, monthly imported totals spread by day.
+    const {from, to} = weeksWindow(rebuilt.weeks[0].week);
+    const clean = applyCosts(rebuilt, acquisitionWindow(ledger, profile.currency, from, new Date(Math.min(to.getTime(), now.getTime()))));
     writePrivateJson(f.snapshot, clean);
     fs.mkdirSync(f.history, {recursive: true, mode: 0o700});
     writePrivateJson(path.join(f.history, `${clean.weeks[0].week}.json`), clean);

@@ -67,6 +67,23 @@ animation style, and pace targets.
   `~/Movies/Teleprompter/<script>/<NN-section>/take-NN.mp4`, kept takes in `choices.json`.
 - Never paste the Studio URL anywhere: it carries the prompter key.
 
+### Recording for the "street" look (optional)
+
+A walk-and-talk look that keeps strangers watching (measured on a winning ad in this format: about 220 spoken
+words a minute, a new place every 3 to 6 seconds). Only if the owner wants it; the teleprompter look stays the
+default.
+- **Many places, one outfit.** Record each section somewhere different (a path, a bench, a doorway, a desk, a
+  chair) in the same clothes, so every cut is also a change of scene. Plan the places in the script, one per section.
+- **Phone at arm's length on the wide lens** (0.5x), eyes on the lens, framed chest-up with the head in the top
+  third. Walk towards the camera on some takes, lean in on the punchline; a tripod only for the desk shot.
+- **Daylight:** shade or the sun behind the camera, never overhead noon; indoors, face a window.
+- **Props for proof:** hold the phone or laptop up to the lens on the line about it (the edit puts the real
+  screen over it), and point at where an overlay will go.
+- **Talk fast, cut tight:** no pauses longer than a breath (`tightenPauses: 0.3`).
+Edit it with spec `"theme": "street"` (small white captions low on the frame) and `slams` on the three to six
+words that carry the argument (big capitals for about 1.3 s), screenshot or post-grid overlays in the top half
+while the line points at them (a red box or cursor on the number), and a whip between places.
+
 ## 3. Make the job
 
 ```bash

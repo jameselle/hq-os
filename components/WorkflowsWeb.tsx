@@ -1,16 +1,22 @@
 "use client";
 
 // The Workflows tab: how the departments feed each other (the web), the loops those hand-offs
-// form, and every cross-department workflow, filterable by lever and department.
-// Data lives in lib/workflows.ts; this file only draws it.
+// form, and every cross-department workflow, filterable by lever and department. The page picks
+// which section shows (`tab`); this draws that one. Data lives in lib/workflows.ts.
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { Drawer } from "@/components/Drawer";
+import { GuideMarkdown } from "@/components/GuideMarkdown";
+import { signalCounts, signalsFor, type SignalFeedItem } from "@/lib/brain";
 import { DEPARTMENTS } from "@/lib/registry";
 import { PILL } from "@/lib/tone";
+import type { BuildStep } from "@/lib/build-order";
 import type { Evidence } from "@/lib/workflow-evidence";
 import { EDGES, LEVERS, LOOPS, NODES, WORKFLOWS, busiest, workflowSlug, type Edge, type Lever, type Node } from "@/lib/workflows";
+import { workflowsTabUrl, type WorkflowTab } from "@/lib/workflows-navigation";
 
 const LEVER_KEYS = Object.keys(LEVERS) as Lever[];
 const LEVER_HEX: Record<Lever, string> = { get: "#2DD4BF", keep: "#5AB0F0", expand: "#A78BFA", base: "#8b94ab" };
@@ -31,6 +37,7 @@ const LeverPill = ({ l }: { l: Lever }) => <span className={`${PILL} ${LEVER_TON
 const EVIDENCE_TONE = { live: "border-bb-accent/40 bg-bb-accent/10 text-bb-accent", partial: "border-bb-warn/40 bg-bb-warn/10 text-bb-warn" };
 const EvidencePill = ({ e }: { e: Evidence }) => <span title={e.state === "live" ? "Proven running end to end" : "Some steps run and are proven; the rest are still to build"} className={`${PILL} ${EVIDENCE_TONE[e.state]}`}>{e.state === "live" ? "live" : "in part"}</span>;
 const day = (iso?: string) => (iso ? iso.slice(0, 10) : null);
+const BUILD_TONE: Record<BuildStep["state"], string> = { done: "border-bb-accent/40 bg-bb-accent/10 text-bb-accent", partial: "border-bb-warn/40 bg-bb-warn/10 text-bb-warn", todo: "border-bb-border bg-bb-surface2 text-bb-muted" };
 
 /** What runs for this business and the record behind it: the proof lines, then when it last ran. */
 function Proof({ e }: { e: Evidence }) {
@@ -258,10 +265,74 @@ function Panel({ selected, lever, active, onShowWorkflows }: { selected: Node | 
   );
 }
 
+// ---------------------------------------------------------------- signal drawer
+/** What the sender actually found for one hand-off: its signal notes from the business's vault,
+ *  newest first. Slides in from the right; Escape, the backdrop or ✕ closes it. */
+function SignalDrawer({ edge, feed, businessName, demo, onClose }: { edge: Edge; feed: SignalFeedItem[]; businessName: string | null; demo: boolean; onClose: () => void }) {
+  const found = signalsFor(feed, edge.from, edge.to);
+  const elsewhere = found.length ? [] : feed.filter((s) => s.from === edge.from).slice(0, 5);
+  const from = label(edge.from), to = label(edge.to);
+
+  return (
+    <Drawer
+      labelId="sig-drawer-h"
+      onClose={onClose}
+      eyebrow={`Signal${demo ? " · demo data" : ""}`}
+      title={<><Link href={href(edge.from)} className="hover:text-bb-blue">{from}</Link> → <Link href={href(edge.to)} className="hover:text-bb-blue">{to}</Link></>}
+      head={<>
+        <p className="mt-1 text-[12.5px] text-bb-muted">{edge.signal}</p>
+        <div className="mt-2 flex flex-wrap gap-1">{edge.levers.map((l) => <LeverPill key={l} l={l} />)}</div>
+      </>}
+    >
+      <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-bb-dim">What {from} found ({found.length})</div>
+      {found.length ? found.map((s) => (
+        <article key={s.rel} className={`card space-y-2 p-3.5 ${s.status === "replaced" ? "opacity-60" : ""}`}>
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="text-[13.5px] font-semibold leading-snug">{s.title}</h3>
+            <span className="shrink-0 font-mono text-[10.5px] text-bb-dim">{s.created}</span>
+          </div>
+          {s.status === "replaced" && <span className={`${PILL} border-bb-border bg-bb-surface2 text-bb-muted`}>replaced</span>}
+          {s.to.length > 1 && <div className="text-[11.5px] text-bb-muted">Also sent to {s.to.filter((t) => t !== edge.to).map(label).join(", ")}</div>}
+          {s.body && <div className="prose-brief text-[12.5px]"><GuideMarkdown markdown={s.body} /></div>}
+          {s.evidence.length > 0 && (
+            <div className="text-[12px]">
+              <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-bb-dim">Evidence</div>
+              <ul className="list-disc space-y-0.5 pl-4 marker:text-bb-dim">{s.evidence.map((e) => <li key={e} className="break-words">{e}</li>)}</ul>
+            </div>
+          )}
+          <div className="truncate font-mono text-[10.5px] text-bb-dim" title={s.rel}>{s.rel}</div>
+        </article>
+      )) : (
+        <p className="card px-3.5 py-3 text-[12.5px] text-bb-muted">
+          Nothing on file yet{businessName ? ` for ${businessName}` : ""}. When {from} hands {to} something, it writes a signal note to the vault (<span className="font-mono">hq brain write</span>) and it shows up here.
+        </p>
+      )}
+      {elsewhere.length > 0 && (
+        <div className="space-y-1.5 pt-2">
+          <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-bb-dim">Other signals {from} sent</div>
+          <ul className="space-y-1.5">
+            {elsewhere.map((s) => (
+              <li key={s.rel} className="text-[12.5px]">
+                <span className="font-semibold">{s.title}</span>
+                <span className="text-bb-muted"> → {s.to.map(label).join(", ")}</span>
+                <span className="font-mono text-[10.5px] text-bb-dim"> · {s.created}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Drawer>
+  );
+}
+
 // ---------------------------------------------------------------- page
 const STORE = "hq.workflows.filters";
 
-export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false, brain = null }: { active: string[]; businessName: string | null; evidence?: Record<string, Evidence>; demo?: boolean; brain?: ReactNode }) {
+export function WorkflowsWeb({ tab, dept, active, businessName, evidence = {}, demo = false, feed = [], build = [], brain = null }: { tab: WorkflowTab; dept?: string; active: string[]; businessName: string | null; evidence?: Record<string, Evidence>; demo?: boolean; feed?: SignalFeedItem[]; build?: BuildStep[]; brain?: ReactNode }) {
+  const router = useRouter();
+  const [openEdge, setOpenEdge] = useState<Edge | null>(null);
+  const closeDrawer = useCallback(() => setOpenEdge(null), []);
+  const counts = useMemo(() => signalCounts(feed), [feed]);
   const [lever, setLever] = useState<Lever | "all">("all");
   const [selected, setSelected] = useState<Node | null>(null);
   const [wfLever, setWfLever] = useState<Lever | "all">("all");
@@ -273,11 +344,15 @@ export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false
     try {
       const s = JSON.parse(window.localStorage.getItem(STORE) ?? "{}");
       if (s.wfLever) setWfLever(s.wfLever);
-      if (s.wfDept) setWfDept(s.wfDept);
+      if (s.wfDept && !dept) setWfDept(s.wfDept);
     } catch {
       // Storage unavailable: start unfiltered.
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // A `?dept=` link (the web panel's "Show them") wins over the remembered filter.
+  useEffect(() => {
+    if (dept) { setWfDept(dept); setWfLever("all"); setQ(""); }
+  }, [dept]);
   useEffect(() => {
     try { window.localStorage.setItem(STORE, JSON.stringify({ wfLever, wfDept })); } catch { /* fine */ }
   }, [wfLever, wfDept]);
@@ -297,7 +372,7 @@ export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false
 
   const showWorkflows = (n: Node) => {
     setWfDept(n); setWfLever("all"); setQ("");
-    document.getElementById("workflow-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    router.push(workflowsTabUrl("all", n));
   };
 
   const th = "text-left pb-2 pr-5 last:pr-0 text-[9.5px] uppercase tracking-[0.14em] font-mono text-bb-dim font-normal";
@@ -310,7 +385,7 @@ export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false
   return (
     <div className="space-y-8">
       {/* what runs now */}
-      <section aria-labelledby="run-h" className="space-y-3">
+      {tab === "running" && <section aria-labelledby="run-h" className="space-y-3">
         <div>
           <div className="eyebrow mb-1">Running now</div>
           <h2 id="run-h" className="text-[15px] font-semibold">
@@ -335,14 +410,14 @@ export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false
             ))}
           </div>
         ) : (
-          <p className="card px-4 py-3 text-[12.5px] text-bb-muted">Nothing runs yet{businessName ? ` for ${businessName}` : ""}. Publish a post with <span className="font-mono">/hq:publish</span>, or ask the CEO for a review with <span className="font-mono">/hq:ceo</span>, and it shows up here.</p>
+          <p className="card px-4 py-3 text-[12.5px] text-bb-muted">Nothing runs yet{businessName ? ` for ${businessName}` : ""}. Publish a post with <span className="font-mono">/hq:publish</span>, or ask the CEO for a review with <span className="font-mono">/hq:ceo</span>, and it shows up here. <Link href={workflowsTabUrl("all")} className="text-bb-blue hover:underline">See every workflow to build →</Link></p>
         )}
-      </section>
+      </section>}
 
-      {brain}
+      {tab === "brain" && (brain ?? <p className="card px-4 py-3 text-[12.5px] text-bb-muted">Pick a business in the top bar to see its brain.</p>)}
 
       {/* the web */}
-      <section aria-labelledby="web-h" className="space-y-3">
+      {tab === "web" && <section aria-labelledby="web-h" className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <div className="eyebrow mb-1">The web</div>
@@ -357,10 +432,10 @@ export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false
           <Web lever={lever} selected={selected} onSelect={setSelected} active={active} />
           <Panel selected={selected} lever={lever} active={active} onShowWorkflows={showWorkflows} />
         </div>
-      </section>
+      </section>}
 
       {/* loops */}
-      <section aria-labelledby="loops-h" className="space-y-3">
+      {tab === "loops" && <section aria-labelledby="loops-h" className="space-y-3">
         <div>
           <div className="eyebrow mb-1">The loops</div>
           <h2 id="loops-h" className="text-[15px] font-semibold">Six loops that run the business</h2>
@@ -387,10 +462,10 @@ export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false
             </article>
           ))}
         </div>
-      </section>
+      </section>}
 
       {/* workflows */}
-      <section id="workflow-list" aria-labelledby="wf-h" className="space-y-3 scroll-mt-4">
+      {tab === "all" && <section id="workflow-list" aria-labelledby="wf-h" className="space-y-3 scroll-mt-4">
         <div>
           <div className="eyebrow mb-1">The workflows</div>
           <h2 id="wf-h" className="text-[15px] font-semibold">Every workflow to build</h2>
@@ -464,55 +539,68 @@ export function WorkflowsWeb({ active, businessName, evidence = {}, demo = false
         ) : (
           <p className="text-[12.5px] text-bb-muted">No workflows match. Clear the search or pick another lever.</p>
         )}
-      </section>
+      </section>}
 
-      {/* signals */}
-      <section aria-labelledby="sig-h" className="space-y-3">
+      {/* signals: the web as a list, under it on the same tab */}
+      {tab === "web" && <section aria-labelledby="sig-h" className="space-y-3">
         <div>
           <div className="eyebrow mb-1">The signals</div>
           <h2 id="sig-h" className="text-[15px] font-semibold">Every hand-off, as a list</h2>
-          <p className="text-[12.5px] text-bb-muted max-w-[70ch]">The same connections as the web. These are the signal types HQ needs to store and route. The lever filter and the department picked above apply here too.</p>
+          <p className="text-[12.5px] text-bb-muted max-w-[70ch]">The same connections as the web. The lever filter and the department picked in the web apply here too. Click a row to read what was actually handed over.</p>
         </div>
         <div className="card overflow-x-auto px-4 py-3">
           <table className="w-full min-w-[640px]">
-            <thead><tr><th className={th}>From</th><th className={th}>To</th><th className={th}>Signal</th><th className={th}>Lever</th></tr></thead>
+            <thead><tr><th className={th}>From</th><th className={th}>To</th><th className={th}>Signal</th><th className={th}>Lever</th><th className={`${th} text-right`}>Found</th></tr></thead>
             <tbody>
-              {signals.map((x, i) => (
-                <tr key={i}>
+              {signals.map((x, i) => {
+                const n = counts[`${x.from}>${x.to}`] ?? 0;
+                const open = openEdge === x;
+                return (
+                <tr
+                  key={i}
+                  tabIndex={0}
+                  aria-label={`${label(x.from)} to ${label(x.to)}: ${n} signal note${n === 1 ? "" : "s"}. Open`}
+                  onClick={() => setOpenEdge(x)}
+                  onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); setOpenEdge(x); } }}
+                  className={`cursor-pointer outline-none transition-colors hover:bg-bb-surface2 focus-visible:bg-bb-surface2 ${open ? "bg-bb-blue/10" : ""}`}
+                >
                   <td className={td}>{label(x.from)}</td>
                   <td className={td}>{label(x.to)}</td>
                   <td className={td}>{x.signal}</td>
                   <td className={td}><span className="flex flex-wrap gap-1">{x.levers.map((l) => <LeverPill key={l} l={l} />)}</span></td>
+                  <td className={`${td} text-right font-mono tabular-nums ${n ? "text-bb-teal" : "text-bb-dim"}`}>{n || "·"} <span aria-hidden className="text-bb-dim">›</span></td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
-      </section>
+        {openEdge && <SignalDrawer edge={openEdge} feed={feed} businessName={businessName} demo={demo} onClose={closeDrawer} />}
+      </section>}
 
       {/* build order */}
-      <section aria-labelledby="build-h" className="space-y-3">
+      {tab === "build" && <section aria-labelledby="build-h" className="space-y-3">
         <div>
           <div className="eyebrow mb-1">Turning this into HQ</div>
           <h2 id="build-h" className="text-[15px] font-semibold">Build order</h2>
-          <p className="text-[12.5px] text-bb-muted max-w-[70ch]">The CEO can't route work by lever until it can see the numbers, and playbooks can't trigger until departments write signals.</p>
+          <p className="text-[12.5px] text-bb-muted max-w-[70ch]">The CEO can't route work by lever until it can see the numbers, and playbooks can't trigger until departments write signals. Each step says where {businessName ?? "the current business"} stands, from its own records.</p>
         </div>
         <ol className="grid gap-2">
-          {[
-            ["Growth scorecard per business", "A read-only data source in each profile (subscriptions or store receipts, product usage, web analytics). Metrics per lever: new customers and MRR by channel; churn, failed-payment recovery and activation; upgrades and net revenue retention; cost to win and payback."],
-            ["Lever tags in the registry", "Every department declares the levers it owns or contributes to, so each tab shows its work on Get, Keep and Expand."],
-            ["Signals", "Departments write dated signal files with evidence links under the business's folder. Start with the five that already produce output: Market & Competitors, Support, Data, Product and Content."],
-            ["Playbooks", "Each workflow becomes a playbook: trigger (a signal or a schedule), owner, ordered steps (department + skill), required guard-rail steps (Legal for anything customer-facing), output and target metric."],
-            ["CEO routing", "The weekly review starts from the weakest lever, picks the playbooks that move it, and names one owner plus contributors for each."],
-            ["Learning", "Every playbook run logs its result in the experiment log and the vault, so the next review knows what worked and nobody reruns a failed test."],
-          ].map(([t, d], i) => (
-            <li key={t} className="card flex gap-3 px-4 py-3">
+          {build.map((b, i) => (
+            <li key={b.title} className="card flex gap-3 px-4 py-3">
               <span className="w-5 shrink-0 font-semibold text-bb-teal tabular-nums">{i + 1}</span>
-              <span className="text-[12.5px]"><span className="font-semibold">{t}.</span> <span className="text-bb-muted">{d}</span></span>
+              <span className="min-w-0 flex-1 space-y-1 text-[12.5px]">
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">{b.title}</span>
+                  <span className={`${PILL} ${BUILD_TONE[b.state]}`}>{b.state === "done" ? "done" : b.state === "partial" ? "in part" : "not yet"}</span>
+                </span>
+                <span className="block text-bb-muted">{b.what}</span>
+                <span className="block">{businessName ? <span className="text-bb-dim">{businessName}: </span> : null}{b.evidence}</span>
+              </span>
             </li>
           ))}
         </ol>
-      </section>
+      </section>}
     </div>
   );
 }

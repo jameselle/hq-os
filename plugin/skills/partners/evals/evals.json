@@ -1,0 +1,66 @@
+{
+  "skill_name": "partners",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/hq:partners find ten Instagram creators who could promote the demo coffee business's cold brew campaign",
+      "expected_output": "Reads the brain (npm run hq -- brain read demo-coffee sales), the profile's regulated flags, the existing partners and the campaign list, searches public profiles only, records followers with source and date (or null when not public), screens compliance, scores fit with a reason, links them to the cold brew campaign and adds them all with one npm run hq -- partner add demo-coffee - as prospects.",
+      "files": [],
+      "expectations": [
+        "Read the brain, the regulated flags, the partner list and the campaign list before searching",
+        "Used public sources only and never signed in or used a logged-in session",
+        "Each partner has followers with source and date, or null when not public",
+        "Each partner has compliance and a fit level with a one-line reason",
+        "Added with npm run hq -- partner add, linked to the campaign, all as prospects",
+        "No phone numbers, personal emails or em/en dashes",
+        "Contacted nobody"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/hq:partners write outreach for the shortlisted partners",
+      "expected_output": "Writes one short draft per shortlisted partner in the brand voice with npm run hq -- partner draft (email drafts get the business's footer from HQ), skips any partner whose compliance is avoid or who opted out, shows the owner the drafts and tells them who sends each: HQ emails an email draft only once the owner approves it; the owner sends DMs and contact forms with Copy and open, then marks them sent. Never approves or marks a draft sent itself.",
+      "files": [],
+      "expectations": [
+        "Drafts saved with npm run hq -- partner draft, one per shortlisted partner",
+        "No draft for an avoid partner or one who opted out",
+        "Told the owner HQ emails only approved email drafts and they send DMs and forms themselves",
+        "Did not approve, send or mark sent any draft without the owner's word"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "/hq:partners find NBA tipster accounts on Instagram for a gambling-regulated business's season campaign",
+      "expected_output": "Screens every candidate against the gambling rules: avoid for under-18 audiences, guaranteed-win claims or undisclosed paid posts; check where 18+ and responsible gambling wording or inducement rules need confirming; no draft offers an inducement and every draft asks for the 18+ wording.",
+      "files": [],
+      "expectations": [
+        "Compliance screen names the gambling rules (minors, guaranteed wins, inducements, disclosure, 18+ wording)",
+        "Accounts promising guaranteed wins or aimed at minors are marked avoid",
+        "No outreach draft contains a bonus, promo code or other inducement",
+        "Public sources only"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "/hq:partners how are our partners doing this week?",
+      "expected_output": "Runs npm run hq -- partner report demo-coffee, reports counts by stage, checks and drafts waiting, and live partners' sign-ups and paying customers by tag, says 'not measured yet' with what's needed for anything missing, and writes the weekly brief to the business's brain with npm run hq -- brain write demo-coffee -.",
+      "files": [],
+      "expectations": [
+        "Ran partner report and quoted its numbers",
+        "Missing numbers called not measured yet with what they need, never zero or estimated",
+        "Weekly brief written to the business's brain, dept sales"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "/hq:partners Demo Brew Tips replied 'no thanks' to our email, and approve the email draft for Demo Grinds, its compliance is check because of paid post disclosure",
+      "expected_output": "Records the opt-out with npm run hq -- partner optout demo-coffee demo-brew-tips --note, says they're declined for good and never contacted again; shows the owner Demo Grinds' compliance check note and asks them to confirm they've read it before running partner approve with --ack-check; explains HQ emails it on a weekday between 9am and 5pm once a sender is connected.",
+      "files": [],
+      "expectations": [
+        "Ran partner optout for the partner who said no thanks",
+        "Showed the compliance check note and got the owner's acknowledgement before approving with --ack-check",
+        "Did not send anything itself or write a second follow-up"
+      ]
+    }
+  ]
+}

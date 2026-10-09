@@ -55,3 +55,14 @@ test("a department's workflows include the ones it owns and the ones it helps", 
   const helped = WORKFLOWS.filter((w) => w.owner !== "competitors" && w.steps.some(([d]) => d === "competitors"));
   assert.equal(workflowsFor("competitors").length, owned.length + helped.length);
 });
+
+test("every department carries at least one growth lever, derived from the workflows it owns or helps with", async () => {
+  const { DEPARTMENTS } = await import("../lib/registry");
+  const { deptLevers } = await import("../lib/workflows");
+  for (const d of DEPARTMENTS) {
+    const ls = deptLevers(d.slug);
+    assert.ok(ls.length, `${d.slug} has no lever`);
+    for (const l of ls) for (const w of l.owns) assert.equal(w.owner, d.slug);
+  }
+  assert.ok(deptLevers("email").some((l) => l.lever === "keep" && l.owns.some((w) => w.title === "Churn early warning")));
+});

@@ -71,13 +71,27 @@ is in the design doc. Report only what you measure. Anything you leave out shows
 total, not a list of customers.
 
 **Cost to win and payback** come from HQ, not the adapter, unless the adapter reports them itself. HQ uses:
-- spend posted to `Expenses:Advertising` and `Expenses:Commissions` (and their sub-accounts) in the business's ledger
-  over the last 4 weeks, plus the adapter's `extraSpend`
+- acquisition spend in the business's ledger: `Expenses:Advertising`, `Expenses:Partnerships` and
+  `Expenses:Commissions` (and their sub-accounts), the same three accounts unit economics counts, over the 4 ISO weeks
+  ending with the newest reported week (Monday to Monday, never past now)
+- plus the adapter's `extraSpend`, unless the ledger already holds `Expenses:Partnerships` postings: those are the
+  accounting system's affiliate costs, which include the commissions the adapter reports, so they aren't added twice
 - divided by the new paying customers reported for those 4 weeks
+
+**Monthly costs are spread by day.** A cost imported from the accounting system is one total per account per month,
+dated the month's last day and tagged `#imported` ([Finance](/guides/finance)). Counted on that date it would land in
+one 4-week window and miss the next three, so HQ spreads each month's acquisition total evenly over its days and
+counts the days inside the window: 10 days of a 30-day month with 900 of advertising and partnerships is 300. Days after
+the last imported month (the import runs from the 3rd of the next month) are estimated at that month's daily rate for
+up to 45 days after it ends; later days count nothing and the note says the import is behind. Spend you post by hand
+on its own date counts on that date, as before. Either way cost to win is then `approx`, and its note says which
+months were spread and how many days were estimated, for example "AUD 1260 on 6 new paying customers in 4 weeks. Sep
+spend spread by day; 4 days of Oct at Sep's daily rate, not imported yet". This spreading is for acquisition spend
+only: the Finance tab's monthly costs and unit economics keep each month whole.
 
 The ledger reader follows `include "…"` files, converts foreign-currency postings that carry a price
 (`@`, `@@` or `{cost}`), reads `1,000.00` amounts and `txn` headers, and subtracts refunds (never below zero). A foreign-
-currency posting with no price is skipped. With no advertising spend in the ledger, the note says that only the
+currency posting with no price is skipped. With no acquisition spend in the ledger, the note says that only the
 adapter's extra spend was counted.
 
 ## Privacy

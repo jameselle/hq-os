@@ -40,6 +40,19 @@
         "No em or en dash in the cover text",
         "Did not post"
       ]
+    },
+    {
+      "id": 4,
+      "prompt": "Try this explainer in the paper look without changing the business's brand: <job>/spec.json",
+      "expected_output": "A render with spec theme paper (reveal captions, clean hook), the business's brand.json untouched, QA passing.",
+      "files": [],
+      "expectations": [
+        "Set \"theme\": \"paper\" in the spec, not in brand.json",
+        "Built any new cards with the paper card kit (templates/studio/themes/paper)",
+        "Put \"captions\": false on cutaways whose cards show the spoken words themselves",
+        "studio check passes",
+        "Did not post"
+      ]
     }
   ]
 }

@@ -216,3 +216,63 @@ test("end to end: a refresh works the numbers out, the board shows them and the 
   assert.equal(by.cost_to_win.from, "hq");
   assert.equal(by.break_even_customers.value, 180);
 });
+
+test("gross margin from cost of sales alone says payment fees aren't in it", async () => {
+  const { unitEconomics, unitAnalytics } = await import("../lib/unit-economics");
+  const ledgerText = `
+2026-09-10 * "Sales"
+  Income:Sales   -1000.00 AUD
+  Assets:Bank   1000.00 AUD
+2026-09-30 * "Xero" "Costs from Xero: Hosting" #imported
+  Expenses:CostOfSales:Hosting   250.00 AUD
+  Liabilities:Imported:Xero   -250.00 AUD
+`;
+  const u = unitEconomics({ currency: "AUD", ledgerText, weeks: [], now: new Date("2026-10-07T00:00:00Z") });
+  assert.equal(u.latest!.values.grossMargin, 0.75);
+  const gm = unitAnalytics(u).find((x) => x.id === "gross_margin")!;
+  assert.equal(gm.value, 0.75);
+  assert.match(gm.note, /payment fees aren't in the ledger/);
+  const withFees = unitEconomics({ currency: "AUD", ledgerText: ledgerText + '2026-09-30 * "Fees"\n  Expenses:Fees:Payments   30.00 AUD\n  Assets:Bank   -30.00 AUD\n', weeks: [], now: new Date("2026-10-07T00:00:00Z") });
+  assert.equal(withFees.latest!.values.grossMargin, 0.72);
+  assert.doesNotMatch(unitAnalytics(withFees).find((x) => x.id === "gross_margin")!.note, /payment fees aren't/);
+});
+
+test("a gross margin at or below zero leaves lifetime value and payback missing, never negative", async () => {
+  const { unitEconomics } = await import("../lib/unit-economics");
+  const ledgerText = `
+2026-09-10 * "Sales"
+  Income:Sales   -100.00 AUD
+  Assets:Bank   100.00 AUD
+2026-09-30 * "Xero" "Costs from Xero: Hosting" #imported
+  Expenses:CostOfSales:Hosting   150.00 AUD
+  Liabilities:Imported:Xero   -150.00 AUD
+2026-09-30 * "Xero" "Costs from Xero: Ads" #imported
+  Expenses:Advertising:Ads   90.00 AUD
+  Liabilities:Imported:Xero   -90.00 AUD
+`;
+  const weeks = ["2026-W36", "2026-W37", "2026-W38", "2026-W39"].map((week) => ({ week, metrics: [
+    { id: "paying_customers", value: 10 }, { id: "mrr", value: 400 }, { id: "new_paying", value: 1 }, { id: "paying_churn_rate", value: 0.05 }] }));
+  const u = unitEconomics({ currency: "AUD", ledgerText, weeks, now: new Date("2026-10-07T00:00:00Z") });
+  const v = u.latest!.values;
+  assert.equal(v.grossMargin, -0.5);
+  assert.equal(v.ltv, null);
+  assert.equal(v.payback, null);
+  assert.equal(v.ltvToCac, null);
+  assert.match(u.latest!.missing.ltv!, /at or below zero/);
+  assert.match(u.latest!.missing.payback!, /at or below zero/);
+  assert.ok(v.cac !== null && v.cac > 0, "cost to win is still measured");
+});
+
+test("a cost the owner marked one-off stays in the numbers but isn't flagged as a jump", async () => {
+  const { isOneOff, unitBrief } = await import("../lib/unit-economics");
+  const base = ue();
+  const marked = unitEconomics({ currency: "AUD", ledgerText: ledger(MONTHS), weeks: SEP_WEEKS(), now: NOW, timezone: "Australia/Sydney",
+    oneOffs: [{ month: "2026-09", account: "Packaging", reason: "a new packing bench" }] });
+  assert.deepEqual(base.jumps.map((j) => j.label), ["Packaging"]);
+  assert.deepEqual(marked.jumps, [], "the label matches the ledger account");
+  assert.equal(marked.latest!.values.costs, base.latest!.values.costs, "costs are unchanged");
+  assert.deepEqual(marked.oneOffs.map((o) => [o.account, o.amount]), [["Packaging", 900]]);
+  assert.ok(isOneOff([{ month: "2026-09", account: "Expenses:Operating:Packaging", reason: "x" }], "2026-09", "Expenses:Operating:Packaging"));
+  assert.equal(isOneOff([{ month: "2026-08", account: "Packaging", reason: "x" }], "2026-09", "Expenses:Operating:Packaging"), null, "another month isn't covered");
+  assert.match(unitBrief(marked, { business: "Acme", today: "2026-10-07" }), /was a one-off: a new packing bench\. It's in the costs but not counted as a jump\./);
+});

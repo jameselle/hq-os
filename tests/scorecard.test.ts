@@ -269,3 +269,11 @@ test("two refreshes at once: the second is refused; a stale lock is replaced", a
   fs.utimesSync(path.join(biz, "scorecard.lock"), old, old);
   assert.equal((await runScorecard("acme-co", NOW)).failed, false);
 });
+
+test("an adapter that exits without reading its input is a failed adapter, not an uncaught EPIPE", async () => {
+  const { execAdapter } = await import("../lib/private-adapter");
+  // A big input fills the pipe after the child has gone, which is what made EPIPE throw.
+  for (let i = 0; i < 5; i++) {
+    await assert.rejects(execAdapter([process.execPath, "-e", "process.exit(1)"], { pad: "x".repeat(2_000_000) }, 2000), /Private adapter failed/);
+  }
+});

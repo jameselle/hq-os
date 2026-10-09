@@ -20,6 +20,7 @@ import { WATCHER_KEYCHAIN, WATCHER_PORT, WATCHER_URL, competitorFromTitle, watch
 import type { Profile } from "./profile";
 import { channelStatuses, withPosting, type ConnectionsSnapshot } from "./publishing";
 import { listSocial, readSocialConfig } from "./social-store";
+import { listPartners } from "./partner-store";
 import { lastBriefRun } from "./competitor-tick";
 import { scorecardState } from "./scorecard";
 import { analyticsAlarms, analyticsBoard, analyticsState } from "./analytics";
@@ -30,8 +31,14 @@ import { ledgerPath } from "./store";
 import { loadLedger } from "./ledger-spend";
 import { scorecardRows } from "./scorecard-metrics";
 import { weakestLever } from "./levers";
+import { listExperiments } from "./experiments";
+import { listDecisions } from "./owner-decisions";
+import { readFindingNotes } from "./finding-notes";
+import { listRuns, readConfig as readPlaybookConfig, readRouting } from "./playbook-store";
 import { doneFindings, latestPlan, listBusinesses, readConfig, readConnections, resolveCurrent } from "./store";
 import type { DeptStatus, HostFacts, StatusReport, ToolCheck, ToolState } from "./types";
+import { loadTestDue } from "./load-test";
+import { listLoadRuns, readLoadConfig } from "./load-test-store";
 
 const HOME = os.homedir();
 const expand = (p: string) => (p.startsWith("~/") ? path.join(HOME, p.slice(2)) : p);
@@ -253,6 +260,27 @@ function unitFacts(slug: string): NonNullable<HostFacts["finance"]>["unit"] {
   } catch { return null; }
 }
 
+function safeFindingNotes(slug: string): HostFacts["findingNotes"] {
+  try { return readFindingNotes(slug); } catch { return null; }
+}
+
+function safeDecisions(slug: string): HostFacts["ownerDecisions"] {
+  try { return listDecisions(slug); } catch { return null; }
+}
+
+function playbookFacts(slug: string): HostFacts["playbooks"] {
+  try {
+    const runs = listRuns(slug), weekAgo = Date.now() - 7 * 864e5;
+    return {
+      mode: readPlaybookConfig(slug).mode, routing: readRouting(slug),
+      ready: runs.filter((r) => r.status === "ready").map((r) => ({ id: r.id, workflow: r.workflow, owner: r.owner, at: r.finishedAt ?? r.createdAt })),
+      queued: runs.filter((r) => r.status === "queued").map((r) => ({ id: r.id, workflow: r.workflow, owner: r.owner, at: r.createdAt })),
+      failed: runs.filter((r) => r.status === "failed" && Date.parse(r.finishedAt ?? r.createdAt) > weekAgo).map((r) => ({ id: r.id, workflow: r.workflow, owner: r.owner, why: r.why ?? "", at: r.finishedAt ?? r.createdAt })),
+      judged: listExperiments(slug).filter((e) => e.run && e.endedAt && Date.parse(e.endedAt) > weekAgo).map((e) => ({ id: e.id, workflow: e.workflow ?? "", verdict: e.status, note: e.note, at: e.endedAt! })),
+    };
+  } catch { return null; }
+}
+
 function analyticsFacts(slug: string): HostFacts["analytics"] {
   try {
     const s = analyticsState(slug), b = analyticsBoard(slug);
@@ -273,6 +301,24 @@ function socialFacts(slug: string): HostFacts["social"] {
   } catch { return null; }
 }
 
+/** Partner emails HQ couldn't send and follow-ups waiting for the owner's yes. */
+function partnerFacts(slug: string): HostFacts["partners"] {
+  try {
+    const xs = listPartners(slug);
+    if (!xs.length) return null;
+    const failed = xs.flatMap((p) => p.drafts.filter((d) => d.status === "failed").map((d) => ({ partner: p.id, name: p.name, n: d.n, at: d.attempts?.at(-1)?.at ?? d.at, error: d.error ?? "" })));
+    const followUps = xs.filter((p) => !p.doNotContact).reduce((n, p) => n + p.drafts.filter((d) => d.followUpOf && d.status === "draft").length, 0);
+    return { failed, followUps };
+  } catch { return null; }
+}
+
+function loadTestFacts(slug: string): HostFacts["loadTest"] {
+  try {
+    const cfg = readLoadConfig(slug);
+    return cfg ? { ...loadTestDue(cfg, listLoadRuns(slug), new Date()), target: cfg.targetUsers } : null;
+  } catch { return null; }
+}
+
 async function hostFacts(profile: Profile | null): Promise<HostFacts> {
   const intel = await competitorRows(profile);
   const backup = readConfig().backup;
@@ -285,8 +331,13 @@ async function hostFacts(profile: Profile | null): Promise<HostFacts> {
     connections: readConnections(),
     scorecard: profile ? scorecardFacts(profile.slug) : null,
     analytics: profile ? analyticsFacts(profile.slug) : null,
+    playbooks: profile ? playbookFacts(profile.slug) : null,
+    ownerDecisions: profile ? safeDecisions(profile.slug) : null,
+    findingNotes: profile ? safeFindingNotes(profile.slug) : null,
     finance: profile ? financeFacts(profile) : null,
     social: profile ? socialFacts(profile.slug) : null,
+    partners: profile ? partnerFacts(profile.slug) : null,
+    loadTest: profile ? loadTestFacts(profile.slug) : null,
     intel: { watcherUp: intel.up, rows: intel.rows, lastBriefAt: profile ? (latestPlan(profile.slug, "competitors")?.at ?? null) : null, lastRun: profile ? lastBriefRun(profile.slug) : null },
     backup: {
       repository: backup?.repository,

@@ -204,7 +204,7 @@ function sourceWords(heard: Word[], expected: string[]): Word[] {
 
 /** Group words into short caption lines: at most `maxWords`, broken at sentence ends and long gaps.
  *  Each line keeps its words, so the captions can reveal them one at a time. */
-export function captionLines(words: Word[], maxWords = 3, maxGap = 0.6): CaptionLine[] {
+export function captionLines(words: Word[], maxWords = 3, maxGap = 0.35): CaptionLine[] {
   const lines: CaptionLine[] = [];
   let cur: Word[] = [];
   const flush = () => {
@@ -212,8 +212,15 @@ export function captionLines(words: Word[], maxWords = 3, maxGap = 0.6): Caption
     lines.push({ text: cur.map((w) => w.w).join(" "), start: cur[0].start, end: cur.at(-1)!.end, words: cur });
     cur = [];
   };
+  // A line never ends on a dangling little word ("the", "a", "to"): it waits and starts the next line instead.
+  const dangling = /^(a|an|the|to|of|in|on|at|and|or|but|for|my|your|our|its|is|with)$/i;
   for (const w of words) {
-    if (cur.length && (cur.length >= maxWords || w.start - cur.at(-1)!.end > maxGap)) flush();
+    if (cur.length && (cur.length >= maxWords || w.start - cur.at(-1)!.end > maxGap)) {
+      const last = cur.at(-1)!;
+      const carry = cur.length > 1 && w.start - last.end <= maxGap && dangling.test(last.w) ? cur.pop()! : null;
+      flush();
+      if (carry) cur.push(carry);
+    }
     cur.push(w);
     if (/[.!?]$/.test(w.w)) flush();
   }
@@ -228,7 +235,36 @@ export function captionLines(words: Word[], maxWords = 3, maxGap = 0.6): Caption
 
 /** `pop` (the default): words appear as they're spoken, the current one in the highlight colour with a
  *  quick pop, like CapCut's auto captions. `none`: each line appears whole. */
-export type CaptionStyle = { font: string; primary: string; outline: string; highlight: string; animate?: "pop" | "none"; hook?: "text" | "box" };
+export type CaptionStyle = {
+  font: string;
+  primary: string;
+  outline: string;
+  highlight: string;
+  animate?: "pop" | "none" | "reveal";
+  hook?: "text" | "box" | "clean";
+  /** Reveal captions: a word's colour before it settles on `primary`. */
+  muted?: string;
+  /** Reveal captions: the strip behind the words (none: words on the picture, a soft shadow under light ones). */
+  box?: string;
+  /** Reveal captions in capitals. */
+  upper?: boolean;
+  /** The font's italic face, for captions and a clean hook. */
+  italic?: boolean;
+  /** Bold weight for reveal captions and a clean hook (default: yes, unless italic). */
+  bold?: boolean;
+  /** Reveal captions' size as a share of the shorter side (default 0.05). */
+  size?: number;
+  /** Captions' height as a share of the frame from the bottom (default 0.28 vertical, 0.12 otherwise). */
+  lift?: number;
+};
+
+/** Light text (luminance over ~0.6) needs a shadow to read on a picture. */
+const isLight = (hex: string) => {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return false;
+  const [r, g, b] = [m[1], m[2], m[3]].map((x) => parseInt(x, 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.6;
+};
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9$%]/g, "");
 
@@ -317,6 +353,31 @@ function popEvents(line: CaptionLine, style: CaptionStyle): string[] {
   return events;
 }
 
+/** One caption line for "reveal" captions: sentence case on a strip, the line laid out from the start so it
+ *  never shifts. Words not yet spoken are see-through (the strip stays), spoken words are in the primary colour,
+ *  and the current word fades in from the muted colour, softly unblurring, like ink settling on paper. */
+function revealEvents(line: CaptionLine, style: CaptionStyle): string[] {
+  const words = line.words!;
+  const primary = `\\1c${assColour(style.primary)}&`;
+  const muted = `\\1c${assColour(style.muted ?? "#9A9A9A")}&`;
+  const events: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const start = i === 0 ? line.start : words[i].start;
+    const end = i < words.length - 1 ? words[i + 1].start : line.end;
+    if (end <= start) continue;
+    const text = words
+      .map((w, j) => {
+        const word = escapeAss(style.upper ? w.w.toUpperCase() : w.w);
+        if (j < i) return `{${primary}\\1a&H00&\\blur0}${word}`;
+        if (j > i) return `{\\1a&HFF&}${word}`;
+        return `{${muted}\\1a&H00&\\blur3\\t(0,240,${primary}\\blur0)}${word}`;
+      })
+      .join(" ");
+    events.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Caption,,0,0,0,,${text}`);
+  }
+  return events;
+}
+
 /** How far from the top the hook starts. Vertical: just inside the 3:4 tile Instagram and TikTok crop a
  *  9:16 video to on the profile grid (they hide (h - w*4/3)/2 px above it), so the hook shows there too. */
 export function hookTop(format: { w: number; h: number }, fallback: number): number {
@@ -326,24 +387,76 @@ export function hookTop(format: { w: number; h: number }, fallback: number): num
 }
 
 /** The hook's style: "box" puts dark words on a filled highlight box; "text" is big outlined words. */
-function hookStyleLine(style: CaptionStyle, format: { w: number; h: number }, hookSize: number): string {
+function hookStyleLine(style: CaptionStyle, format: { w: number; h: number }, hookSize: number, top?: number): string {
   const { w, h } = format;
+  // spec hook.top (a fraction of the height) overrides the grid-safe default, for a face framed high
+  const at = (fallback: number) => (top === undefined ? hookTop(format, fallback) : Math.round(h * top));
+  if (style.hook === "clean") {
+    const size = Math.round(Math.min(w, h) * (style.italic ? 0.1 : 0.078));
+    const shadow = isLight(style.primary) ? 3 : 0;
+    return `Style: Hook,${style.font},${size},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.primary)},&H8C000000,${(style.bold ?? !style.italic) ? -1 : 0},${style.italic ? -1 : 0},0,0,100,100,-1,0,1,0,${shadow},8,${Math.round(w * 0.07)},${Math.round(w * 0.07)},${at(0.09)},1`;
+  }
   if ((style.hook ?? "box") === "box")
-    return `Style: Hook,${style.font},${hookSize},${assColour(style.outline)},${assColour(style.outline)},${assColour(style.highlight)},${assColour(style.highlight)},-1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,${Math.round(w * 0.07)},${Math.round(w * 0.07)},${hookTop(format, 0.1)},1`;
+    return `Style: Hook,${style.font},${hookSize},${assColour(style.outline)},${assColour(style.outline)},${assColour(style.highlight)},${assColour(style.highlight)},-1,0,0,0,100,100,0,0,3,${Math.round(hookSize / 4)},0,8,${Math.round(w * 0.07)},${Math.round(w * 0.07)},${at(0.1)},1`;
   const size = Math.round(Math.min(w, h) * 0.092);
-  return `Style: Hook,${style.font},${size},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H64000000,-1,0,0,0,100,100,0,0,1,${Math.round(size / 7)},4,8,${Math.round(w * 0.06)},${Math.round(w * 0.06)},${hookTop(format, 0.09)},1`;
+  return `Style: Hook,${style.font},${size},${assColour(style.primary)},${assColour(style.primary)},${assColour(style.outline)},&H64000000,-1,0,0,0,100,100,0,0,1,${Math.round(size / 7)},4,8,${Math.round(w * 0.06)},${Math.round(w * 0.06)},${at(0.09)},1`;
 }
 
 /** The hook's text: a box hook is plain; a text hook pops in, fades out, and colours `highlight`. */
 function hookText(hook: { text: string; highlight?: string }, style: CaptionStyle): string {
   const text = escapeAss(hook.text);
   if ((style.hook ?? "box") === "box") return text;
+  if (style.hook === "clean") {
+    const text = escapeAss(style.upper ? hook.text.toUpperCase() : hook.text);
+    const hl = hook.highlight ? escapeAss(hook.highlight) : "";
+    const at = hl ? text.toLowerCase().indexOf(hl.toLowerCase()) : -1;
+    const body = at < 0 ? text : `${text.slice(0, at)}{\\1c${assColour(style.highlight)}&}${text.slice(at, at + hl.length)}{\\1c${assColour(style.primary)}&}${text.slice(at + hl.length)}`;
+    return `{\\fad(220,200)\\blur8\\t(0,260,\\blur0)}${body}`;
+  }
   let body = text;
   const hl = hook.highlight ? escapeAss(hook.highlight) : "";
   const at = hl ? text.toLowerCase().indexOf(hl.toLowerCase()) : -1;
   if (at >= 0)
     body = `${text.slice(0, at)}{\\1c${assColour(style.highlight)}&}${text.slice(at, at + hl.length)}{\\1c${assColour(style.primary)}&}${text.slice(at + hl.length)}`;
   return `{\\fad(0,200)\\fscx70\\fscy70\\t(0,160,\\fscx100\\fscy100)}${body}`;
+}
+
+/** The caption style: bold outlined capitals (pop, none), or for reveal smaller sentence-case words on an
+ *  opaque strip in the `box` colour (BorderStyle 3: the outline becomes the strip's padding). */
+function captionStyleLine(style: CaptionStyle, format: { w: number; h: number }, size: number, marginV: number): string {
+  const { w, h } = format;
+  if (style.animate === "reveal") {
+    const rs = Math.round(Math.min(w, h) * (style.size ?? 0.05));
+    const it = style.italic ? -1 : 0;
+    const bold = (style.bold ?? !style.italic) ? -1 : 0; // an italic display serif has one weight: a faux bold smears it
+    if (style.box) {
+      const box = assColour(style.box);
+      return `Style: Caption,${style.font},${rs},${assColour(style.primary)},${assColour(style.primary)},${box},${box},${bold},${it},0,0,100,100,0,0,3,${Math.round(rs * 0.42)},0,2,${Math.round(w * 0.1)},${Math.round(w * 0.1)},${marginV},1`;
+    }
+    const shadow = isLight(style.primary) ? Math.max(2, Math.round(rs / 18)) : 0;
+    return `Style: Caption,${style.font},${rs},${assColour(style.primary)},${assColour(style.primary)},&H00000000,&H8C000000,${bold},${it},0,0,100,100,0,0,1,0,${shadow},2,${Math.round(w * 0.08)},${Math.round(w * 0.08)},${marginV},1`;
+  }
+  void h;
+  return `Style: Caption,${style.font},${size},${assColour(style.primary)},${assColour(style.highlight)},${assColour(style.outline)},&H80000000,-1,0,0,0,100,100,0,0,1,${Math.round(size / 9)},2,2,${Math.round(w * 0.08)},${Math.round(w * 0.08)},${marginV},1`;
+}
+
+/** Keyword slams: each lands on its spoken word (searched in order, each after the one before), in big
+ *  capitals a little above the middle, punching in from 120% and fading out. A slam whose word isn't heard is
+ *  dropped (and reported by the caller), never guessed. */
+export function slamEvents(lines: CaptionLine[], slams: { text: string; on: string; seconds?: number }[], format: { w: number; h: number }): string[] {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9$%]/g, "");
+  const words = lines.flatMap((l) => l.words ?? []);
+  const out: string[] = [];
+  let from = 0;
+  for (const m of slams) {
+    const k = words.findIndex((wd, i) => i >= from && norm(wd.w) === norm(m.on));
+    if (k < 0) continue;
+    from = k + 1;
+    const t = words[k].start;
+    const body = escapeAss(m.text.toUpperCase());
+    out.push(`Dialogue: 2,${assTime(t)},${assTime(t + (m.seconds ?? 1.3))},Slam,,0,0,0,,{\\pos(${Math.round(format.w / 2)},${Math.round(format.h * 0.6)})\\fad(40,160)\\fscx122\\fscy122\\t(0,110,\\fscx100\\fscy100)}${body}`);
+  }
+  return out;
 }
 
 /** An ASS subtitle file: bold word-group captions in the lower third, and the hook up top.
@@ -353,13 +466,14 @@ export function buildAss(
   format: { w: number; h: number },
   lines: CaptionLine[],
   style: CaptionStyle,
-  hook?: { text: string; seconds?: number; highlight?: string },
-  opts: { seams?: { start: number; end: number }[] | [number, number][] } = {},
+  hook?: { text: string; seconds?: number; highlight?: string; top?: number },
+  opts: { seams?: { start: number; end: number }[] | [number, number][]; quiet?: { start: number; end: number }[]; slams?: { text: string; on: string; seconds?: number }[] } = {},
 ): string {
   const { w, h } = format;
   const size = Math.round(Math.min(w, h) * 0.075);
   const hookSize = Math.round(Math.min(w, h) * 0.068);
-  const marginV = Math.round(h * (h > w ? 0.28 : 0.12));
+  const marginV = Math.round(h * (style.lift ?? (h > w ? 0.28 : 0.12)));
+  const slamSize = Math.round(Math.min(w, h) * 0.105);
   const header = `[Script Info]
 ScriptType: v4.00+
 PlayResX: ${w}
@@ -369,20 +483,35 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,${style.font},${size},${assColour(style.primary)},${assColour(style.highlight)},${assColour(style.outline)},&H80000000,-1,0,0,0,100,100,0,0,1,${Math.round(size / 9)},2,2,${Math.round(w * 0.08)},${Math.round(w * 0.08)},${marginV},1
-${hookStyleLine(style, format, hookSize)}
+${captionStyleLine(style, format, size, marginV)}
+${hookStyleLine(style, format, hookSize, hook?.top)}
+Style: Slam,${style.font},${slamSize},${assColour(style.primary)},${assColour(style.primary)},&H00000000,&H96000000,-1,0,0,0,100,100,-1,0,1,0,${isLight(style.primary) ? 5 : 0},5,${Math.round(w * 0.06)},${Math.round(w * 0.06)},0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
   const pop = (style.animate ?? "pop") === "pop";
+  const reveal = style.animate === "reveal";
   const seams = (opts.seams ?? []).map((s) => (Array.isArray(s) ? { start: s[0], end: s[1] } : s));
   const onSeam = (t: number) => seams.some((s) => t >= s.start - 0.001 && t < s.end - 0.001);
-  const events = lines
+  // Quiet windows (cutaways that show the words themselves): no caption starts inside one, and one already up
+  // ends where the window begins.
+  const quiet = (opts.quiet ?? []).filter((q) => q.end > q.start);
+  const hushed = (ls: CaptionLine[]) =>
+    ls
+      .filter((l) => !quiet.some((q) => l.start >= q.start - 0.001 && l.start < q.end - 0.001))
+      .map((l) => {
+        const cut = quiet.find((q) => q.start > l.start && q.start < l.end);
+        if (!cut) return l;
+        return { ...l, end: cut.start, words: l.words?.filter((w) => w.start < cut.start) };
+      });
+  const events = hushed(lines)
     .flatMap((l) =>
-      pop && l.words?.length
-        ? popEvents(l, style)
-        : [`Dialogue: 0,${assTime(l.start)},${assTime(l.end)},Caption,,0,0,0,,${escapeAss(l.text.toUpperCase())}`],
+      reveal && l.words?.length
+        ? revealEvents(l, style)
+        : pop && l.words?.length
+          ? popEvents(l, style)
+          : [`Dialogue: 0,${assTime(l.start)},${assTime(l.end)},Caption,,0,0,0,,${escapeAss(reveal && !style.upper ? l.text : l.text.toUpperCase())}`],
     )
     .map((e) => {
       const f = e.split(",");
@@ -393,6 +522,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       return `${e.slice(0, at)}{\\an5\\pos(${Math.round(w / 2)},${Math.round(h / 2)})}${e.slice(at)}`;
     });
   if (hook) events.unshift(`Dialogue: 1,${assTime(0)},${assTime(hook.seconds ?? 3)},Hook,,0,0,0,,${hookText(hook, style)}`);
+  events.push(...slamEvents(lines, opts.slams ?? [], format));
   return header + events.join("\n") + "\n";
 }
 

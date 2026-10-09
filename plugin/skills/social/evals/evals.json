@@ -36,6 +36,17 @@
         "No HTML or PNG files written, no scripts run, nothing written outside the social folder",
         "No em or en dashes and none of ig-human's stock phrases"
       ]
+    },
+    {
+      "id": 4,
+      "prompt": "/hq:social for a business whose inputs.json has an empty keywordDms (no comment-to-DM tool)",
+      "expected_output": "No draft asks people to comment a keyword or sets `keyword`, even where the channel plan suggests one; Instagram captions point to the link in bio instead.",
+      "files": [],
+      "expectations": [
+        "No caption or slide says \"Comment <WORD>\"",
+        "No draft has a keyword field",
+        "HQ's keyword check passes on every draft"
+      ]
     }
   ]
 }

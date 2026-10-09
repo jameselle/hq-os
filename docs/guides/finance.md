@@ -68,17 +68,22 @@ Income, totals and profit rows are skipped (income already comes from billing). 
 import, checked with `bean-check`, and left as it was if the check fails. Months before the ledger's own start get
 their own `open` lines in that file, balanced against `Liabilities:Imported:Xero`, so older months check out too.
 
-**Where each Xero account lands:**
+**Where each Xero account lands:** by its name first, then by the report section it sits in.
 
-| Xero account name contains | Ledger account | Counts toward cost to win |
+| Xero line | Ledger account | Counts toward |
 |---|---|---|
-| advertising, marketing, promotion, ads, sponsor | `Expenses:Advertising:<Account>` | yes |
-| affiliate, partner, referral, commission | `Expenses:Partnerships:<Account>` | no (see below) |
-| anything else (hosting, data, software, wages, travel …) | `Expenses:Operating:<Account>` | no |
+| name contains advertising, marketing, promotion, ads, sponsor (any section) | `Expenses:Advertising:<Account>` | cost to win |
+| name contains affiliate, partner, referral, commission (any section) | `Expenses:Partnerships:<Account>` | cost to win |
+| any other line under **Less Cost of Sales** (or Cost of Goods Sold) | `Expenses:CostOfSales:<Account>` | gross margin |
+| anything else (software, wages, travel, hosting kept under Operating Expenses …) | `Expenses:Operating:<Account>` | operating costs |
 
-Affiliates and partners go to `Expenses:Partnerships`, **not** `Expenses:Commissions`: the growth scorecard already
-counts the commissions the product pays its affiliates as acquisition spend, so posting Xero's affiliate line as
-Commissions would count the same money twice in cost to win.
+Affiliates and partners go to `Expenses:Partnerships`, **not** `Expenses:Commissions`, and count toward cost to win
+like advertising. The growth scorecard's adapter may also report the commissions the product pays its affiliates
+(`extraSpend`); once the ledger holds `Expenses:Partnerships` postings, the scorecard and unit economics leave those
+out, so the same money is never counted twice. Lines in Xero's Cost of Sales section (hosting, stock, packaging) are
+the direct cost of serving customers: unit economics takes them off revenue for the **gross margin**. An import made
+before 2026-10-07 put them in `Expenses:Operating`; the next refresh (or `npm run hq -- finance costs refresh <slug>
+--force`) rewrites the file with the new accounts.
 
 **Set it up (about 15 minutes, once):**
 
@@ -227,12 +232,15 @@ either done and it stays hidden until the next month is worked out.
 - **Optional: your accounting system, for costs.** If the business already keeps its books in Xero, HQ can read its
   profit and loss report every month and post the running costs into the ledger. Set up below.
 - **What the scorecard reads from the books:** the growth scorecard's **cost to win** and **payback** come from this
-  ledger. HQ adds up spend posted to `Expenses:Advertising` and `Expenses:Commissions` (and their sub-accounts, such
-  as `Expenses:Advertising:Search`) over the last 4 weeks, plus any extra spend the scorecard adapter reports, and
-  divides it by the new paying customers in those 4 weeks. Payback is cost to win divided by the new monthly revenue
-  per new customer. So **post every ad bill and every affiliate or partner commission to those accounts**, or the
-  scorecard shows cost to win as missing ("No acquisition spend recorded"). See [Data](/guides/data) and
-  [How the growth scorecard works](/guides/scorecard).
+  ledger. HQ adds up spend posted to `Expenses:Advertising`, `Expenses:Partnerships` and `Expenses:Commissions` (and
+  their sub-accounts, such as `Expenses:Advertising:Search`) over the 4 weeks ending with the scorecard's newest week,
+  plus any extra spend the scorecard adapter reports (left out once the ledger holds partnerships, so it isn't counted
+  twice), and divides it by the new paying customers in those 4 weeks. Monthly totals imported from the accounting
+  system are **spread evenly over their month's days**, so each 4-week window gets its share; days in a month that
+  isn't imported yet are estimated at the last imported month's daily rate (see
+  [How the growth scorecard works](/guides/scorecard)). Payback is cost to win divided by the new monthly revenue per
+  new customer. So **post every ad bill and every affiliate or partner commission to those accounts**, or the
+  scorecard shows cost to win as missing ("No acquisition spend recorded"). See [Data](/guides/data).
 
   ```
   2026-10-01 * "Ad platform" "Search ads, week 40"

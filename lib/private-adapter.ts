@@ -26,6 +26,9 @@ export function execAdapter(command: string[], input: object, timeoutMs = 45000)
     });
     // An adapter that ignores signals, or a grandchild holding stdout open, must not hang the refresh.
     const timer = setTimeout(() => done(() => { child.kill('SIGKILL'); reject(Error('Private adapter timed out')); }), timeoutMs + 1000);
+    // An adapter that exits before reading its input closes the pipe; that's a failed adapter (reported by the
+    // exit callback above), not a crash of HQ. Without this listener the EPIPE was an uncaught exception.
+    child.stdin?.on('error', () => {});
     child.stdin?.end(JSON.stringify(input));
   });
 }

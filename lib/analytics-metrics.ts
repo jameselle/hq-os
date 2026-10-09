@@ -69,6 +69,10 @@ export const ANALYTICS = {
     question: "How many tests were run, and how did they end?", needs: "Experiments logged with hq experiment add." },
   vault_notes: { label: "Brain notes", unit: "count", lever: "base", chart: "split", better: "up", source: "hq",
     question: "How much has the business written down (decisions, facts, lessons, playbooks)?", needs: "The business's Obsidian vault." },
+  runbooks: { label: "Runbooks", unit: "count", lever: "base", chart: "line", better: "up", source: "hq",
+    question: "How many of the things that break have a written runbook?", needs: "Playbooks titled \"Runbook: ...\" in the business's vault (npm run hq -- brain write)." },
+  load_test_users: { label: "Customers at once (load test)", unit: "count", lever: "keep", chart: "line", better: "up", source: "hq",
+    question: "How many customers at once can the product serve and still pass its load test?", needs: "A load test recorded with npm run hq -- loadtest record (docs/guides/load-test.md)." },
   open_findings: { label: "Open CEO findings", unit: "count", lever: "base", chart: "line", better: "down", source: "hq",
     question: "How much is waiting on someone (the CEO's open findings)?", needs: "Nothing: HQ counts its own findings at each refresh." },
   campaigns_live: { label: "Campaigns live", unit: "count", lever: "get", chart: "split", better: "up", source: "hq",
@@ -116,6 +120,8 @@ export const ANALYTICS = {
     question: "How many paying customers came from partners or affiliates?", needs: "Partner or referral codes stored with each customer." },
   partner_d90_retention: { label: "Partner customers paying at day 90", unit: "rate", lever: "get", chart: "line", better: "up", source: "adapter",
     question: "Do partner-sourced customers stay?", needs: "Partner codes plus 90 days of billing history." },
+  site_visitors: { label: "Site visitors", unit: "count", lever: "get", chart: "bars", better: "up", source: "adapter",
+    question: "How many people visited the website in the last 4 weeks, and where did they come from?", needs: "Web analytics (Umami, Plausible or PostHog): visitors, page views and referrers." },
   landing_conversion_rate: { label: "Landing page conversion", unit: "rate", lever: "get", chart: "line", better: "up", source: "adapter",
     question: "What share of site visitors sign up?", needs: "Web analytics (visitors) plus sign-ups." },
   tool_users: { label: "Free tool users", unit: "count", lever: "get", chart: "bars", better: "up", source: "adapter",
@@ -254,7 +260,7 @@ export const ANALYTICS_IDS = Object.keys(ANALYTICS) as AnalyticsId[];
 export const WORKFLOW_ANALYTICS: Record<string, AnalyticsId[]> = {
   // Get customers
   "Competitor gap becomes comparison content": ["comparison_signups", "competitor_changes"],
-  "Search demand becomes pages at scale": ["organic_signups", "search_clicks", "new_signups"],
+  "Search demand becomes pages at scale": ["organic_signups", "search_clicks", "site_visitors", "new_signups"],
   "Self post": ["posts_published", "follows_per_post", "views_per_post", "followers"],
   "Clip engine": ["videos_edited", "views_per_post", "follows_per_post"],
   "Walkthrough videos in the owner's voice": ["walkthrough_coverage", "walkthrough_plays"],
@@ -263,7 +269,7 @@ export const WORKFLOW_ANALYTICS: Record<string, AnalyticsId[]> = {
   "Campaign from brief to results": ["new_signups", "campaigns_live", "ad_spend", "cost_to_win"],
   "Comment-keyword funnel": ["keyword_posts", "keyword_dms", "keyword_dm_delivery_rate", "keyword_dm_misses", "keyword_dms_waiting", "dm_to_email_rate", "email_to_trial_rate", "link_clicks"],
   "Partner program": ["partner_customers", "partner_d90_retention"],
-  "Customer proof": ["landing_conversion_rate", "new_signups"],
+  "Customer proof": ["landing_conversion_rate", "site_visitors", "new_signups"],
   "Free tool as a lead magnet": ["tool_users", "tool_signup_rate"],
   "Launch week": ["new_signups", "feature_adoption", "sales"],
   "Paid ads with a payback cap": ["cost_to_win", "payback_months", "ad_spend"],
@@ -289,6 +295,7 @@ export const WORKFLOW_ANALYTICS: Record<string, AnalyticsId[]> = {
   "Customer academy": ["academy_activation"],
   "Off-season plan": ["offseason_churn", "paused_instead"],
   "Release quality gate": ["customer_bugs", "releases", "workflow_checks_passing"],
+  "Load test before growth": ["load_test_users"],
   "Top customer care": ["top_customer_retention"],
   "Exit survey to competitive intel": ["churn_to_rival"],
   "Account security and trust": ["account_incidents"],
@@ -312,6 +319,7 @@ export const WORKFLOW_ANALYTICS: Record<string, AnalyticsId[]> = {
   "Capacity and hiring": ["open_findings"],
   "Experiment log": ["experiments_run"],
   "Knowledge base and decisions": ["vault_notes"],
+  "Runbooks, vendors and risks": ["runbooks"],
 };
 
 /** The workflows a metric serves, in catalogue order. */

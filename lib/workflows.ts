@@ -266,6 +266,10 @@ export const WORKFLOWS: Workflow[] = [
     trigger: "Before every release.",
     steps: [["engineering", "Runs tests and screen checks"], ["security", "Has the rollback ready"], ["support", "Gets the release notes"], ["data", "Watches error rates after release"]],
     metric: "Bugs that reach customers", example: "HQ: screen checks caught a stale review before anyone acted on it." },
+  { title: "Load test before growth", levers: ["keep"], owner: "engineering",
+    trigger: "Before a launch, a paid push or a new plan, and every month anyway.",
+    steps: [["engineering", "Runs a stepped load test on a disposable copy of production, never production itself"], ["security", "Checks the copy holds no customer data and no live keys"], ["data", "Reads the report: how many customers at once still pass, and what breaks first"], ["finance", "Prices the headroom: a bigger server or a fix, against the growth plan"], ["ceo", "Decides: scale up, fix the bottleneck first, or hold the push"]],
+    metric: "Customers at once that still pass", example: "Sports data: 50 API customers polling odds while the data refresh runs. Children's books: checkout on launch day." },
   { title: "Top customer care", levers: ["keep", "expand"], owner: "support",
     trigger: "Monthly.",
     steps: [["data", "Lists the top 10% by revenue"], ["support", "Gives them a named contact and check-ins"], ["sales", "Writes an account plan"], ["engineering", "Offers early access"], ["email", "Sends VIP-only updates"]],
@@ -348,6 +352,10 @@ export const WORKFLOWS: Workflow[] = [
     trigger: "Any decision or new SOP.",
     steps: [["operations", "Writes it to the business's vault"], ["ceo", "Links it from the review"], ["people", "Uses it to onboard new people"]],
     metric: "Questions answered by the vault", example: "HQ: one Obsidian vault per business." },
+  { title: "Runbooks, vendors and risks", levers: ["base"], owner: "operations",
+    trigger: "Monthly, and after any incident.",
+    steps: [["operations", "Writes a runbook for each thing that breaks"], ["security", "Points each uptime alert at its runbook"], ["operations", "Reviews every vendor against its cost and use"], ["finance", "Checks vendor savings against unit economics"], ["operations", "Keeps a risk register with an owner per risk"], ["ceo", "Reads the top risks in the weekly review"]],
+    metric: "Runbooks written; vendor review and risk register current", example: "A subscription app: site down, stale data, payment webhook and bad deploy runbooks." },
 ];
 
 /** Hand-offs a department sends or receives. */
@@ -369,3 +377,13 @@ export const workflowSlug = (title: string) =>
 
 /** The workflow a slug names, or null. */
 export const workflowBySlug = (slug: string): Workflow | null => WORKFLOWS.find((w) => workflowSlug(w.title) === slug) ?? null;
+
+/** A department's growth levers, derived from the workflows it owns or has a step in, so the tags can't drift from
+ *  the catalogue: per lever, the workflows it owns (accountable) and the ones it helps with. */
+export function deptLevers(n: Node): { lever: Lever; owns: Workflow[]; helps: Workflow[] }[] {
+  return (Object.keys(LEVERS) as Lever[]).map((lever) => ({
+    lever,
+    owns: WORKFLOWS.filter((w) => w.levers.includes(lever) && w.owner === n),
+    helps: WORKFLOWS.filter((w) => w.levers.includes(lever) && w.owner !== n && w.steps.some(([d]) => d === n)),
+  })).filter((x) => x.owns.length || x.helps.length);
+}

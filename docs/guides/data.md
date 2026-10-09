@@ -38,7 +38,15 @@ the business's profile so HQ counts it:
 ```
 
 The website id is public (it's in the page source). An API key for reading the numbers back is a secret: keep it in
-the Keychain, never in the profile.
+the Keychain, never in the profile. To let the analytics adapter read the numbers back (the **Site visitors** number:
+visitors over the last 4 weeks with page views and top referrers, and `visits` per campaign tag):
+
+1. In Umami Cloud open **Settings**, then **API keys**, and create one.
+2. In Terminal run `security add-generic-password -a hq -s hq-umami -w` and paste the key at the prompt (never into
+   a chat or a file).
+3. The adapter reads it at run time from the Keychain and calls Umami Cloud's read-only API
+   (`https://api.umami.is/v1/websites/<id>/stats`, `/metrics?type=referrer`, `/metrics?type=query`) with the
+   `x-umami-api-key` header. Until the key is there, Site visitors shows as missing with these steps.
 
 ### Looker Studio
 

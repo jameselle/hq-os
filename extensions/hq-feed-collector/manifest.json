@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "HQ Feed Collector",
+  "version": "1.1.0",
+  "description": "User-started, bounded visible-post collection from your Instagram or TikTok feed into your local HQ.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "HQ Feed Collector", "default_popup": "popup.html"}
+}

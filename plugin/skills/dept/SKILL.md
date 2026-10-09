@@ -98,6 +98,10 @@ department's tab in HQ and in the vault under `Departments/<Label>/Plans/`.
 npm run hq -- save-plan <slug> <dept-slug> /tmp/hq-plan.md
 ```
 
+Other documents the department writes the same day (a vendor review, a risk register, a status report) take a
+title so they don't overwrite each other in the vault: `save-plan <slug> <dept-slug> <file> --title "risk register"`.
+Save the week's plan last: the department tab shows the newest one.
+
 Tell the user the goal and the owner-only items.
 
 ## The brain, after the work

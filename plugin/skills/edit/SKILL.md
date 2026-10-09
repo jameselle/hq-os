@@ -32,6 +32,10 @@ Transcribe every source:
 - **Silent B-roll:** probe it with `ffprobe` and look at a frame to know what it shows.
 - **Motion graphics** (titles, stat cards, lower thirds): make them with `/hyperframes:hyperframes`
   as their own MP4, then use them as another source.
+- **Themed cards:** the themed card kit (`templates/studio/themes/kit.py`, README there) makes every card in
+  any of the themes (paper, gallery, desk, terminal, chart, glass, neon, canvas, doodle, vivid, letterbox, lab,
+  brief, pills, chat, post, poster, page): headlines that ink in on the voice, app windows for code, stats, bars and lists, walkthroughs,
+  read-cards, a comment-and-DM ask. Write the cards and the spec in the same theme (spec `"theme"`).
 
 ## 3. Build the edit
 
@@ -45,6 +49,14 @@ Write `$JOB/spec.json` (the format and all its fields are in the `/hq:clip` skil
 - The business's look comes from `$HQ_DATA/businesses/<slug>/brand.json`: font, colours,
   loudness and `speed` (how fast its videos post, e.g. `1.25`; a spec's own `speed` wins, so leave it
   out of the spec to inherit). Create it the first time if the business has brand colours or a speed.
+- **Themes:** `brand.json` `"theme"` picks a ready-made look under the business's own settings: `"bold"` (the
+  default: white Arial Black capitals, yellow highlight, pop captions), `"street"` for walk-and-talk footage
+  (small white captions low on the frame, plus spec `slams`: big capitals landing on chosen spoken words), or
+  one of the kit's card themes (the README in `templates/studio/themes` has the list, the look and where each
+  was found). Card themes use `captions: "reveal"` (words ink in) and `hook: "clean"` (blurs in). One video can try a look without changing the business: spec `"theme": "paper"`
+  replaces the font, colours, captions and hook but keeps the business's loudness, speed, voice, punch-ins and SFX.
+  Changing a business's own `theme` changes its look: ask the owner first. A cutaway card that shows the spoken
+  words itself takes `"captions": false`, so the captions step aside while it's up.
 - **The finishing pass, also from `brand.json`:** `voice` (`"clean"`, the default: rumble cut, less boxiness,
   presence, softer esses and gentle compression before levelling; `"plain"`: levelling only), `punch: true`
   (punch-ins on face-only lines, numbers and keywords first, never under the hook or a cutaway, at least 2 s

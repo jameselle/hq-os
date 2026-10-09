@@ -44,7 +44,18 @@ the checks make sure it does. See [Campaigns](/guides/campaigns).
   channel plan still win, and the social log's `writing` line names the skills it used. Without them nothing changes.
 - **The checks:** caption length per network, hashtag count, no em or en dashes, slide counts, a video or a brief
   for video formats, links only to the business's own site, no banned claims, inducements or never-name entries,
-  and 18+ on every post for gambling businesses (except LinkedIn).
+  18+ on every post for gambling businesses (except LinkedIn), and a comment keyword ("Comment BREW", or a
+  `keyword` field) only on a network where a comment-to-DM tool answers it.
+- **Comment keywords need a tool that answers them.** A post that says "Comment BREW and we'll DM you" with nothing
+  listening leaves people waiting, so the writer only asks for a keyword where `social.json` says a tool answers:
+
+  ```json
+  "keywordDms": { "tool": "comment-dm", "networks": ["instagram"] }
+  ```
+
+  `networks` is Instagram when left out. Instagram comment replies with `skipKeywords` (section 5) count too, since
+  those words already belong to a bot. Without either, the writer uses "link in bio", the `keyword` check fails any
+  draft that asks anyway, and the analytics board shows the comment-keyword numbers as not applicable.
 - **Approve** on the Content & Social tab. Leave notes: next week's drafts read them.
 - **Post:** HQ networks go out by themselves on their day; hand networks: copy the caption, save the images,
   post, then "I posted it" with the link.
@@ -58,6 +69,26 @@ live link on the post. No Claude session is needed; the Mac only has to be awake
 **What HQ posts by itself:** Instagram carousels (2 to 10 cards), single images and stories, Instagram reels that
 have a recorded video (`video.path`), and Pinterest pins. Everything else on an `hq` network (a reel still waiting
 to be recorded, a format HQ doesn't post) shows as a hand post with the reason.
+
+**Carousels with music (optional).** Instagram's API can't put music on a carousel: Meta's Audio API attaches sound to
+Reels only, and the Composio tool can't send it. To have a business's carousels heard, set them to go out as a
+slideshow Reel instead:
+
+```json
+"slideshow": { "networks": ["instagram"], "music": "music" }
+```
+
+and put royalty-free tracks in `social/music/` with a `tracks.json` listing each one's `file`, `title`, `artist`,
+`licence`, `source` and `start` (the second its full beat comes in, so a quiet intro never opens the post). Every
+licence must allow commercial use on social media with no credit needed (Mixkit's Stock Music Free License does;
+Mixkit's Restricted licence doesn't). HQ never fetches music by itself.
+
+When the drafts are checked, HQ renders each carousel's slides as 9:16 frames (no swipe cues, text clear of
+Instagram's caption and buttons), holds each long enough to read (2.5 to 5.5 s), cross-fades them over a track
+(the same post keeps its track; the last few slideshows' tracks are passed over), levels it to -14 LUFS and keeps it
+next to the cards (`<id>-reel.mp4`). Content & Social plays it with the track's name. On its day it goes out as a
+Reel shared to the feed. A slideshow carousel whose video isn't made is held with the reason: it never goes out as a
+silent carousel.
 
 **Set it up (Demo Coffee as the example):**
 

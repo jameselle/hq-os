@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { mergeBrand, renderSpeed } from "../lib/studio/brand";
+import { applyTheme, mergeBrand, renderSpeed } from "../lib/studio/brand";
 import { validateSpec, type EditSpec } from "../lib/studio/spec";
 import { assColour, buildAss, buildCoverAss, buildSeriesCoverAss, captionLines, coverLines, gridCrop, sourceAt, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, type Word } from "../lib/studio/timeline";
 import { profile, tempData } from "./helpers";
@@ -47,6 +47,20 @@ test("a vertical hook sits inside the 3:4 grid crop Instagram and TikTok show on
   }
   const land = buildAss({ w: 1920, h: 1080 }, [], style, { text: "HOOK" });
   assert.equal(marginV(land), Math.round(1080 * 0.09), "landscape keeps its margin");
+});
+
+test("hook.top moves the hook up off a face framed high (the post's own cover covers the grid)", () => {
+  const marginV = (ass: string) => Number(ass.split("\n").find((l) => l.startsWith("Style: Hook,"))!.split(",")[21]);
+  for (const hookKind of ["text", "box", "clean"] as const) {
+    const style = { font: "Arial Black", primary: "#FFFFFF", outline: "#000000", highlight: "#FFD60A", hook: hookKind };
+    assert.equal(marginV(buildAss({ w: 1080, h: 1920 }, [], style, { text: "HOOK", top: 0.065 })), Math.round(1920 * 0.065), hookKind);
+  }
+  assert.ok(validateSpec(spec({ hook: { text: "HOOK", top: 0.065 } })).ok);
+  for (const top of [-0.1, 0.6, "high"]) {
+    const r = validateSpec(spec({ hook: { text: "HOOK", top: top as never } }));
+    assert.equal(r.ok, false, String(top));
+    if (!r.ok) assert.ok(r.errors.some((e) => e.startsWith("hook.top")));
+  }
 });
 
 test("no em dashes on screen: a hook with one is refused, and caption words lose theirs", () => {
@@ -376,4 +390,136 @@ test("reconcile: a word misheard in the cut takes the source transcript's spelli
   assert.deepEqual(reconcileWords([W("so", 0, 1), W("um", 1, 2), W("yes.", 2, 3)], ["So", "yes"]).map((w) => w.w), ["so", "um", "yes."]);
   assert.deepEqual(reconcileWords([W("the", 0, 1), W("end.", 1, 2)], ["the", "very", "end."]).map((w) => w.w), ["the", "end."]);
   assert.deepEqual(reconcileWords([W("What", 0, 1), W("version", 1, 2), W("I", 2, 3), W("use", 3, 4)], ["The", "version", "I", "use"]).map((w) => w.w), ["The", "version", "I", "use"]);
+});
+
+// ---------------------------------------------------------------- themes
+
+test("theme: paper sets the look, and anything the business sets beside it still wins", () => {
+  const b = mergeBrand({ theme: "paper" });
+  assert.equal(b.captions, "reveal");
+  assert.equal(b.hook, "clean");
+  assert.equal(b.primary, "#1C1A17");
+  assert.equal(b.highlight, "#D2613A");
+  assert.equal(mergeBrand({ theme: "paper", highlight: "#2255AA" }).highlight, "#2255AA", "the business's own accent wins");
+  assert.deepEqual(mergeBrand({ theme: "bold" }), { ...mergeBrand({}), theme: "bold" }, "bold is the default look");
+  assert.throws(() => mergeBrand({ theme: "plaid" as never }), /brand\.theme/);
+  assert.throws(() => mergeBrand({ theme: "paper", muted: "grey" }), /brand\.muted/);
+  assert.throws(() => mergeBrand({ captions: "karaoke" as never }), /brand\.captions/);
+});
+
+test("theme on one video: replaces the look, keeps the business's sound, speed and covers", () => {
+  const biz = mergeBrand({ highlight: "#00FF00", loudness: -16, speed: 1.2, sfx: true, voice: "plain", cover: { style: "series" } });
+  const t = applyTheme(biz, "paper");
+  assert.equal(t.highlight, "#D2613A", "the theme's accent, not the business's");
+  assert.equal(t.captions, "reveal");
+  assert.equal(t.font, "Helvetica Neue");
+  for (const k of ["loudness", "speed", "sfx", "voice", "cover"] as const) assert.deepEqual(t[k], biz[k], k);
+  const back = applyTheme(mergeBrand({ theme: "paper", speed: 1.5 }), "bold");
+  assert.equal(back.captions, "pop");
+  assert.equal(back.highlight, "#FFD60A");
+  assert.equal(back.muted, undefined, "bold drops paper's reveal colours");
+  assert.equal(back.speed, 1.5);
+  assert.throws(() => applyTheme(biz, "plaid" as never), /theme/);
+});
+
+test("spec: theme must be a known one", () => {
+  assert.equal(validateSpec(spec({ theme: "paper" })).ok, true);
+  const r = validateSpec(spec({ theme: "plaid" as never }));
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.ok(r.errors.some((e) => e.startsWith("theme:")));
+});
+
+test("reveal captions: sentence case on a strip, the line laid out from its first word, each word inking in", () => {
+  const b = mergeBrand({ theme: "paper" });
+  const style = { font: b.font, primary: b.primary, outline: b.outline, highlight: b.highlight, animate: b.captions, hook: b.hook, muted: b.muted, box: b.box };
+  const ass = buildAss({ w: 1080, h: 1920 }, captionLines([W("Made", 0, 0.3), W("with", 0.3, 0.6), W("code", 0.6, 1)]), style);
+  const cap = ass.split("\n").find((l) => l.startsWith("Style: Caption,"))!.split(",");
+  assert.equal(cap[15], "3", "an opaque strip, not an outline");
+  assert.equal(cap[5], assColour("#FBF7EF"), "the strip is the box colour");
+  const ev = ass.split("\n").filter((l) => l.startsWith("Dialogue:"));
+  assert.equal(ev.length, 3, "one event per word");
+  assert.ok(ev.every((e) => /Made.*with.*code/.test(e)), "every event lays out the whole line, so it never shifts");
+  assert.doesNotMatch(ass, /MADE|WITH|CODE/, "sentence case, not capitals");
+  assert.match(ev[0], /\{\\1c&H0096A3AB&\\1a&H00&\\blur3\\t\(0,240,\\1c&H00171A1C&\\blur0\)\}Made \{\\1a&HFF&\}with \{\\1a&HFF&\}code/,
+    "the current word inks in from muted; the rest are see-through text but keep the strip");
+  assert.match(ev[2], /\{\\1c&H00171A1C&\\1a&H00&\\blur0\}Made /, "spoken words settle on the primary colour");
+  const plain = buildAss({ w: 1080, h: 1920 }, [{ text: "Made with code", start: 0, end: 1 }], style);
+  assert.match(plain, /,Caption,,0,0,0,,Made with code$/m, "no word timings: the whole line, still sentence case");
+});
+
+test("clean hook: plain bold words with no outline, the highlight in the accent, blurring in", () => {
+  const b = mergeBrand({ theme: "paper" });
+  const style = { font: b.font, primary: b.primary, outline: b.outline, highlight: b.highlight, hook: b.hook };
+  const ass = buildAss({ w: 1080, h: 1920 }, [], style, { text: "This tool makes unlimited reels", highlight: "UNLIMITED" });
+  const hook = ass.split("\n").find((l) => l.startsWith("Style: Hook,"))!.split(",");
+  assert.equal(hook[16], "0", "no outline");
+  assert.equal(hook[17], "0", "no shadow");
+  assert.match(ass, /,Hook,,0,0,0,,\{\\fad\(220,200\)\\blur8\\t\(0,260,\\blur0\)\}This tool makes \{\\1c&H003A61D2&\}unlimited\{\\1c&H00171A1C&\} reels$/m);
+});
+
+test("quiet cutaways: no captions over a card that shows the words itself; the rest stay", () => {
+  const style = { font: "Arial Black", primary: "#FFFFFF", outline: "#000000", highlight: "#FFD60A", animate: "none" as const };
+  const lines = [
+    { text: "before it", start: 0, end: 1.5 },
+    { text: "on the card", start: 1.5, end: 3 },
+    { text: "after it", start: 3, end: 4 },
+  ];
+  const ass = buildAss({ w: 1080, h: 1920 }, lines, style, undefined, { quiet: [{ start: 1.5, end: 3 }] });
+  const ev = ass.split("\n").filter((l) => l.startsWith("Dialogue:"));
+  assert.deepEqual(ev.map((e) => e.split(",,0,0,0,,")[1]), ["BEFORE IT", "AFTER IT"]);
+  const early = buildAss({ w: 1080, h: 1920 }, lines, style, undefined, { quiet: [{ start: 1, end: 3 }] });
+  assert.match(early, /Dialogue: 0,0:00:00\.00,0:00:01\.00,Caption,,0,0,0,,BEFORE IT/, "a line already up ends where the quiet window starts");
+  const r = validateSpec(spec({ cutaways: [{ file: "/x.mp4", from: "a", to: "b", captions: "no" as never }] }));
+  assert.equal(r.ok, false);
+});
+
+test("themes gallery, desk and street: each a whole look; captions without a strip sit on the picture", () => {
+  const style = (t: "gallery" | "desk" | "street") => {
+    const b = mergeBrand({ theme: t });
+    return { font: b.font, primary: b.primary, outline: b.outline, highlight: b.highlight, animate: b.captions, hook: b.hook, muted: b.muted, box: b.box, upper: b.upper, italic: b.italic, size: b.captionSize, lift: b.captionLift };
+  };
+  const line = captionLines([W("the", 0, 0.3), W("algorithm", 0.3, 0.8)]);
+  const cap = (t: "gallery" | "desk" | "street") => buildAss({ w: 1080, h: 1920 }, line, style(t)).split("\n").find((l) => l.startsWith("Style: Caption,"))!.split(",");
+  const g = cap("gallery");
+  assert.equal(g[1], "Instrument Serif");
+  assert.equal(g[15], "1", "no strip: words on the page");
+  assert.equal(g[7], "0", "no faux bold on the one-weight serif");
+  assert.equal(g[8], "-1", "italic face");
+  assert.equal(g[2], String(Math.round(1080 * 0.085)), "big words");
+  assert.match(buildAss({ w: 1080, h: 1920 }, line, style("gallery")), /THE \{\\1a&HFF&\}ALGORITHM/, "capitals");
+  assert.equal(cap("gallery")[17], "0", "dark words on a pale page: no shadow");
+  assert.notEqual(cap("desk")[17], "0", "white words get a soft shadow");
+  const s = cap("street");
+  assert.equal(s[21], String(Math.round(1920 * 0.19)), "street captions sit low");
+  assert.equal(s[2], String(Math.round(1080 * 0.042)), "and small");
+  assert.equal(mergeBrand({ theme: "gallery" }).fontsDir, "kit:fonts", "the serif ships with the kit");
+  assert.throws(() => mergeBrand({ captionSize: 0.5 }), /captionSize/);
+  assert.throws(() => mergeBrand({ captionLift: 0.9 }), /captionLift/);
+  assert.equal(applyTheme(mergeBrand({ theme: "gallery" }), "bold").upper, undefined, "bold drops gallery's capitals");
+});
+
+test("slams: big capitals land on their spoken word, in order; a word that isn't heard is left out", () => {
+  const style = { font: "Helvetica Neue", primary: "#FFFFFF", outline: "#000000", highlight: "#FFD60A", animate: "none" as const };
+  const lines = captionLines([W("it", 0, 0.2), W("isn't", 0.2, 0.5), W("the", 0.5, 0.6), W("algorithm,", 0.6, 1.1), W("it's", 1.2, 1.4), W("a", 1.4, 1.5), W("skill", 1.5, 1.9)]);
+  const ass = buildAss({ w: 1080, h: 1920 }, lines, style, undefined, { slams: [{ text: "isn't the algorithm", on: "algorithm" }, { text: "skill", on: "skill", seconds: 0.8 }, { text: "never", on: "banana" }] });
+  const ev = ass.split("\n").filter((l) => l.includes(",Slam,"));
+  assert.equal(ev.length, 2, "the unheard one is dropped");
+  assert.match(ev[0], /^Dialogue: 2,0:00:00\.60,0:00:01\.90,Slam,.*\\pos\(540,1152\).*\}ISN'T THE ALGORITHM$/);
+  assert.match(ev[1], /^Dialogue: 2,0:00:01\.50,0:00:02\.30,Slam,.*\}SKILL$/);
+  assert.equal(validateSpec(spec({ slams: [{ text: "ok", on: "two words" }] })).ok, false, "on is one word");
+  assert.equal(validateSpec(spec({ slams: [{ text: "fast — cheap", on: "fast" }] })).ok, false, "no dashes");
+  assert.equal(validateSpec(spec({ theme: "street", slams: [{ text: "a skill", on: "skill" }] })).ok, true);
+});
+
+test("caption lines never end on a dangling little word: it starts the next line instead", () => {
+  const lines = captionLines([W("we", 0, 0.2), W("put", 0.2, 0.4), W("the", 0.4, 0.5), W("milk", 0.5, 0.8), W("at", 0.8, 0.9), W("the", 0.9, 1.0), W("back.", 1.0, 1.4)]);
+  assert.deepEqual(lines.map((l) => l.text), ["we put", "the milk", "at the back."]);
+  assert.ok(lines.every((l) => !/\b(the|a|to|at)$/i.test(l.text)));
+  const pause = captionLines([W("go", 0, 0.2), W("to", 0.2, 0.3), W("bed", 1.5, 1.8)]);
+  assert.deepEqual(pause.map((l) => l.text), ["go to", "bed"], "a long pause still breaks where it falls");
+});
+
+test("caption lines break at a pause of more than 0.35 s, and hold together across shorter ones", () => {
+  assert.deepEqual(captionLines([W("one", 0, 0.3), W("two", 0.7, 1.0)]).map((l) => l.text), ["one", "two"], "a 0.4 s pause breaks");
+  assert.deepEqual(captionLines([W("one", 0, 0.3), W("two", 0.6, 0.9)]).map((l) => l.text), ["one two"], "a 0.3 s pause doesn't");
 });

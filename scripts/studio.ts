@@ -28,13 +28,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { DEFAULT_BRAND, mergeBrand, renderSpeed, type Brand } from "../lib/studio/brand";
+import { DEFAULT_BRAND, applyTheme, mergeBrand, renderSpeed, type Brand } from "../lib/studio/brand";
 import { FORMATS, validateSpec, type EditSpec, type Format } from "../lib/studio/spec";
 import { concatArgs, readTakes } from "../lib/studio/teleprompter";
-import { buildAss, buildCoverAss, buildSeriesCoverAss, captionLines, gridCrop as gridCropOf, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, sourceAt, type Piece, type Word } from "../lib/studio/timeline";
+import { buildAss, slamEvents, buildCoverAss, buildSeriesCoverAss, captionLines, gridCrop as gridCropOf, clearOfHook, cutawayWindows, joinsOf, keepPieces, outputDuration, outputWords, panCrop, reconcileWords, reframeFilter, sourceAt, type Piece, type Word } from "../lib/studio/timeline";
 import { applyEdits, formatNotes, listVideos, readEdits, readMap, readNotes, readPlans, serveReview, updateNote } from "../lib/studio/review";
 import { businessDir, getProfile, hqData, stamp, vaultRoot } from "../lib/store";
 import { compareToStyle, paceStats, parseCuts, styleFrom, validStyle, type Measure, type Style } from "../lib/studio/style";
+import { liveFeed, refreshLive } from "../lib/studio/planner-live";
 import { SFX_SOURCE, VOICE_CHAIN, firstTextAt, longCaptions, pacing, punchFilter, punchWindows, sfxEvents, type Punch, type Sfx } from "../lib/studio/polish";
 import { SHAPES, candidateIds, formatRanking, indexRows, poolEntries, sourceOf, titlesJsonl, type ArenaResult, type PoolEntry, type PoolSource } from "../lib/studio/arena";
 
@@ -124,6 +125,12 @@ function silences(file: string, noiseDb = -35, minDur = 0.3): [number, number][]
 }
 
 // ---------------------------------------------------------------- render
+
+/** A brand's font folder on disk: "kit:<dir>" is a folder in this repo's templates/studio/themes. */
+function fontsDirOf(brand: Pick<Brand, "fontsDir">): string {
+  if (!brand.fontsDir.startsWith("kit:")) return brand.fontsDir;
+  return path.join(path.dirname(new URL(import.meta.url).pathname), "..", "templates", "studio", "themes", brand.fontsDir.slice(4));
+}
 
 function loadBrand(slug: string): Brand {
   try {
@@ -271,13 +278,15 @@ function renderFormat(
     buildAss(
       dims,
       spec.captions === false ? [] : lines,
-      { font: brand.font, primary: brand.primary, outline: brand.outline, highlight: brand.highlight, animate: brand.captions, hook: brand.hook },
+      { font: brand.font, primary: brand.primary, outline: brand.outline, highlight: brand.highlight, animate: brand.captions, hook: brand.hook, muted: brand.muted, box: brand.box, upper: brand.upper, italic: brand.italic, bold: brand.bold, size: brand.captionSize, lift: brand.captionLift },
       spec.hook,
-      { seams: vertical ? windows.filter((_, i) => !cutaways[i].full) : [] },
+      { seams: vertical ? windows.filter((_, i) => !cutaways[i].full) : [], quiet: windows.filter((_, i) => cutaways[i].captions === false), slams: spec.slams },
     ),
   );
+  const landed = slamEvents(lines, spec.slams ?? [], dims).length;
+  if (spec.slams?.length && landed < spec.slams.length) console.log(`slams: ${landed} of ${spec.slams.length} landed (a slam's word wasn't heard in the cut, so it was left out)`);
   const esc = (p: string) => p.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
-  const subs = `subtitles='${esc(ass)}':fontsdir='${esc(brand.fontsDir)}'`;
+  const subs = `subtitles='${esc(ass)}':fontsdir='${esc(fontsDirOf(brand))}'`;
   const enc = ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", out];
   let sfx: Sfx[] = [];
   if (!windows.length) {
@@ -377,7 +386,7 @@ function cmdRender(specFile: string | undefined) {
   const spec = res.spec;
   const profile = getProfile(spec.business) ?? die(`no such business: ${spec.business}`);
   const jobDir = path.dirname(path.resolve(specFile));
-  const brand = loadBrand(profile.slug);
+  const brand = spec.theme ? applyTheme(loadBrand(profile.slug), spec.theme) : loadBrand(profile.slug);
   const words: Record<string, Word[]> = {};
   for (const [id, file] of Object.entries(spec.sources)) {
     words[id] = spec.captions === false && !spec.tightenPauses ? [] : transcribe(file, "small.en", jobDir);
@@ -733,8 +742,18 @@ function cmdCheck(video: string | undefined, hook?: string) {
       const dialogue = fs.readFileSync(path.join(path.dirname(video), `${shape}.ass`), "utf8").split("\n").filter((l) => l.startsWith("Dialogue:"));
       const texts = [...new Set(dialogue.map((l) => l.split(",").slice(9).join(",").replace(/\{[^}]*\}/g, "").replace(/\\N/g, " ").trim()))];
       const long = longCaptions(texts.map((text) => ({ text })));
-      const first = firstTextAt(dialogue);
-      if (first !== null) checks.push({ name: "text by 0.5 s", ok: true, detail: first <= 0.5 ? `first text at ${first.toFixed(2)} s` : `⚠ first text only at ${first.toFixed(2)} s: put the hook or a caption on screen by 0.5 s` });
+      // A self-captioned card (cutaway `captions: false`) shows the spoken words itself, a moment after it opens.
+      let cardText: number | null = null;
+      try {
+        const m = readMap(video);
+        const sp = m ? (JSON.parse(fs.readFileSync(m.spec, "utf8")) as EditSpec) : null;
+        const starts = (m?.cutaways ?? []).filter((_, i) => sp?.cutaways?.[i]?.captions === false).map((w) => w.start / (m?.speed || 1) + 0.3);
+        if (starts.length) cardText = Math.min(...starts);
+      } catch { /* no map or spec */ }
+      const fromAss = firstTextAt(dialogue);
+      const first = [fromAss, cardText].filter((x): x is number => x !== null).reduce((a, b) => Math.min(a, b), Infinity);
+      const own = cardText !== null && first === cardText ? " (a card's own words)" : "";
+      if (first !== Infinity) checks.push({ name: "text by 0.5 s", ok: true, detail: first <= 0.5 ? `first text at ${first.toFixed(2)} s${own}` : `⚠ first text only at ${first.toFixed(2)} s: put the hook or a caption on screen by 0.5 s` });
       checks.push({ name: "caption length", ok: true, detail: long.length ? `⚠ over 30 characters: ${long.slice(0, 3).map((t) => `"${t}"`).join(", ")}` : "every line 30 characters or fewer" });
     } catch { /* no captions file */ }
   }
@@ -876,7 +895,7 @@ function cmdCover(video: string, text: { day: string; title: string }, at?: numb
     if (!hit) die(`cover: ${t}s is past the end of ${path.basename(v)}`);
     src = spec.sources[hit.source];
     time = hit.time;
-    if (spec.business) brand = loadBrand(spec.business);
+    if (spec.business) brand = spec.theme ? applyTheme(loadBrand(spec.business), spec.theme) : loadBrand(spec.business);
     if (typeof spec.faceY === "number") faceY = spec.faceY;
     if (face !== undefined) faceY = face; // this frame's own face height, when the shot moved
   } else console.log("no render map beside the video: the cover frame comes from the render itself (captions included)");
@@ -888,7 +907,7 @@ function cmdCover(video: string, text: { day: string; title: string }, at?: numb
   const esc = (x: string) => x.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
   const fit = `scale=${dims.w}:${dims.h}:force_original_aspect_ratio=increase,crop=${dims.w}:${dims.h},setsar=1`;
   const [top, bottom] = gridCropOf(dims);
-  const subs = `subtitles='${esc(ass)}':fontsdir='${esc(brand.fontsDir)}'`;
+  const subs = `subtitles='${esc(ass)}':fontsdir='${esc(fontsDirOf(brand))}'`;
   let graph: string;
   if (series) {
     // Series: move the face down to sit between the day number and the title boxes, darken the space that
@@ -947,7 +966,9 @@ switch (cmd) {
   case "review": {
     const root = path.resolve(pos[0] ?? path.join(hqData(), "businesses"));
     const port = Number(opt("--port") ?? 8794);
-    serveReview({ root, port, title: "HQ Studio review", render: renderInChild }).on("listening", () =>
+    // The planner's live view: a plan named after a business shows its connected accounts' real posts and views.
+    const live = { feed: (plan: string) => liveFeed(root, plan), refresh: (plan: string) => refreshLive(root, plan) };
+    serveReview({ root, port, title: "HQ Studio review", render: renderInChild, live }).on("listening", () =>
       console.log(`review page: http://127.0.0.1:${port}  (videos under ${root}; Ctrl-C to stop)`));
     break;
   }

@@ -73,6 +73,8 @@ export function cardHtml(o: {
   palette: Palette; mark: string | null; w: number; h: number; fonts?: CardFonts;
   /** The business's site, shown on a single card (a pin or link image), where the click goes. */
   site?: string;
+  /** A frame of a slideshow Reel: no swipe cues, and everything kept clear of Instagram's caption and buttons. */
+  reel?: boolean;
 }): string {
   const { w, h } = o;
   const sl: Slide = o.slide ?? { title: o.title, body: o.body };
@@ -113,13 +115,13 @@ export function cardHtml(o: {
   const host = o.site ? o.site.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "") : "";
   const segs = o.total > 1 ? `<div class="prog">${Array.from({ length: o.total }, (_, i) => `<i class="${i < o.index ? "on" : ""}"></i>`).join("")}</div>`
     : host ? `<span class="site">${esc(host)}</span>` : "<div></div>";
-  const next = o.total > 1 && !last ? (kind === "cover" ? `<span class="swipe">Swipe →</span>` : `<span class="arr">→</span>`) : "";
+  const next = o.total > 1 && !last && !o.reel ? (kind === "cover" ? `<span class="swipe">Swipe →</span>` : `<span class="arr">→</span>`) : "";
   return `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${fontsHref(f)}"><style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:${w}px;height:${h}px;background:${bg};color:${ink};font-family:${fontStack(f.body)};-webkit-font-smoothing:antialiased}
-.card{position:relative;width:100%;height:100%;padding:${px(176)} ${px(88)} ${px(200)};display:flex;flex-direction:column;justify-content:center;gap:${px(34)};overflow:hidden}
+.card{position:relative;width:100%;height:100%;padding:${o.reel ? `${px(260)} ${px(150)} ${px(520)} ${px(88)}` : `${px(176)} ${px(88)} ${px(200)}`};display:flex;flex-direction:column;justify-content:center;gap:${px(34)};overflow:hidden}
 .blob{position:absolute;right:${px(-220)};top:${px(-220)};width:${px(640)};height:${px(640)};border-radius:50%;background:${pop};opacity:${dark ? 0.18 : 0.08}}
-.top{position:absolute;left:${px(88)};right:${px(88)};top:${px(72)};display:flex;align-items:center;justify-content:space-between;font-size:${px(30)};font-weight:700;opacity:.8}
+.top{position:absolute;left:${px(88)};right:${px(o.reel ? 150 : 88)};top:${px(o.reel ? 150 : 72)};display:flex;align-items:center;justify-content:space-between;font-size:${px(30)};font-weight:700;opacity:.8}
 .top .who{display:flex;align-items:center;gap:${px(16)}}
 .top img{height:${px(56)};width:${px(56)};object-fit:contain;border-radius:${px(12)}}
 h1,h2,.stat,.kicker,.v,.n{font-family:${fontStack(f.heading)};font-weight:700;letter-spacing:-0.02em}
@@ -141,7 +143,7 @@ h2{line-height:1.06}
 .chips{display:flex;flex-wrap:wrap;gap:${px(18)};margin-top:${px(12)}}
 .chip{font-size:${px(34)};font-weight:700;padding:${px(18)} ${px(30)};border-radius:${px(999)};border:${px(3)} solid rgba(255,255,255,.6)}
 .chip.solid{background:${o.palette.accent};border-color:${o.palette.accent};color:${o.palette.ink}}
-.foot{position:absolute;left:${px(88)};right:${px(88)};bottom:${px(80)};display:flex;align-items:center;justify-content:space-between}
+.foot{position:absolute;left:${px(88)};right:${px(o.reel ? 150 : 88)};bottom:${px(o.reel ? 430 : 80)};display:flex;align-items:center;justify-content:space-between}
 .prog{display:flex;gap:${px(8)};width:${px(Math.min(420, 60 * o.total))}}
 .prog i{flex:1;height:${px(8)};border-radius:${px(8)};background:${dark ? "rgba(255,255,255,.3)" : "rgba(0,0,0,.12)"}}
 .prog i.on{background:${dark ? "#fff" : pop}}
@@ -154,10 +156,11 @@ ${main}
 <div class="foot">${segs}${next}</div></div></body></html>`;
 }
 
-/** Render every card of a draft; returns the PNG paths (relative to the business folder). */
-export async function renderCards(slug: string, week: string, d: SocialDraft): Promise<string[]> {
+/** Render every card of a draft; returns the PNG paths (relative to the business folder). With reel, the slides are
+ *  rendered as 9:16 frames for a slideshow Reel (lib/social-slideshow.ts) instead. */
+export async function renderCards(slug: string, week: string, d: SocialDraft, opts: { reel?: boolean } = {}): Promise<string[]> {
   if (!d.slides?.length) return [];
-  const size = CARD_SIZE[d.format] ?? CARD_SIZE.carousel;
+  const size = opts.reel ? CARD_SIZE.story : CARD_SIZE[d.format] ?? CARD_SIZE.carousel;
   const profile = getProfile(slug);
   const palette = paletteFor(slug), mark = markFor(slug);
   const cfg = readSocialConfig(slug);
@@ -173,10 +176,10 @@ export async function renderCards(slug: string, week: string, d: SocialDraft): P
     const page = await browser.newPage({ viewport: { width: size.w, height: size.h }, deviceScaleFactor: 1 });
     const out: string[] = [];
     for (const [i, s] of d.slides.entries()) {
-      await page.setContent(cardHtml({ title: s.title, body: s.body, slide: s, index: i + 1, total: d.slides.length, brand: profile?.name ?? "", handle: handle?.startsWith("@") ? handle : undefined, site: profile?.sites?.[0], palette, mark, w: size.w, h: size.h, fonts }), { waitUntil: "networkidle", timeout: 20000 }).catch(() => {});
+      await page.setContent(cardHtml({ title: s.title, body: s.body, slide: s, index: i + 1, total: d.slides.length, brand: profile?.name ?? "", handle: handle?.startsWith("@") ? handle : undefined, site: profile?.sites?.[0], palette, mark, w: size.w, h: size.h, fonts, reel: opts.reel }), { waitUntil: "networkidle", timeout: 20000 }).catch(() => {});
       // Brand fonts come from Google Fonts; without a network the system font stands in.
       await page.evaluate(() => document.fonts.ready).catch(() => {});
-      const file = `${d.id}-${i + 1}.png`;
+      const file = `${d.id}${opts.reel ? "-reel" : ""}-${i + 1}.png`;
       await page.screenshot({ path: path.join(dir, file), type: "png" });
       out.push(path.join(rel, file));
     }

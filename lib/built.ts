@@ -11,6 +11,7 @@ import { lifecycleState } from "./lifecycle";
 import { scorecardState } from "./scorecard";
 import { businessDir, getProfile, ledgerPath } from "./store";
 import { supportState } from "./support";
+import { readPartners } from "./partner-store";
 import { workflowEvidence } from "./workflow-evidence";
 import { WORKFLOWS } from "./workflows";
 
@@ -51,6 +52,17 @@ export function builtDepartments(slug: string): Record<string, string> {
   const live: Record<string, string[]> = {};
   for (const w of WORKFLOWS) if (w.owner !== "ceo" && evidence[w.title]?.state === "live") (live[w.owner] ??= []).push(w.title);
   for (const [dept, titles] of Object.entries(live)) out[dept] ??= `${plural(titles.length, "workflow")} live: ${titles.join(", ")}`;
+
+  // Sales & Partnerships is set up once its pipeline is in use: partners shortlisted or further along (never an avoid
+  // one) with outreach ready to send or already sent. A live partner workflow, when there is one, gives the stronger reason above.
+  const pipeline = safe(() => readPartners(slug).partners, []);
+  const partners = pipeline.filter((x) => x.compliance.status !== "avoid");
+  const worked = partners.filter((x) => x.status !== "prospect" && x.status !== "declined" && x.status !== "ended");
+  const drafts = worked.reduce((n, x) => n + x.drafts.length, 0);
+  const contacted = worked.filter((x) => x.drafts.some((d) => d.status === "sent-by-owner" || d.status === "sent-by-hq") || !["prospect", "shortlisted"].includes(x.status)).length;
+  if (worked.length && (drafts || contacted)) {
+    out.sales ??= `${plural(pipeline.length, "partner")} in the pipeline, ${worked.length} shortlisted or further` + (contacted ? `, ${contacted} contacted` : `, ${plural(drafts, "outreach draft")} ready`);
+  }
 
   return out;
 }

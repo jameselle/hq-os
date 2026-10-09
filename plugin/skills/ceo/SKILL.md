@@ -66,6 +66,11 @@ Then read the business's history, so the review builds on what came before:
   that is measured, with what it counts; `--missing` lists the rest and what each needs. The scorecard picks the
   weakest lever; these numbers say which workflow inside it is failing. A live workflow with no measured number is
   a delegation to `/hq:dept data`. The same charts are on the Data & Analytics tab (`/data`).
+- **the playbooks:** `npm run hq -- playbook show <slug>` prints this week's routing (the weakest lever and up to
+  three playbooks, each with its owner and contributors), plans waiting for the owner, and applied runs with their
+  experiments. `npm run hq -- experiment list <slug>` shows what was tried; **never delegate a playbook that lost in
+  the last 8 weeks unchanged** (routing already leaves it out). Delegate the routed picks by name, and put ready plans
+  in the owner's decisions.
 
 ## 3. Decide
 
@@ -88,7 +93,18 @@ Then read the business's history, so the review builds on what came before:
   rewritten so it names no business, customer or number. After the owner's yes:
   `npm run hq -- brain promote <slug> <note> --title "<generic title>" --body <file>`. HQ refuses a copy
   that names a business.
-- **Record decisions.** Every decision the owner makes in this review becomes a decision note:
+- **One list of open decisions.** Read it first: `npm run hq -- decision list <slug>` (they're on the CEO tab too).
+  **Read the owner's notes on each** (`npm run hq -- decision show <slug> <id>`): one marked "OWNER WAITING FOR A REPLY"
+  gets an answer with `npm run hq -- decision note <slug> <id> "…"`, and a note that settles the call means close it
+  with `decision done`. Update a decision (its why, how, recommendation or date) by re-adding it with the same id.
+- **Notes on attention and critical findings** work the same way: `npm run hq -- finding notes <slug>` lists them
+  (flagging "OWNER WAITING FOR A REPLY"), `finding show <slug> <id>` reads one, `finding note <slug> <id> "…"` answers.
+  An owner note that explains a finding (a one-off cost, a known gap) changes what you recommend for it.
+  Every decision this review raises goes on it, so nothing lives only in the review text:
+  `npm run hq -- decision add <slug> -` with `{"title","why","how","dept","recommend","due":"YYYY-MM-DD"}` (re-adding the
+  same title updates it). Don't add what HQ already raises itself (playbook plans ready, the weakest lever).
+- **Record decisions.** When the owner makes a call, close it: `npm run hq -- decision done <slug> <id> --answer "…"`
+  (it files the decision note in the brain). For a call that was never on the list, write the note directly:
   `npm run hq -- brain write <slug> -` with `{"type":"decision","dept":"ceo","title":"…","body":"what, and why"}`.
 
 ## 4. Save the review

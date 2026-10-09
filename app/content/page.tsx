@@ -5,7 +5,7 @@
 import Link from 'next/link';
 import {preferredBusiness} from '@/lib/current';
 import {resolveCurrent} from '@/lib/store';
-import {decideSocial,socialDecisionText,LIMITS} from '@/lib/social';
+import {asSlideshow,decideSocial,socialDecisionText,LIMITS} from '@/lib/social';
 import {listSocial,readSocialConfig} from '@/lib/social-store';
 import {channelPlan} from '@/lib/social-writer';
 import {PostActions,ReplyActions,SocialMode} from '@/components/SocialControls';
@@ -52,7 +52,8 @@ export default async function ContentPage({searchParams:query}:{searchParams:Pro
     {open.length?<div className="grid gap-3 xl:grid-cols-2">{open.map(d=>{const what=decideSocial(c,d,now);const failing=(d.checks??[]).filter(x=>!x.ok);const caption=`${d.caption}${d.hashtags.length?`\n\n${d.hashtags.map(h=>`#${h.replace(/^#/,'')}`).join(' ')}`:''}`;
      return <article key={d.id} className="card space-y-3 p-4 min-w-0">
       <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="text-[14px] font-semibold">{NET[d.network]??d.network} · {d.format}</h3><span className="text-[12px] text-bb-dim">{day(d.day)}{d.keyword?` · keyword ${d.keyword}`:''}</span></div>
-      {d.media?.length?<div className="flex gap-2 overflow-x-auto pb-1">{d.media.map(m=><a key={m} href={`/api/social/media?f=${encodeURIComponent(m)}`} target="_blank" rel="noreferrer" className="shrink-0"><img src={`/api/social/media?f=${encodeURIComponent(m)}`} alt="" className="h-48 rounded-lg border border-bb-border"/></a>)}</div>:null}
+      {d.reel&&asSlideshow(c,d)?<figure className="space-y-1"><video src={`/api/social/media?f=${encodeURIComponent(d.reel.path)}`} controls playsInline preload="metadata" className="h-80 rounded-lg border border-bb-border bg-black"/><figcaption className="text-[11.5px] text-bb-dim">Goes out as a Reel: {d.reel.seconds} s, music {d.reel.track}. Instagram can&apos;t put music on a carousel.</figcaption></figure>
+      :d.media?.length?<div className="flex gap-2 overflow-x-auto pb-1">{d.media.map(m=><a key={m} href={`/api/social/media?f=${encodeURIComponent(m)}`} target="_blank" rel="noreferrer" className="shrink-0"><img src={`/api/social/media?f=${encodeURIComponent(m)}`} alt="" className="h-48 rounded-lg border border-bb-border"/></a>)}</div>:null}
       {d.video?.brief&&<p className="rounded-lg bg-bb-blue/5 px-3 py-2 text-[12.5px] text-bb-blue">Video to record: {d.video.brief}</p>}
       <p className="whitespace-pre-wrap rounded-lg bg-bb-surface2/50 px-3 py-2 text-[12.5px]">{caption}</p>
       <p className="text-[11.5px] text-bb-dim">{caption.length}/{LIMITS[d.network].caption} characters{d.link?` · link ${d.link}`:''} · {d.why}</p>

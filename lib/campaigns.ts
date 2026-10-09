@@ -213,6 +213,10 @@ export type CampaignFacts = {
   readings: Partial<Record<AnalyticsId, { value: number | null; status: "measured" | "missing" | "na"; note: string }>>;
   /** Vault note refs that exist in the business's vault. */
   vaultNotes: string[];
+  /** Tracking tags of the partners linked to each campaign (lib/partners.ts), by campaign id. */
+  partnerTags?: Record<string, string[]>;
+  /** Every campaign tag the business uses, so a child tag goes to the campaign whose tag is longest. */
+  campaignTags?: string[];
 };
 
 /** A number in the report: measured, or missing with what it needs. Never zero-filled. */
@@ -243,9 +247,18 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 const miss = (unit: AUnit, note: string): Measure => ({ value: null, unit, note });
 const has = (m: Measure) => m.value !== null;
 
-/** The outcome rows that belong to a campaign: by id, by its exact tag, or every tag under a prefix tag. */
-export function outcomeRows(c: Campaign, rows: CampaignOutcome[]): CampaignOutcome[] {
-  return rows.filter((r) => r.id === c.id || tagMatches(r.utm, c.utm));
+/** The outcome rows that belong to a campaign: by id, by its exact tag, every tag under a prefix tag, the tags of the
+ *  partners linked to it, and child tags under its own (`cold-brew-demo-brew-tips` under `cold-brew`, the way partner
+ *  tags are made) unless the child belongs to another campaign whose tag is longer. */
+export function outcomeRows(c: Campaign, rows: CampaignOutcome[], ctx: { partnerTags?: string[]; campaignTags?: string[] } = {}): CampaignOutcome[] {
+  const partner = new Set((ctx.partnerTags ?? []).map((t) => t.toLowerCase()));
+  const base = c.utm.endsWith("*") ? null : c.utm;
+  const longer = (ctx.campaignTags ?? []).map((t) => t.replace(/\*$/, "")).filter((t) => base && t !== base && t.startsWith(`${base}-`));
+  const child = (v: string) => Boolean(base && v.startsWith(`${base}-`) && !longer.some((t) => v === t || v.startsWith(`${t}-`)));
+  return rows.filter((r) => {
+    const v = (r.utm ?? "").toLowerCase();
+    return r.id === c.id || tagMatches(v, c.utm) || partner.has(v) || child(v);
+  });
 }
 
 /** Campaign field per analytics number, for numbers a campaign tag can split. */
@@ -308,7 +321,7 @@ export function campaignReport(c: Campaign, f: CampaignFacts): CampaignReport {
   if (!has(spend)) missing.push(`Spend: ${spend.note}`);
 
   // Outcomes reported per tag by the analytics adapter.
-  const rows = f.analytics.campaigns ? outcomeRows(c, f.analytics.campaigns) : [];
+  const rows = f.analytics.campaigns ? outcomeRows(c, f.analytics.campaigns, { partnerTags: f.partnerTags?.[c.id], campaignTags: f.campaignTags }) : [];
   const outcome = (field: "visits" | "signups" | "paying" | "revenue", unit: AUnit, what: string): Measure => {
     if (!f.analytics.connected) return miss(unit, "No analytics adapter connected, so outcomes by campaign tag can't be read");
     if (!f.analytics.campaigns) return miss(unit, `The analytics adapter doesn't report campaigns yet (add campaigns to its output, keyed by utm_campaign)`);

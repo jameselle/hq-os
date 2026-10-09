@@ -12,6 +12,7 @@ import { execFile } from "node:child_process";
 import { listDrafts as listBlogDrafts, readBlogConfig } from "./blog-store";
 import { liveCampaignBriefs } from "./campaign-store";
 import { claudeBin } from "./blog-writer";
+import { NETWORKS, keywordDmTool } from "./social";
 import { listSocial, readSocialConfig, socialDir, socialLog } from "./social-store";
 import { getProfile, vaultRoot } from "./store";
 import { craftGuidance, readUserSkills, stripFrontmatter, type CraftSkill } from "./user-skills";
@@ -41,6 +42,9 @@ export function gatherSocialInputs(slug: string, week: string, days: string[]) {
     publishedThisWeek: blog,
     pastWeeks: past,
     campaigns: liveCampaignBriefs(slug, Object.keys(c.networks)),
+    // The networks where a comment-to-DM tool answers a keyword, and the tool. A post asks for a comment keyword only
+    // on these; HQ's "keyword" check fails any other.
+    keywordDms: Object.fromEntries(NETWORKS.flatMap((n) => { const t = keywordDmTool(c, n); return t && c.networks[n] ? [[n, t]] : []; })),
   };
 }
 
@@ -63,6 +67,7 @@ export function socialPrompt(o: { skill: string; research: string; out: string; 
     "", "## This run",
     `- Read ${path.join(o.research, "inputs.json")} first. It holds the channel plan, this week's published posts, last weeks' drafts and the owner's notes.`,
     `- Write your notes to ${path.join(o.research, "notes.md")}.`,
+    "- `keywordDms` in inputs.json lists the networks where a comment-to-DM tool answers a keyword. Only there may a post ask people to comment a keyword (and set `keyword`); anywhere else, never: nothing would answer them, so use \"link in bio\" or the plan's other ask.",
     "- `campaigns` in inputs.json are the business's live campaigns. A post that serves one sets `campaign` to its id, and its own-site link ends with that campaign's `linkParams` for the network. Never tag links to other sites.",
     `- Write each post as its own JSON file in ${o.out}/, named <day>-<network>-<n>.json, in the draft format above, then stop.`,
     craftGuidance(o.craft ?? [], {

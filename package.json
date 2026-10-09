@@ -15,7 +15,8 @@
     "test:e2e": "npm run build && playwright test",
     "typecheck": "tsc --noEmit",
     "studio": "tsx scripts/studio.ts",
-    "release": "tsx scripts/release.ts"
+    "release": "tsx scripts/release.ts",
+    "trends": "tsx scripts/trends.ts"
   },
   "dependencies": {
     "lucide-react": "^1.24.0",

@@ -6,8 +6,9 @@ import path from "node:path";
 
 import { readBlogConfig } from "./blog-store";
 import { listCampaigns } from "./campaign-store";
-import { checkSocial, validateSocialConfig, type SocialConfig, type SocialContext, type SocialDraft } from "./social";
+import { NETWORKS, asSlideshow, checkSocial, keywordDmTool, validateSocialConfig, type SocialConfig, type SocialContext, type SocialDraft } from "./social";
 import { renderCards } from "./social-cards";
+import { renderSlideshow } from "./social-slideshow";
 import { businessDir, getProfile } from "./store";
 
 export const socialDir = (slug: string) => path.join(businessDir(slug), "social");
@@ -82,7 +83,8 @@ export function socialContext(slug: string): { ctx: Omit<SocialContext, "posting
   if (!p || !c) throw Error("no social plan set up for this business");
   const banned = [...(c.banned ?? []), ...(readBlogConfig(slug)?.banned ?? [])];
   const campaigns = Object.fromEntries(listCampaigns(slug).filter((x) => x.status !== "done").map((x) => [x.id, x.utm]));
-  return { ctx: { regulated: p.regulated, banned, sites: p.sites ?? [], campaigns }, config: c };
+  const keywordDms = NETWORKS.filter((n) => keywordDmTool(c, n));
+  return { ctx: { regulated: p.regulated, banned, sites: p.sites ?? [], campaigns, keywordDms }, config: c };
 }
 
 /** Check every open draft, and render the cards of those that need them. */
@@ -95,15 +97,25 @@ export async function checkSocialDrafts(slug: string, opts: { render?: boolean }
     if (opts.render && d.slides?.length && !(d.media?.length)) {
       try { d.media = await renderCards(slug, d.week, d); } catch (e) { d.error = `cards didn't render: ${String((e as Error).message).slice(0, 120)}`; }
     }
+    // A carousel that goes out as a slideshow Reel: make its video with music once (the publisher refuses it without one).
+    if (opts.render && asSlideshow(c, d) && d.slides?.length && !(d.reel && mediaPath(slug, d.reel.path, ".mp4"))) {
+      const recent = listSocial(slug, 2).filter((x) => x.id !== d.id && x.reel).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 4).map((x) => x.reel!.trackFile);
+      try {
+        d.reel = await renderSlideshow(slug, d, c, recent);
+        if (d.error?.startsWith("slideshow didn't render")) delete d.error;
+        socialLog(slug, { event: "slideshow", id: d.id, track: d.reel.track, seconds: d.reel.seconds });
+      } catch (e) { d.error = `slideshow didn't render: ${String((e as Error).message).slice(0, 200)}`; }
+    }
     saveSocial(slug, d);
   }
   socialLog(slug, { event: "checked", count: open.length, failing: open.filter((d) => d.checks?.some((x) => !x.ok)).length });
   return open;
 }
 
-/** A rendered card's absolute path, only if it is inside this business's social media folder. */
-export function mediaPath(slug: string, rel: string): string | null {
+/** A rendered card's (or, with ".mp4", a slideshow Reel's) absolute path, only if it is inside this business's social
+ *  media folder. */
+export function mediaPath(slug: string, rel: string, ext: ".png" | ".mp4" = ".png"): string | null {
   const base = path.join(socialDir(slug), "media");
   const abs = path.resolve(businessDir(slug), rel);
-  return abs.startsWith(base + path.sep) && abs.endsWith(".png") && fs.existsSync(abs) ? abs : null;
+  return abs.startsWith(base + path.sep) && abs.endsWith(ext) && fs.existsSync(abs) ? abs : null;
 }
