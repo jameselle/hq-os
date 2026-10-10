@@ -12,7 +12,7 @@
 //              competitors tick <slug|--all> [--force] [--wait <seconds>]   (the weekly brief, headless; job com.hq.competitors)
 // Brain        brain init · brain read <slug> <dept> [--chars N] · brain write <slug|hq> <note.json|-> · brain promote <slug> <note> [--title T] [--body file] · brain show <slug>
 // Finance      finance one-off <slug> <YYYY-MM> "<account>" "<reason>"   (a one-off cost: in the numbers, not flagged as a jump)
-// Tools        support refresh <slug|--all> · support show|digest <slug> · finance init <slug> · finance sync <slug|--all> · finance show <slug> · finance unit-economics <slug> [--save] · finance import-costs <slug> <file|-> [--from xero|json] [--share N] [--since YYYY-MM] [--currency XXX] · finance costs <slug> · finance costs refresh <slug|--all> [--force] [--dry-run] · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug> · analytics refresh <slug|--all> · analytics show <slug> [--missing] [--dept <dept>] · workflows check <slug|--all>
+// Tools        support refresh <slug|--all> · support show|digest <slug> · finance init <slug> · finance sync <slug|--all> · finance show <slug> · finance unit-economics <slug> [--save] · finance import-costs <slug> <file|-> [--from xero|json] [--share N] [--since YYYY-MM] [--currency XXX] · finance costs <slug> · finance costs refresh <slug|--all> [--force] [--dry-run] · scorecard refresh <slug|--all> · scorecard show <slug> · scorecard check-billing <slug> · dashboard connect <slug> <stripe|instagram|demo> [--config <file>] [--force] · dashboard check <slug> · analytics refresh <slug|--all> · analytics show <slug> [--missing] [--dept <dept>] · workflows check <slug|--all>
 // Lifecycle    lifecycle show <slug> [flow] [--cached] · lifecycle explain <slug> <flow> · lifecycle approve|reject <slug> <message> [--yes --before <ISO>] · lifecycle notes <slug> [--all]
 //              lifecycle test <slug> <message> · lifecycle mode <slug> <flow> off|draft|auto [--yes]
 // Blog         blog setup <slug> --site <url> [--hour 6] [--sc-account A --sc-site S] · blog inputs|write|check|show|publish <slug> [--dry-run] · blog approve|reject|reopen <slug> <draft> · blog note <slug> <draft> "…" · blog mode <slug> off|draft|auto · blog tick <slug|--all>
@@ -58,6 +58,8 @@ import { backupIsExternal } from "../lib/ceo";
 import { brainStats, candidates, hqBrainRoot, initBrain, promote, readBundle, writeNote, type NoteInput } from "../lib/brain-store";
 import { NOTE_TYPES, TYPE_INFO } from "../lib/brain";
 import { runScorecard, scorecardState } from "../lib/scorecard";
+import { DASHBOARD_CONNECTION, dashboardConnected, getDashboard } from "../lib/dashboard-store";
+import { dashboardProblems } from "../lib/dashboard";
 import { analyticsBoard, isoWeek, lastWeeks, runAnalytics } from "../lib/analytics";
 import { financeConnected, moneyByMonth, syncFinance } from "../lib/finance-sync";
 import { importCosts, importedCosts, toImport, type CostsSummary } from "../lib/finance-costs";
@@ -2148,6 +2150,68 @@ async function main() {
         return;
       }
       return die("scorecard: refresh <slug|--all> | show <slug> | check-billing <slug>");
+    }
+    case "dashboard": {
+      // connect: point a business's Dashboard at one of HQ's connectors (its own config file, never a key).
+      // check: run it once and print what each section holds, as counts only (the Dashboard names people; this never does).
+      const p = getProfile(pos[1] ?? "") ?? die(`no such business: ${pos[1] ?? "(none)"}`);
+      const dir = businessDir(p.slug);
+      if (pos[0] === "connect") {
+        const kind = pos[2];
+        if (!["stripe", "instagram", "demo"].includes(kind ?? "")) return die("dashboard connect <slug> <stripe|instagram|demo> [--config <file>] [--force]");
+        const connFile = path.join(dir, DASHBOARD_CONNECTION);
+        if (fs.existsSync(connFile) && !flag("--force")) return die(`${p.slug} already has ${DASHBOARD_CONNECTION}; add --force to replace it`);
+        const opt = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
+        let config = opt("--config");
+        const write = (file: string, value: unknown) => fs.writeFileSync(file, JSON.stringify(value, null, 2) + "\n", { mode: 0o600 });
+        if (kind === "stripe" && !config) {
+          const own = path.join(dir, "dashboard-stripe.json"), billing = path.join(dir, "scorecard-billing.json");
+          if (fs.existsSync(own)) config = own;
+          else if (fs.existsSync(billing) && JSON.parse(fs.readFileSync(billing, "utf8")).stripe) { config = billing; console.log("using the scorecard's Stripe settings (scorecard-billing.json)"); }
+          else { config = own; write(own, { keychain: `hq-${p.slug}-stripe`, tiers: { "Plan name": ["prod_..."] }, ignore: [] }); console.log(`wrote ${own}: put your plan names and Stripe product ids in "tiers"`); }
+        }
+        if (kind === "instagram" && !config) {
+          config = path.join(dir, "dashboard-instagram.json");
+          if (!fs.existsSync(config)) { write(config, { keychain: `hq-${p.slug}-instagram`, cache: path.join(dir, "dashboard-instagram-cache.json") }); console.log(`wrote ${config}`); }
+        }
+        if (config && !fs.existsSync(config)) return die(`no such config: ${config}`);
+        const script = path.join(hqRoot(), "templates", "dashboard", `${kind === "demo" ? "dashboard" : kind}-template.mjs`);
+        const command = [process.execPath, script, kind === "demo" ? path.join(dir, "dashboard-demo.json") : path.resolve(config!)];
+        write(connFile, { command, readOnly: kind !== "demo" });
+        console.log(`connected ${p.slug} to the ${kind} connector (${kind === "demo" ? "invented data" : "read-only"})`);
+        if (kind !== "demo") {
+          const keychainName = JSON.parse(fs.readFileSync(config!, "utf8")).stripe?.keychain ?? JSON.parse(fs.readFileSync(config!, "utf8")).keychain;
+          console.log(`the key goes in the Keychain as "${keychainName}" (you type it): security add-generic-password -a hq -s ${keychainName} -w`);
+        }
+        console.log(`then: npm run hq -- dashboard check ${p.slug}`);
+        return;
+      }
+      if (pos[0] === "check") {
+        if (!dashboardConnected(p.slug)) return die(`${p.slug} has no ${DASHBOARD_CONNECTION}; see /guides/dashboard or run: dashboard connect ${p.slug} <stripe|instagram|demo>`);
+        const t0 = Date.now();
+        let s;
+        try { s = (await getDashboard(p.slug, { force: true })).snapshot; }
+        catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.log(`FAILED  ${msg}`);
+          if (/Private adapter failed/.test(msg)) console.log("the connector exited with an error; run its command from dashboard-connection.json by hand (echo '{\"action\":\"report\"}' | <command>) to see why");
+          process.exit(1);
+        }
+        const len = (v: unknown) => (Array.isArray(v) ? v.length : null);
+        console.log(`ok  ${p.name} · read in ${((Date.now() - t0) / 1000).toFixed(1)} s · ${dashboardProblems(s).length} problems`);
+        if (s.plans) console.log(`plans        ${s.plans.map((x) => `${x.label} ${x.count}`).join(", ")}${s.totalUsers !== undefined ? ` · ${s.totalUsers} accounts` : ""}`);
+        if (s.signups) console.log(`sign-ups     today ${s.signups.today} · 7 days ${s.signups.week} · 30 days ${s.signups.month}`);
+        for (const [k, label] of [["recentUpgrades", "upgrades"], ["churned", "churned"], ["pending", "pending"], ["orphaned", "no account"]] as const)
+          if (s[k] !== undefined) console.log(`${label.padEnd(12)} ${len(s[k]) ?? "not reported"} people`);
+        if (s.security) console.log(`security     suspended ${s.security.suspended} · flagged ${s.security.flagged} · rate-limited ${s.security.rateLimited24h}`);
+        for (const g of s.groups ?? []) console.log(`${g.title.slice(0, 12).padEnd(12)} ${g.tiles.map((t) => `${t.label} ${t.value ?? "–"}`).join(" · ")}`);
+        for (const c of s.charts ?? []) console.log(`chart        ${c.title}: ${c.points.length} days since ${c.since}`);
+        for (const l of s.lists ?? []) console.log(`list         ${l.title}: ${l.rows.length} rows`);
+        for (const [k, v] of Object.entries(s.errors ?? {})) console.log(`WARNING      ${k}: ${v}`);
+        console.log(`can          contact status ${s.can.contact ? "yes" : "no"} · notes ${s.can.notes ? "yes" : "no"}`);
+        return;
+      }
+      return die("dashboard: connect <slug> <stripe|instagram|demo> [--config <file>] [--force] | check <slug>");
     }
     case "brain": {
       const sub = pos[0];

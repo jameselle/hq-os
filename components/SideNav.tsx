@@ -12,6 +12,7 @@ import { DEPARTMENTS } from "@/lib/registry";
 // the order a business usually stands them up.
 const LEAD = [
   { href: "/ceo", label: "CEO", glyph: "✦" },
+  { href: "/dashboard", label: "Dashboard", glyph: "▦" },
   { href: "/campaigns", label: "Campaigns", glyph: "◎" },
   { href: "/workflows", label: "Workflows", glyph: "⇄" },
   { href: "/guides", label: "Guides", glyph: "?" },

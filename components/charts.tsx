@@ -229,3 +229,48 @@ export function SplitBars({ rows, title, format, color = "#5AB0F0", limit = 8, p
     </div>
   );
 }
+
+/** Counts over time, oldest to newest: bars, or a filled area. Each slot carries a hover title; the first, middle
+ *  and last labels sit under the chart. */
+export function CountChart({ points, title, kind = "bars", color = "#5AB0F0", height = 180, label = (s: string) => s }: {
+  points: { date: string; count: number }[]; title: string; kind?: "bars" | "area"; color?: string; height?: number; label?: (date: string) => string;
+}) {
+  if (!points.length) return <p className="text-[12px] text-bb-muted">Nothing in this range yet.</p>;
+  const n = points.length, max = Math.max(1, ...points.map((p) => p.count));
+  const y = (v: number) => 100 - (v / max) * 96;
+  const mid = points[Math.floor((n - 1) / 2)];
+  const line = points.map((p, i) => `${(i + 0.5).toFixed(2)},${y(p.count).toFixed(2)}`).join(" ");
+  return (
+    <figure className="space-y-1">
+      <div className="flex gap-2">
+        <div className="flex w-8 shrink-0 flex-col justify-between text-right font-mono text-[10px] text-bb-dim tabular-nums" style={{ height }}>
+          <span>{max.toLocaleString("en-AU")}</span><span>0</span>
+        </div>
+        <div className="relative min-w-0 flex-1" style={{ height }}>
+          <svg role="img" aria-label={title} viewBox={`0 0 ${n} 100`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
+            <title>{title}</title>
+            {[0, 50].map((g) => <line key={g} x1="0" x2={n} y1={g + 4} y2={g + 4} stroke="#1f2940" strokeWidth="1" strokeDasharray="3 3" style={STROKE} />)}
+            <line x1="0" x2={n} y1="100" y2="100" stroke="#1f2940" strokeWidth="1" style={STROKE} />
+            {kind === "area" && (
+              <>
+                <polygon points={`0.5,100 ${line} ${(n - 0.5).toFixed(2)},100`} fill={color} opacity="0.16" />
+                <polyline points={line} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" style={STROKE} />
+              </>
+            )}
+            {points.map((p, i) => (
+              <g key={p.date}>
+                <rect x={i} width="1" y="0" height="100" fill="transparent"><title>{`${label(p.date)}: ${p.count.toLocaleString("en-AU")}`}</title></rect>
+                {kind === "bars" && p.count > 0 && (
+                  <rect x={i + 0.14} width="0.72" y={y(p.count)} height={100 - y(p.count)} fill={color} opacity="0.85" pointerEvents="none" />
+                )}
+              </g>
+            ))}
+          </svg>
+        </div>
+      </div>
+      <figcaption className="flex justify-between pl-10 font-mono text-[10px] text-bb-dim">
+        <span>{label(points[0].date)}</span>{n > 2 && <span>{label(mid.date)}</span>}<span>{label(points.at(-1)!.date)}</span>
+      </figcaption>
+    </figure>
+  );
+}

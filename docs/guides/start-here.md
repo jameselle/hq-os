@@ -43,6 +43,12 @@ Run **`/hq:backup`**. It sets up encrypted nightly backups (restic) to iCloud Dr
 with a weekly restore test. Copy the backup password into your password manager when it asks: without it,
 the backup can't be opened. Details: [IT & Security](/guides/security).
 
+## 3b. Connect your Dashboard (about 10 minutes)
+
+The **Dashboard** (under CEO) shows your live numbers and the people worth contacting. Connect Stripe, Instagram or your
+own database: tell Claude **"connect my dashboard"**, or follow [Dashboard: connect your data](/guides/dashboard). No
+data yet? `npm run hq -- dashboard connect <business> demo` shows how it looks.
+
 ## 4. Set up the departments, in this order
 
 Do them in order; each takes 5 to 30 minutes. Skip any department your business doesn't run. Tell Claude
@@ -71,6 +77,7 @@ Do them in order; each takes 5 to 30 minutes. Skip any department your business 
 - [ ] `npm run hq -- doctor` shows no failures.
 - [ ] Your business is in HQ's top bar and has a vault.
 - [ ] `/hq:backup` reports a snapshot and a passed restore test, and the password is in your password manager.
+- [ ] `npm run hq -- dashboard check <business>` prints `0 problems`, or you've chosen to connect it later.
 - [ ] Each department you run shows **equipped** on its tab, or you've chosen what to leave for later.
 - [ ] The CEO tab shows no red findings.
 

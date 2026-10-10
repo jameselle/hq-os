@@ -16,11 +16,11 @@ export function readConnection(slug: string, connectionFile: string): PrivateCon
   return config;
 }
 
-export function execAdapter(command: string[], input: object, timeoutMs = 45000): Promise<unknown> {
+export function execAdapter(command: string[], input: object, timeoutMs = 45000, maxBuffer = 2 * 1024 * 1024): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const done = (fn: () => void) => { if (!settled) { settled = true; clearTimeout(timer); fn(); } };
-    const child = execFile(command[0], command.slice(1), {timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 2 * 1024 * 1024}, (err, stdout) => {
+    const child = execFile(command[0], command.slice(1), {timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer}, (err, stdout) => {
       if (err) return done(() => reject(Error('Private adapter failed')));
       try { const value = JSON.parse(stdout); done(() => resolve(value)); } catch { done(() => reject(Error('Private adapter failed'))); }
     });

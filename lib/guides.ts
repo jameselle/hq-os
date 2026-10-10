@@ -110,6 +110,13 @@ const OTHER: Guide[] = [
     file: "docs/guides/analytics.md",
   },
   {
+    slug: "dashboard",
+    kind: "page",
+    title: "Dashboard: connect your data",
+    blurb: "Connect Stripe, Instagram or your own database in about 10 minutes: members, revenue, cancellations and the people to contact, or followers, posts and views. Customer details are held in memory only; the connector contract for writing your own.",
+    file: "docs/guides/dashboard.md",
+  },
+  {
     slug: "support-desk",
     kind: "page",
     title: "Support: who's waiting, what they ask, and where it goes next",

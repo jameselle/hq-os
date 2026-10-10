@@ -58,6 +58,24 @@ Open the guide (`docs/guides/<slug>.md`) and follow it section by section:
 5. **Check it's working**: run every check in the guide and show the owner the result.
 6. **Done when**: tick each item, or note what's left and why.
 
+## 3b. The Dashboard
+
+Once a business is added, connect its Dashboard (`docs/guides/dashboard.md`) so the owner sees live numbers and the
+people to contact. Do it right after backups, or whenever the owner asks for "the dashboard", "connect Stripe" or
+"connect Instagram":
+
+1. Check first: `ls $HQ_DATA/businesses/<slug>/dashboard-connection.json` and, if it exists,
+   `npm run hq -- dashboard check <slug>`. Already `0 problems`? It's done.
+2. Pick the connector from what the business has: Stripe subscriptions → `stripe` (reuses the scorecard's
+   `scorecard-billing.json` when present), an Instagram professional account → `instagram`, its own database → write a
+   connector with the owner (guide section 2c), nothing yet → `demo`.
+3. `npm run hq -- dashboard connect <slug> <stripe|instagram|demo>`, then have the owner create the read-only key and
+   type it into the Keychain with the printed `security add-generic-password` command. Never ask for the key in chat.
+4. For Stripe, fill `tiers` in `dashboard-stripe.json` with the owner's plan names and `prod_` ids (ask which products
+   are which plan; read nothing else).
+5. `npm run hq -- dashboard check <slug>` until it prints `0 problems` and no WARNING lines, then show the owner the
+   page. The check prints counts only; never print or paste the Dashboard's names or emails anywhere.
+
 ## 4. Record progress
 
 After each guide, save a short note to the business's vault so a later session picks up where this one stopped:
